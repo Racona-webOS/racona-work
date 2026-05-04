@@ -1,0 +1,58 @@
+[
+	{
+		"labelKey": "menu.dashboard",
+		"href": "#dashboard",
+		"icon": "LayoutDashboard",
+		"component": "Dashboard",
+		"children": [],
+		"hideWhen": null
+	},
+	{
+		"labelKey": "menu.employees",
+		"href": "#employees",
+		"icon": "Users",
+		"component": "EmployeeList",
+		"children": [],
+		"hideWhen": null
+	},
+	{
+		"labelKey": "menu.leaveRequests",
+		"href": "#leave-requests",
+		"icon": "CalendarDays",
+		"component": "LeaveRequests",
+		"children": [],
+		"hideWhen": null
+	},
+	{
+		"labelKey": "menu.businessTrips",
+		"href": "#business-trips",
+		"icon": "Car",
+		"component": "BusinessTrips",
+		"children": [],
+		"hideWhen": null
+	},
+	{
+		"labelKey": "menu.timeTracking",
+		"href": "#time-tracking",
+		"icon": "Clock",
+		"component": "TimeTracking",
+		"children": [],
+		"hideWhen": null
+	},
+	{
+		"labelKey": "menu.organizations",
+		"href": "#organizations",
+		"icon": "Building2",
+		"component": "Organizations",
+		"children": [],
+		"hideWhen": null
+	},
+	{
+		"labelKey": "menu.settings",
+		"href": "#settings",
+		"icon": "Settings",
+		"component": "AppSettings",
+		"children": [],
+		"hideWhen": null
+	}
+]

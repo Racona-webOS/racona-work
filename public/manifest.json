@@ -1,0 +1,47 @@
+{
+	"id": "racona-work",
+	"name": {
+		"hu": "Racona Work",
+		"en": "Racona Work"
+	},
+	"description": {
+		"hu": "An Racona application",
+		"en": "An Racona application"
+	},
+	"version": "1.0.0",
+	"author": "Racona Developer <dev@example.com>",
+	"entry": "dist/index.iife.js",
+	"icon": "icon2.webp",
+	"iconStyle": "cover",
+	"category": "utilities",
+	"permissions": [
+		"database",
+		"remote_functions",
+		"notifications"
+	],
+	"multiInstance": false,
+	"defaultSize": {
+		"width": 800,
+		"height": 600
+	},
+	"minSize": {
+		"width": 400,
+		"height": 300
+	},
+	"maxSize": {
+		"width": 1920,
+		"height": 1080
+	},
+	"keywords": [],
+	"isPublic": true,
+	"sortOrder": 100,
+	"dependencies": {
+		"svelte": "^5.0.0",
+		"@lucide/svelte": "^1.0.0"
+	},
+	"minWebOSVersion": "1.0.0",
+	"locales": [
+		"hu",
+		"en"
+	]
+}
