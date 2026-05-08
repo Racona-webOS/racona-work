@@ -1,7 +1,3 @@
--- Racona Work Plugin - Séma javítás
--- Az employees táblából eltávolítjuk az organization_id-t
--- Az organization_members táblában user_id helyett employee_id lesz
-
 -- ============================================================================
 -- 1. EMPLOYEES TÁBLA MÓDOSÍTÁSA
 -- ============================================================================
@@ -17,36 +13,6 @@ ALTER TABLE app__racona_work.employees
 ALTER TABLE app__racona_work.employees
     ADD CONSTRAINT employees_user_id_key UNIQUE (user_id);
 
--- ============================================================================
--- 2. ORGANIZATION_MEMBERS TÁBLA MÓDOSÍTÁSA
--- ============================================================================
-
--- Először töröljük a meglévő adatokat (mivel a struktúra változik)
-TRUNCATE TABLE app__racona_work.organization_members CASCADE;
-
--- Töröljük a user_id oszlopot és a kapcsolódó constraint-eket
-ALTER TABLE app__racona_work.organization_members
-    DROP CONSTRAINT IF EXISTS organization_members_organization_id_user_id_key;
-
-ALTER TABLE app__racona_work.organization_members
-    DROP CONSTRAINT IF EXISTS organization_members_user_id_fkey;
-
-DROP INDEX IF EXISTS idx_organization_members_user_id;
-
-ALTER TABLE app__racona_work.organization_members
-    DROP COLUMN IF EXISTS user_id;
-
--- Hozzáadjuk az employee_id oszlopot
-ALTER TABLE app__racona_work.organization_members
-    ADD COLUMN IF NOT EXISTS employee_id INTEGER NOT NULL REFERENCES app__racona_work.employees(id) ON DELETE CASCADE;
-
--- Új UNIQUE constraint és index
-ALTER TABLE app__racona_work.organization_members
-    ADD CONSTRAINT organization_members_organization_id_employee_id_key
-    UNIQUE (organization_id, employee_id);
-
-CREATE INDEX IF NOT EXISTS idx_organization_members_employee_id
-    ON app__racona_work.organization_members(employee_id);
 
 -- ============================================================================
 -- 3. LEAVE_BALANCES TÁBLA MÓDOSÍTÁSA

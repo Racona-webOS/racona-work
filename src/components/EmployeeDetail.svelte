@@ -13,9 +13,9 @@
 	import type {
 		EmployeeDetailView,
 		EmployeeDetail,
-		EmployeeRow
+		EmployeeRow,
+		LeaveBalance
 	} from '../../server/functions.js';
-    import PluginHeader from './PluginHeader.svelte';
 
 	let {
 		pluginId = 'racona-work',
@@ -38,6 +38,11 @@
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 
+// Aktuális szervezet a window store-ból
+function getCurrentOrganizationId(): number | null {
+const store = (window as any).__racona_work_org_store__;
+return store?.currentOrganization?.id ?? null;
+}
 	// Alapadatok szerkesztése
 	let editingBasic = $state(false);
 	let editPosition = $state('');
@@ -233,8 +238,11 @@
 		balanceSaving = true;
 		balanceError = null;
 		try {
+			const organizationId = getCurrentOrganizationId();
+			if (!organizationId) throw new Error('Nincs kiválasztott szervezet');
 			const saved: any = await sdk?.remote?.call('setLeaveBalance', {
 				employeeId: view.employee.id,
+				organizationId,
 				year: balanceYear,
 				totalDays: balanceTotalDays
 			});
@@ -251,7 +259,6 @@
 </script>
 
 <section class="page">
-    <PluginHeader {pluginId} />
 	<!-- Fejléc -->
 	<div class="page-header">
 		<button class="btn-back" onclick={() => sdk?.ui?.navigateTo('EmployeeList')}>← Vissza</button>

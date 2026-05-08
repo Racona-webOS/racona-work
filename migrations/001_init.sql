@@ -28,21 +28,6 @@ INSERT INTO app__racona_work.organizations (name, slug, created_at, updated_at)
 VALUES ('Default Organization', 'default-organization', NOW(), NOW())
 ON CONFLICT (slug) DO NOTHING;
 
--- ============================================================================
--- 2. SZERVEZET TAGOK (ORGANIZATION_MEMBERS)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS app__racona_work.organization_members (
-    id SERIAL PRIMARY KEY,
-    organization_id INTEGER NOT NULL REFERENCES app__racona_work.organizations(id) ON DELETE CASCADE,
-    user_id INTEGER NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    role VARCHAR(50) DEFAULT 'member' NOT NULL,
-    joined_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-    UNIQUE(organization_id, user_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_organization_members_org_id ON app__racona_work.organization_members(organization_id);
-CREATE INDEX IF NOT EXISTS idx_organization_members_user_id ON app__racona_work.organization_members(user_id);
 
 -- ============================================================================
 -- 3. DOLGOZÓK (EMPLOYEES)

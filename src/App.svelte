@@ -63,27 +63,60 @@
 		return translations[labelKey] ?? labelKey.split('.').pop() ?? labelKey;
 	}
 
-	const menuItems = (menuData as any[])
-		.filter((item: any) => item.component)
-		.map((item: any) => ({
-			id: item.href?.replace('#', '') ?? item.component,
-			componentName: item.component
-		}));
+	interface FlatMenuItem {
+		id: string;
+		componentName: string;
+		label: string;
+		parentLabel?: string;
+	}
+
+	// Lapos lista, a `children` tömbökben levő komponens-menüpontokat is beleértve.
+	// A core oldalon az AppLayout kezeli a collapsible renderelést; standalone dev módban
+	// ezt a lapos listát jelenítjük meg, szülő csoportcímkékkel.
+	function flattenMenuForDev(items: any[], parentLabel?: string): FlatMenuItem[] {
+		const out: FlatMenuItem[] = [];
+		for (const item of items) {
+			if (item?.component && item?.href) {
+				out.push({
+					id: item.href.replace('#', '') ?? item.component,
+					componentName: item.component,
+					label: resolveLabel(item.labelKey ?? ''),
+					parentLabel
+				});
+			}
+			if (Array.isArray(item?.children) && item.children.length > 0) {
+				const groupLabel = resolveLabel(item.labelKey ?? '');
+				out.push(...flattenMenuForDev(item.children, groupLabel));
+			}
+		}
+		return out;
+	}
+
+	const menuItems = $derived(flattenMenuForDev(menuData as any[]));
 
 	let menuLabels = $derived(
-		Object.fromEntries(
-			(menuData as any[])
-				.filter((item: any) => item.component)
-				.map((item: any) => [
-					item.href?.replace('#', '') ?? item.component,
-					item.label ?? resolveLabel(item.labelKey ?? '')
-				])
-		)
+		Object.fromEntries(menuItems.map((m) => [m.id, m.label]))
 	);
 
-	let activeId = $state(menuItems[0]?.id ?? '');
+	let activeId = $state('');
+	$effect(() => {
+		if (!activeId && menuItems.length > 0) {
+			activeId = menuItems[0].id;
+		}
+	});
 	let activeItem = $derived(menuItems.find((m) => m.id === activeId) ?? menuItems[0]);
 	let ActiveComponent = $derived(activeItem ? componentMap[activeItem.componentName] : null);
+
+	// Dev sidebar csoportosítás — parentLabel szerint rendezzük a lapos listát.
+	let groupedMenu = $derived.by(() => {
+		const groups = new Map<string, FlatMenuItem[]>();
+		for (const item of menuItems) {
+			const key = item.parentLabel ?? '';
+			if (!groups.has(key)) groups.set(key, []);
+			groups.get(key)!.push(item);
+		}
+		return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+	});
 
 	// --- ActionBar setup (standalone dev mode) ---
 	onMount(() => {
@@ -107,14 +140,20 @@
 		</div>
 
 		<nav>
-			{#each menuItems as item (item.id)}
-				<button
-					class="menu-item"
-					class:active={activeId === item.id}
-					onclick={() => (activeId = item.id)}
-				>
-					{menuLabels[item.id] ?? item.id}
-				</button>
+			{#each groupedMenu as group (group.label)}
+				{#if group.label}
+					<div class="menu-group-label">{group.label}</div>
+				{/if}
+				{#each group.items as item (item.id)}
+					<button
+						class="menu-item"
+						class:nested={!!group.label}
+						class:active={activeId === item.id}
+						onclick={() => (activeId = item.id)}
+					>
+						{menuLabels[item.id] ?? item.id}
+					</button>
+				{/each}
 			{/each}
 		</nav>
 
@@ -224,6 +263,19 @@
 		width: 100%;
 		text-align: left;
 		transition: all 0.15s ease;
+	}
+
+	.menu-item.nested {
+		padding-left: 1.25rem;
+	}
+
+	.menu-group-label {
+		font-size: 0.7rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-muted-foreground, #94a3b8);
+		padding: 0.75rem 0.75rem 0.25rem;
 	}
 
 	.menu-item:hover {

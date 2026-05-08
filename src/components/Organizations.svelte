@@ -109,6 +109,9 @@
 
 			// Toast üzenet megjelenítése
 			sdk?.ui?.toast(`${newOrg.name} létrehozva`, 'success');
+
+			// Értesítjük a sidebar OrganizationSwitcher-t
+			window.dispatchEvent(new CustomEvent('organization-created', { detail: { organization: newOrg } }));
 		} catch (err: any) {
 			error = err?.message ?? t('error.saveFailed');
 		} finally {
@@ -263,7 +266,10 @@ ${memberCount > 0 ? '\nA dolgozók nem törlődnek, csak a szervezeti tagságuk 
 
 <section class="page">
 	<div class="page-header">
-		<h2>{t('organizations.title')}</h2>
+        <div class="page-header_title">
+		    <h2>{t('organizations.title')}</h2>
+            <p class="subtitle">{t('dashboard.subtitle')}</p>
+        </div>
 		<button class="btn-primary" onclick={() => (showCreateForm = true)}>
 			{t('organizations.create')}
 		</button>
@@ -548,12 +554,24 @@ ${memberCount > 0 ? '\nA dolgozók nem törlődnek, csak a szervezeti tagságuk 
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
+        margin-bottom: 1rem;
 	}
 
 	.page-header h2 {
 		font-size: 1.5rem;
 		font-weight: 700;
 		margin: 0;
+	}
+
+    .page-header_title {
+		display: flex;
+        flex-direction: column;
+	}
+
+    .subtitle {
+		color: var(--color-muted-foreground, #64748b);
+		margin: 0;
+		font-size: 0.875rem;
 	}
 
 	.content-grid {

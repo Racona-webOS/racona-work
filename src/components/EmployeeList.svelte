@@ -30,8 +30,8 @@
 
 	// Organization store - inicializálás
 	let orgStore = $state<OrganizationStore | null>(null);
-	let currentOrganization = $derived(orgStore?.currentOrganization ?? null);
-	let hasAccess = $derived(orgStore?.hasAccess ?? false);
+	let currentOrganization = $state<import('../../server/functions.js').Organization | null>(null);
+	let hasAccess = $state(false);
 
 	function t(key: string): string {
 		return sdk?.i18n?.t(key) ?? key;
@@ -164,17 +164,25 @@
 		});
 	});
 
-	// Organization-changed event listener
+	// Szervezet váltáskor újratölt (currentOrganization $state változásakor)
+	$effect(() => {
+		currentOrganization;
+		untrack(() => {
+			if (currentOrganization && columns.length > 0 && sdk?.remote) loadData();
+		});
+	});
+
+	// organization-changed event: frissíti a currentOrganization $state-et
 	$effect(() => {
 		const handleOrgChange = () => {
-			if (currentOrganization) loadData();
+			const store = (window as any).__racona_work_org_store__;
+			if (store) {
+				currentOrganization = store.currentOrganization;
+				hasAccess = store.hasAccess;
+			}
 		};
-
 		window.addEventListener('organization-changed', handleOrgChange);
-
-		return () => {
-			window.removeEventListener('organization-changed', handleOrgChange);
-		};
+		return () => window.removeEventListener('organization-changed', handleOrgChange);
 	});
 
 	// --- Oszlopok ---
@@ -188,13 +196,14 @@
 			tableState = { ...tableState, sortBy: columnId, sortOrder: descending ? 'desc' : 'asc', page: 1 };
 		};
 
-		const actionsColumn = createActionsColumn([
+		const actionsColumn = createActionsColumn((row: EmployeeRow) => [
 			{
 				label: t('employeeDetail.title'),
-				onClick: (row: EmployeeRow) => navigateToDetail(row.id)
+				onClick: (row: EmployeeRow) => navigateToDetail(row.id),
+				primary: true
 			},
 			{
-				label: (row: EmployeeRow) => row.organizationRole === 'admin' ? 'Taggá tétel' : 'Adminná tétel',
+				label: row.organizationRole === 'admin' ? 'Taggá tétel' : 'Adminná tétel',
 				onClick: (row: EmployeeRow) => handleChangeRoleClick(row)
 			},
 			{
@@ -378,8 +387,11 @@
 		}
 
 		try {
-			unlinkedUsers = await sdk?.remote?.call('getUnlinkedUsers', { organizationId: currentOrganization.id }) ?? [];
-		} catch {
+			unlinkedUsers = await sdk?.remote?.call('getUnlinkedUsers', {
+				organizationId: currentOrganization.id
+			}) ?? [];
+		} catch (err) {
+			console.error('[EmployeeList.openLinkModal] getUnlinkedUsers hiba:', err);
 			unlinkedUsers = [];
 		} finally {
 			unlinkedLoading = false;
@@ -621,8 +633,17 @@
 				orgStore = createOrganizationStore(pluginId, sdk);
 			}
 
-			// Szervezetek betöltése
-			await orgStore.loadOrganizations();
+			currentOrganization = orgStore.currentOrganization;
+			hasAccess = orgStore.hasAccess;
+
+			// Ha még nincs betöltve, betöltjük
+			if (orgStore.availableOrganizations.length === 0) {
+				await orgStore.loadOrganizations();
+			}
+
+			// Betöltés utáni frissítés
+			currentOrganization = orgStore.currentOrganization;
+			hasAccess = orgStore.hasAccess;
 		}
 
 		try {
@@ -643,12 +664,8 @@
 				{
 					label: `+ ${t('employees.addEmployee')}`,
 					onClick: () => (modalMode = 'choose'),
-					variant: 'default'
-				},
-				{
-					label: `+ Tag hozzáadása`,
-					onClick: openAddMemberModal,
-					variant: 'secondary'
+					variant: 'default',
+                    size: 'lg'
 				}
 			]);
 		} else if (sdk?.ui) {

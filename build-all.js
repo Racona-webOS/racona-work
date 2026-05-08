@@ -15,7 +15,7 @@ console.log('🔨 Building Racona Work plugin...\n');
 // 1. Build main plugin
 console.log('📦 Building main plugin...');
 try {
-	execSync('BUILD_MODE=main vite build', { stdio: 'inherit', cwd: __dirname });
+	execSync('cross-env BUILD_MODE=main vite build', { stdio: 'inherit', cwd: __dirname });
 	console.log('✅ Main plugin built successfully\n');
 } catch (error) {
 	console.error('❌ Failed to build main plugin');
@@ -34,7 +34,7 @@ if (existsSync(componentsDir)) {
 		for (const file of svelteFiles) {
 			console.log(`  - Building ${file}...`);
 			try {
-				execSync(`BUILD_MODE=components COMPONENT_FILE=${file} vite build`, {
+				execSync(`cross-env BUILD_MODE=components COMPONENT_FILE=${file} vite build`, {
 					stdio: 'inherit',
 					cwd: __dirname
 				});

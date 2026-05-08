@@ -14,9 +14,12 @@ export class OrganizationStore {
 	error = $state<string | null>(null);
 	isAdmin = $state(false); // Admin jogosultság
 
+	// Szervezet-szintű képességek (getMyCapabilities). Szervezet váltáskor frissül.
+	capabilities = $state<Set<string>>(new Set());
+
 	// Derived state
 	hasMultipleOrganizations = $derived(this.availableOrganizations.length > 1);
-	// Admin userek mindig hozzáférnek, vagy ha van legalább egy szervezet
+	// Admin userek mindig hozzáférnek, függetlenül a szervezetek számától
 	hasAccess = $derived(this.isAdmin || this.availableOrganizations.length > 0);
 
 	private sdk: any = null;
@@ -28,6 +31,72 @@ export class OrganizationStore {
 	init(pluginId: string, sdk: any) {
 		this.pluginId = pluginId;
 		this.sdk = sdk;
+	}
+
+	/**
+	 * Képesség-ellenőrzés a jelenlegi szervezet kontextusában.
+	 * Core admin és dev mód minden képességgel rendelkezik (a szerver küldi így).
+	 */
+	can(capability: string): boolean {
+		return this.capabilities.has(capability);
+	}
+
+	/**
+	 * Képességek lekérése az aktuális szervezetre. A szerver oldali getMyCapabilities
+	 * visszaadja a core admin / dev mód jelzést is.
+	 *
+	 * Publikus: a komponensek is meghívhatják, ha úgy érzik, a halmaz régi
+	 * (pl. komponens mount-kor, de az init async befejeződése előtt).
+	 */
+	async refreshCapabilities(organizationId: number): Promise<void> {
+		if (!this.sdk?.remote || !organizationId) {
+			this.capabilities = new Set();
+			this.publishCapabilities();
+			return;
+		}
+		try {
+			const result = await this.sdk.remote.call('getMyCapabilities', { organizationId });
+			const list: string[] = Array.isArray(result?.capabilities) ? result.capabilities : [];
+			this.capabilities = new Set(list);
+		} catch (err) {
+			console.warn('[OrganizationStore] Képességek lekérése sikertelen:', err);
+			this.capabilities = new Set();
+		}
+		this.publishCapabilities();
+	}
+
+	/**
+	 * Csak akkor tölt capability-t, ha még nem volt betöltve (üres halmaz).
+	 * Biztonságos `onMount`-ban hívni.
+	 */
+	async ensureCapabilities(organizationId: number): Promise<void> {
+		if (this.capabilities.size === 0 && organizationId) {
+			await this.refreshCapabilities(organizationId);
+		}
+	}
+
+	/**
+	 * A jelenlegi capability halmaz publikálása a core felé (menü szűréshez).
+	 * A core PluginLayoutWrapper figyeli ezt az eseményt.
+	 *
+	 * Publikus: hogy ha újranyitáskor a singleton store már be van töltve és
+	 * nem fut újra a refreshCapabilities, akkor is fel lehessen tölteni a core
+	 * oldalt (lásd OrganizationSwitcher.onMount).
+	 */
+	publishCapabilities(): void {
+		if (typeof window === 'undefined' || !this.pluginId) return;
+		try {
+			window.dispatchEvent(
+				new CustomEvent('plugin-capabilities-changed', {
+					detail: {
+						pluginId: this.pluginId,
+						capabilities: [...this.capabilities]
+					}
+				})
+			);
+		} catch (err) {
+			console.warn('[OrganizationStore] Capabilities event kiküldése sikertelen:', err);
+		}
 	}
 
 	/**
@@ -88,6 +157,11 @@ export class OrganizationStore {
 				this.currentOrganization = this.availableOrganizations[0];
 				this.saveLastOrganizationId(this.currentOrganization.id);
 			}
+
+			// Képességek lekérése az aktuális szervezetre
+			if (this.currentOrganization) {
+				await this.refreshCapabilities(this.currentOrganization.id);
+			}
 		} catch (err: any) {
 			// Követelmény 15.2: Részletes hibaüzenet
 			const errorMessage = err?.message ?? 'Szervezetek betöltése sikertelen';
@@ -130,6 +204,9 @@ export class OrganizationStore {
 
 			// Session storage frissítése sikeres váltás után (Követelmény: 4.2, 11.1)
 			this.saveLastOrganizationId(organizationId);
+
+			// Képességek újratöltése az új szervezet kontextusában
+			await this.refreshCapabilities(organizationId);
 
 			// Értesítjük az alkalmazást a szervezet váltásról (Követelmény: 4.3, 12.1)
 			// Az event detail tartalmazza az organizationId-t és az organization objektumot (Követelmény: 4.4, 12.2)
@@ -297,6 +374,19 @@ export class OrganizationStore {
 		if (this.currentOrganization?.id === updatedOrg.id) {
 			this.currentOrganization = updatedOrg;
 		}
+
+		// Értesítjük az alkalmazás többi részét a szervezet adatainak módosításáról
+		// (pl. az OrganizationSwitcher felirata frissüljön a névváltozás után).
+		if (typeof window !== 'undefined') {
+			window.dispatchEvent(
+				new CustomEvent('organization-updated', {
+					detail: {
+						organizationId: updatedOrg.id,
+						organization: updatedOrg
+					}
+				})
+			);
+		}
 	}
 
 	/**
@@ -339,6 +429,7 @@ export class OrganizationStore {
 		this.isLoading = false;
 		this.error = null;
 		this.isAdmin = false;
+		this.capabilities = new Set();
 
 		if (typeof window !== 'undefined' && window.sessionStorage) {
 			try {
@@ -384,8 +475,8 @@ export class OrganizationStore {
 	}
 }
 
-// Singleton instance
-let organizationStoreInstance: OrganizationStore | null = null;
+// Singleton instance - window-on tárolva, hogy minden Web Component bundle ugyanazt lássa
+const STORE_WINDOW_KEY = '__racona_work_org_store__';
 
 /**
  * OrganizationStore létrehozása
@@ -393,7 +484,9 @@ let organizationStoreInstance: OrganizationStore | null = null;
 export function createOrganizationStore(pluginId: string, sdk: any): OrganizationStore {
 	const store = new OrganizationStore();
 	store.init(pluginId, sdk);
-	organizationStoreInstance = store;
+	if (typeof window !== 'undefined') {
+		(window as any)[STORE_WINDOW_KEY] = store;
+	}
 	return store;
 }
 
@@ -401,15 +494,18 @@ export function createOrganizationStore(pluginId: string, sdk: any): Organizatio
  * OrganizationStore beállítása (context-hez)
  */
 export function setOrganizationStore(store: OrganizationStore): void {
-	organizationStoreInstance = store;
+	if (typeof window !== 'undefined') {
+		(window as any)[STORE_WINDOW_KEY] = store;
+	}
 }
 
 /**
  * OrganizationStore lekérése
  */
 export function getOrganizationStore(): OrganizationStore {
-	if (!organizationStoreInstance) {
+	const store = typeof window !== 'undefined' ? (window as any)[STORE_WINDOW_KEY] : null;
+	if (!store) {
 		throw new Error('OrganizationStore nincs inicializálva. Hívd meg először a createOrganizationStore()-t.');
 	}
-	return organizationStoreInstance;
+	return store as OrganizationStore;
 }

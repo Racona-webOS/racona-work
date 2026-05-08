@@ -8,10 +8,10 @@
 		"hu": "An Racona application",
 		"en": "An Racona application"
 	},
-	"version": "1.0.0",
+	"version": "0.5.1",
 	"author": "Racona Developer <dev@example.com>",
 	"entry": "dist/index.iife.js",
-	"icon": "icon2.webp",
+	"icon": "icon.webp",
 	"iconStyle": "cover",
 	"category": "utilities",
 	"permissions": [
@@ -43,5 +43,10 @@
 	"locales": [
 		"hu",
 		"en"
-	]
+	],
+	"sidebarComponent": "OrganizationSwitcher",
+	"layout": {
+		"sidebarWidth": 280,
+        "maxWidthClass": "w-full"
+	}
 }

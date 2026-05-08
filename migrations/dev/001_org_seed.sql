@@ -28,9 +28,5 @@ BEGIN
             UPDATE app__racona_work.employees SET organization_id = default_org_id WHERE user_id = dev_user_id AND organization_id IS NULL;
         END IF;
 
-        -- organization_members rekord
-        INSERT INTO app__racona_work.organization_members (organization_id, user_id, role, joined_at)
-        VALUES (default_org_id, dev_user_id, 'admin', NOW())
-        ON CONFLICT (organization_id, user_id) DO NOTHING;
-    END IF;
+        END IF;
 END $$;

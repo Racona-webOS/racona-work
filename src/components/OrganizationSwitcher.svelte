@@ -1,3 +1,5 @@
+<svelte:options customElement={{ tag: "racona-work-organizationswitcher", shadow: "none" }} />
+
 <script lang="ts">
 	/**
 	 * OrganizationSwitcher - Szervezet váltó UI komponens
@@ -11,9 +13,13 @@
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
+	console.log('[OrganizationSwitcher] Component initialized with pluginId:', pluginId);
+
 	const sdk = $derived(
 		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
 	);
+
+	console.log('[OrganizationSwitcher] SDK:', sdk);
 
 	function t(key: string): string {
 		return sdk?.i18n?.t(key) ?? key;
@@ -25,24 +31,56 @@
 	// --- Dropdown állapot ---
 	let isOpen = $state(false);
 
-	// --- Derived state a store-ból ---
-	let currentOrganization = $derived(store?.currentOrganization ?? null);
-	let availableOrganizations = $derived(store?.availableOrganizations ?? []);
-	let hasMultipleOrganizations = $derived((store?.availableOrganizations ?? []).length > 1);
-	let isLoading = $derived(store?.isLoading ?? false);
+	// --- Lokális $state a store értékeiből (cross-bundle reaktivitáshoz) ---
+	let currentOrganization = $state<Organization | null>(null);
+	let availableOrganizations = $state<Organization[]>([]);
+	let hasMultipleOrganizations = $derived(availableOrganizations.length > 1);
+	let isLoading = $state(false);
+
+	// Store értékek szinkronizálása
+	function syncFromStore() {
+		if (store) {
+			currentOrganization = store.currentOrganization;
+			availableOrganizations = store.availableOrganizations;
+			isLoading = store.isLoading;
+		}
+	}
+
+	console.log('[OrganizationSwitcher] currentOrganization:', currentOrganization);
+	console.log('[OrganizationSwitcher] availableOrganizations:', availableOrganizations);
 
 	// --- Inicializálás ---
 	onMount(() => {
+		console.log('[OrganizationSwitcher] onMount called');
+		console.log('[OrganizationSwitcher] sdk:', sdk);
+		console.log('[OrganizationSwitcher] sdk.remote:', sdk?.remote);
+
 		if (sdk?.remote) {
 			try {
 				store = getOrganizationStore();
+				console.log('[OrganizationSwitcher] Got existing store');
 			} catch {
-				// Ha még nincs store, létrehozzuk
 				store = createOrganizationStore(pluginId, sdk);
+				console.log('[OrganizationSwitcher] Created new store');
 			}
 
-			// Szervezetek betöltése
-			store.loadOrganizations();
+			// Kezdeti értékek szinkronizálása
+			syncFromStore();
+
+			// Csak akkor töltjük be, ha még nincs adat
+			if (store.availableOrganizations.length === 0) {
+				console.log('[OrganizationSwitcher] Loading organizations...');
+				store.loadOrganizations().then(() => syncFromStore());
+			} else {
+				console.log('[OrganizationSwitcher] Store already has organizations, skipping load');
+				// Újranyitáskor a plugin singleton store élve maradt, de a core
+				// pluginCapabilitiesStore üres lehet (pl. ha az ablakot bezárták
+				// és most nyitottuk újra). A capabilities-t publikáljuk, hogy a
+				// menü-szűrés helyes legyen.
+				store.publishCapabilities();
+			}
+		} else {
+			console.warn('[OrganizationSwitcher] SDK or SDK.remote not available');
 		}
 
 		// Kattintás figyelő a dropdown bezárásához
@@ -53,10 +91,30 @@
 			}
 		};
 
+		// Szervezet változás figyelő
+		const handleOrganizationChanged = () => {
+			if (store) {
+				store.loadOrganizations().then(() => syncFromStore());
+			}
+		};
+
+		// organization-changed: csak szinkronizálás, nem újratöltés (a store már frissült)
+		const handleOrgChanged = () => {
+			syncFromStore();
+		};
+
 		document.addEventListener('click', handleClickOutside);
+		window.addEventListener('organization-changed', handleOrgChanged);
+		window.addEventListener('organization-updated', handleOrgChanged);
+		window.addEventListener('organization-deleted', handleOrganizationChanged);
+		window.addEventListener('organization-created', handleOrganizationChanged);
 
 		return () => {
 			document.removeEventListener('click', handleClickOutside);
+			window.removeEventListener('organization-changed', handleOrgChanged);
+			window.removeEventListener('organization-updated', handleOrgChanged);
+			window.removeEventListener('organization-deleted', handleOrganizationChanged);
+			window.removeEventListener('organization-created', handleOrganizationChanged);
 		};
 	});
 
@@ -64,6 +122,7 @@
 	async function handleOrganizationChange(org: Organization) {
 		if (store && org.id !== currentOrganization?.id) {
 			await store.switchOrganization(org.id);
+			syncFromStore();
 			isOpen = false;
 		}
 	}
@@ -74,23 +133,22 @@
 	}
 </script>
 
-<!-- Követelmény 10.6: Csak akkor jelenítjük meg, ha több szervezet van -->
-{#if hasMultipleOrganizations}
+<!-- Követelmény 10.6: Mindig megjelenítjük, hogy a user lássa melyik szervezetben van -->
+{#if currentOrganization}
 	<div class="org-switcher">
 		<button
 			class="org-switcher-button"
 			onclick={toggleDropdown}
 			aria-expanded={isOpen}
 			aria-haspopup="true"
-			disabled={isLoading}
+			disabled={isLoading || !hasMultipleOrganizations}
 			class:loading={isLoading}
+			class:single-org={!hasMultipleOrganizations}
 		>
 			<div class="org-info">
 				<span class="org-icon">
 					{#if isLoading}
 						<span class="spinner-icon">⏳</span>
-					{:else}
-						🏢
 					{/if}
 				</span>
 				<div class="org-details">
@@ -106,26 +164,28 @@
 					</span>
 				</div>
 			</div>
-			<svg
-				class="chevron"
-				class:open={isOpen}
-				width="16"
-				height="16"
-				viewBox="0 0 16 16"
-				fill="none"
-				xmlns="http://www.w3.org/2000/svg"
-			>
-				<path
-					d="M4 6L8 10L12 6"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				/>
-			</svg>
+			{#if hasMultipleOrganizations}
+				<svg
+					class="chevron"
+					class:open={isOpen}
+					width="16"
+					height="16"
+					viewBox="0 0 16 16"
+					fill="none"
+					xmlns="http://www.w3.org/2000/svg"
+				>
+					<path
+						d="M4 6L8 10L12 6"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+				</svg>
+			{/if}
 		</button>
 
-		{#if isOpen}
+		{#if isOpen && hasMultipleOrganizations}
 			<div class="org-dropdown">
 				<div class="org-dropdown-header">
 					<span>{t('organizations.switchTo')}</span>
@@ -137,7 +197,6 @@
 							class:active={currentOrganization?.id === org.id}
 							onclick={() => handleOrganizationChange(org)}
 						>
-							<span class="org-item-icon">🏢</span>
 							<div class="org-item-details">
 								<span class="org-item-name">{org.name}</span>
 								<span class="org-item-slug">{org.slug}</span>
@@ -172,6 +231,7 @@
 	.org-switcher {
 		position: relative;
 		display: inline-block;
+        width: 100%;
 	}
 
 	.org-switcher-button {
@@ -184,7 +244,7 @@
 		background: var(--color-card, #ffffff);
 		cursor: pointer;
 		transition: all 0.15s ease;
-		min-width: 200px;
+		width: 100%;
 	}
 
 	.org-switcher-button:hover {
@@ -200,6 +260,15 @@
 
 	.org-switcher-button.loading {
 		opacity: 0.8;
+	}
+
+	.org-switcher-button.single-org {
+		cursor: default;
+	}
+
+	.org-switcher-button.single-org:hover {
+		background: var(--color-card, #ffffff);
+		border-color: var(--color-border, #e2e8f0);
 	}
 
 	.spinner-icon {
@@ -268,9 +337,9 @@
 	/* Dropdown */
 	.org-dropdown {
 		position: absolute;
-		top: calc(100% + 0.5rem);
+		bottom: calc(100% + 0.5rem);
 		left: 0;
-		min-width: 280px;
+		width: 100%;
 		background: var(--color-card, #ffffff);
 		border: 1px solid var(--color-border, #e2e8f0);
 		border-radius: 0.5rem;

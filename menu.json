@@ -3,56 +3,100 @@
 		"labelKey": "menu.dashboard",
 		"href": "#dashboard",
 		"icon": "LayoutDashboard",
-		"component": "Dashboard",
-		"children": [],
-		"hideWhen": null
-	},
-	{
-		"labelKey": "menu.employees",
-		"href": "#employees",
-		"icon": "Users",
-		"component": "EmployeeList",
-		"children": [],
-		"hideWhen": null
-	},
-	{
-		"labelKey": "menu.leaveRequests",
-		"href": "#leave-requests",
-		"icon": "CalendarDays",
-		"component": "LeaveRequests",
-		"children": [],
-		"hideWhen": null
-	},
-	{
-		"labelKey": "menu.businessTrips",
-		"href": "#business-trips",
-		"icon": "Car",
-		"component": "BusinessTrips",
-		"children": [],
-		"hideWhen": null
-	},
-	{
-		"labelKey": "menu.timeTracking",
-		"href": "#time-tracking",
-		"icon": "Clock",
-		"component": "TimeTracking",
-		"children": [],
-		"hideWhen": null
+		"component": "Dashboard"
 	},
 	{
 		"labelKey": "menu.organizations",
 		"href": "#organizations",
 		"icon": "Building2",
 		"component": "Organizations",
-		"children": [],
-		"hideWhen": null
+		"requiredCapability": "org.manage"
+	},
+	{
+		"labelKey": "menu.employees",
+		"href": "#employees",
+		"icon": "Users",
+		"component": "EmployeeList",
+		"requiredCapability": "employee.manage"
+	},
+	{
+		"labelKey": "menu.projects",
+		"href": "#",
+		"icon": "FolderKanban",
+		"children": [
+			{
+				"labelKey": "menu.projects.list",
+				"href": "#projects",
+				"icon": "List",
+				"component": "ProjectList"
+			},
+			{
+				"labelKey": "menu.projects.create",
+				"href": "#projects/new",
+				"icon": "Plus",
+				"component": "ProjectCreate",
+				"requiredCapability": "project.create"
+			},
+			{
+				"labelKey": "menu.projects.permissions",
+				"href": "#projects/permissions",
+				"icon": "KeyRound",
+				"component": "ProjectPermissions",
+				"requiredCapability": "project.manage"
+			}
+		]
+	},
+	{
+		"labelKey": "menu.timeAndLeave",
+		"href": "#",
+		"icon": "Clock",
+		"children": [
+			{
+				"labelKey": "menu.leaveRequests",
+				"href": "#leave-requests",
+				"icon": "CalendarDays",
+				"component": "LeaveRequests"
+			},
+			{
+				"labelKey": "menu.businessTrips",
+				"href": "#business-trips",
+				"icon": "Car",
+				"component": "BusinessTrips"
+			},
+			{
+				"labelKey": "menu.timeTracking",
+				"href": "#time-tracking",
+				"icon": "Timer",
+				"component": "TimeTracking"
+			}
+		]
 	},
 	{
 		"labelKey": "menu.settings",
-		"href": "#settings",
+		"href": "#",
 		"icon": "Settings",
-		"component": "AppSettings",
-		"children": [],
-		"hideWhen": null
+		"children": [
+			{
+				"labelKey": "menu.settings.leave",
+				"href": "#settings/leave",
+				"icon": "BellRing",
+				"component": "LeaveSettings",
+				"requiredCapability": "org.manage"
+			},
+			{
+				"labelKey": "menu.settings.permissions",
+				"href": "#settings/permissions",
+				"icon": "ShieldCheck",
+				"component": "PermissionsSettings",
+				"requiredCapability": "roles.manage"
+			},
+			{
+				"labelKey": "menu.settings.general",
+				"href": "#settings/general",
+				"icon": "SlidersHorizontal",
+				"component": "GeneralSettings",
+				"requiredCapability": "org.manage"
+			}
+		]
 	}
 ]

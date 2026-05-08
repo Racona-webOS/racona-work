@@ -9,10 +9,19 @@
 </script>
 
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type {} from '@racona/sdk/types';
-	import type { DashboardStats, LeaveRequestRow } from '../../server/functions.js';
-	import { getOrganizationStore, createOrganizationStore } from '../stores/organizationStore.svelte.js';
+	import type {
+		DashboardStats,
+		EmployeeRow,
+		LeaveBalance,
+		LeaveRequestRow,
+		PaginatedResult
+	} from '../../server/functions.js';
+	import {
+		getOrganizationStore,
+		createOrganizationStore
+	} from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
 
@@ -22,106 +31,177 @@
 		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
 	);
 
-	// Organization store - inicializálás
-	let orgStore = $state<OrganizationStore | null>(null);
-	let currentOrganization = $derived(orgStore?.currentOrganization ?? null);
-	let hasAccess = $derived(orgStore?.hasAccess ?? false);	let orgLoading = $derived(orgStore?.isLoading ?? false);
-
-	function t(key: string): string {
-		return sdk?.i18n?.t(key) ?? key;
+	function t(key: string, vars?: Record<string, string | number>): string {
+		let str = sdk?.i18n?.t(key) ?? key;
+		if (vars) {
+			for (const [k, v] of Object.entries(vars)) {
+				str = str.replace(`{${k}}`, String(v));
+			}
+		}
+		return str;
 	}
 
-	// --- Állapot ---
+	// --- Store ---
+	let orgStore = $state<OrganizationStore | null>(null);
+	let currentOrganization = $state<
+		import('../../server/functions.js').Organization | null
+	>(null);
+	let hasAccess = $state(false);
+	let canManagerView = $state(false);
+	let orgLoading = $derived(orgStore?.isLoading ?? false);
+
+	// --- Vezetői nézet állapota ---
 	let stats = $state<DashboardStats | null>(null);
-	let loading = $state(false);
-	let error = $state<string | null>(null);
+	let statsLoading = $state(false);
+	let statsError = $state<string | null>(null);
 
-	// Követelmény 19.4: Kombinált betöltési állapot
-	let isDataLoading = $derived(loading || orgLoading);
+	// --- Self-service nézet állapota ---
+	let myEmployee = $state<EmployeeRow | null>(null);
+	let myBalance = $state<LeaveBalance | null>(null);
+	let myRequests = $state<LeaveRequestRow[]>([]);
+	let selfLoading = $state(false);
+	let selfError = $state<string | null>(null);
 
-	// --- Adatok betöltése ---
-	async function loadStats() {
+	let isDataLoading = $derived(statsLoading || selfLoading || orgLoading);
+	const thisYear = new Date().getFullYear();
+
+	// --- Adatbetöltés --------------------------------------------------------
+	async function loadManagerStats() {
 		if (!currentOrganization) {
 			stats = null;
 			return;
 		}
-
-		loading = true;
-		error = null;
+		statsLoading = true;
+		statsError = null;
 		try {
 			const result = await sdk?.remote?.call('getDashboardStats', {
 				organizationId: currentOrganization.id
 			});
 			stats = result as DashboardStats;
-			error = null; // Sikeres betöltés után töröljük a hibát
 		} catch (err: any) {
-			// Követelmény 15.1, 15.2: Részletes hibaüzenet
-			const errorMessage = err?.message ?? t('error.loadFailed');
-			error = formatErrorMessage(errorMessage, t('error.loadFailed'));
+			statsError = formatErrorMessage(err?.message ?? t('error.loadFailed'));
 			stats = null;
-			console.error('[Dashboard] Hiba a statisztikák betöltésekor:', err);
 		} finally {
-			loading = false;
+			statsLoading = false;
 		}
 	}
 
-	/**
-	 * Hibaüzenet formázása felhasználóbarát módon
-	 * Követelmény: 15.1, 15.2
-	 */
-	function formatErrorMessage(errorMessage: string, defaultMessage: string): string {
-		// Hálózati hiba
-		if (errorMessage.toLowerCase().includes('network') ||
-		    errorMessage.toLowerCase().includes('fetch') ||
-		    errorMessage.toLowerCase().includes('connection')) {
+	async function loadSelfOverview() {
+		if (!currentOrganization) {
+			myEmployee = null;
+			myBalance = null;
+			myRequests = [];
+			return;
+		}
+		selfLoading = true;
+		selfError = null;
+		try {
+			const me = (await sdk.remote.call('getMyEmployee', {
+				organizationId: currentOrganization.id
+			})) as EmployeeRow | null;
+			myEmployee = me;
+
+			if (!me) {
+				myBalance = null;
+				myRequests = [];
+				return;
+			}
+
+			const [balances, requests] = await Promise.all([
+				sdk.remote.call('getLeaveBalances', { employeeId: me.id }) as Promise<
+					LeaveBalance[]
+				>,
+				sdk.remote.call('getLeaveRequests', {
+					organizationId: currentOrganization.id,
+					employeeId: me.id,
+					pageSize: 5,
+					sortBy: 'createdAt',
+					sortOrder: 'desc'
+				}) as Promise<PaginatedResult<LeaveRequestRow>>
+			]);
+
+			myBalance =
+				(balances ?? []).find((b) => b.year === thisYear) ?? null;
+			myRequests = requests?.data ?? [];
+		} catch (err: any) {
+			selfError = formatErrorMessage(err?.message ?? t('error.loadFailed'));
+		} finally {
+			selfLoading = false;
+		}
+	}
+
+	function formatErrorMessage(errorMessage: string): string {
+		const lower = errorMessage.toLowerCase();
+		if (
+			lower.includes('network') ||
+			lower.includes('fetch') ||
+			lower.includes('connection')
+		) {
 			return 'Hálózati hiba. Kérlek, ellenőrizd az internetkapcsolatot.';
 		}
-
-		// Jogosultsági hiba
-		if (errorMessage.toLowerCase().includes('unauthorized') ||
-		    errorMessage.toLowerCase().includes('forbidden') ||
-		    errorMessage.toLowerCase().includes('permission')) {
-			return 'Nincs jogosultságod ehhez az adathoz. Kérj hozzáférést egy rendszergazdától.';
+		if (
+			lower.includes('unauthorized') ||
+			lower.includes('forbidden') ||
+			lower.includes('permission') ||
+			lower.includes('jogosult')
+		) {
+			return 'Nincs jogosultságod ehhez az adathoz.';
 		}
-
-		// Használjuk az eredeti üzenetet, ha értelmes
-		if (errorMessage && errorMessage !== defaultMessage) {
-			return errorMessage;
-		}
-
-		return defaultMessage;
+		return errorMessage;
 	}
 
-	// Inicializálás és organization-changed figyelés
-	$effect(() => {
-		if (currentOrganization && sdk?.remote) {
-			loadStats();
-		}
+	function reload() {
+		if (canManagerView) loadManagerStats();
+		else loadSelfOverview();
+	}
 
-		const handleOrgChange = () => loadStats();
-		window.addEventListener('organization-changed', handleOrgChange);
+	// --- Inicializálás ------------------------------------------------------
+	function syncFromStore() {
+		if (!orgStore) return;
+		currentOrganization = orgStore.currentOrganization;
+		hasAccess = orgStore.hasAccess;
+		canManagerView =
+			orgStore.can('leave.approve') || orgStore.can('employee.manage');
+	}
 
-		return () => {
-			window.removeEventListener('organization-changed', handleOrgChange);
-		};
-	});
-
-	// Store inicializálás onMount-ban
 	onMount(() => {
 		if (sdk?.remote) {
 			try {
 				orgStore = getOrganizationStore();
 			} catch {
-				// Ha még nincs store, létrehozzuk
 				orgStore = createOrganizationStore(pluginId, sdk);
 			}
+			syncFromStore();
 
-			// Szervezetek betöltése
-			orgStore.loadOrganizations();
+			if (orgStore!.availableOrganizations.length === 0) {
+				orgStore!.loadOrganizations().then(() => {
+					syncFromStore();
+					if (currentOrganization) reload();
+				});
+			} else if (currentOrganization) {
+				reload();
+			}
 		}
 	});
 
-	// --- Segédfüggvények ---
+	$effect(() => {
+		const handleOrgChange = () => {
+			syncFromStore();
+			if (currentOrganization) reload();
+		};
+		window.addEventListener('organization-changed', handleOrgChange);
+		return () => window.removeEventListener('organization-changed', handleOrgChange);
+	});
+
+	$effect(() => {
+		currentOrganization;
+		canManagerView;
+		untrack(() => {
+			if (currentOrganization && sdk?.remote) reload();
+		});
+	});
+
+	// --- Segédfüggvények ----------------------------------------------------
 	function formatDate(dateStr: string | null): string {
 		if (!dateStr) return '—';
 		return new Date(dateStr).toLocaleDateString();
@@ -136,34 +216,55 @@
 		};
 		return map[type] ?? type;
 	}
+
+	function statusLabel(status: string): string {
+		const map: Record<string, string> = {
+			pending: t('leaveRequests.status.pending'),
+			approved: t('leaveRequests.status.approved'),
+			rejected: t('leaveRequests.status.rejected')
+		};
+		return map[status] ?? status;
+	}
+
+	function statusClass(status: string): string {
+		const map: Record<string, string> = {
+			pending: 'badge-pending',
+			approved: 'badge-approved',
+			rejected: 'badge-rejected'
+		};
+		return map[status] ?? 'badge-pending';
+	}
+
+	function handleNewRequest() {
+		sdk?.ui?.navigateTo?.('LeaveRequests', {});
+	}
 </script>
 
 <section class="page">
 	{#if !hasAccess}
 		<AccessDenied />
-	{:else}
+	{:else if isDataLoading && !stats && !myEmployee}
+		<div class="loading-state">
+			<div class="spinner"></div>
+			<span>{t('loading')}</span>
+		</div>
+	{:else if canManagerView}
+		<!-- ========== Vezetői / manager nézet ========== -->
 		<div class="page-header">
 			<h2>{t('dashboard.title')}</h2>
 			<p class="subtitle">{t('dashboard.subtitle')}</p>
 		</div>
-    helklllloofhksdjzhgksjhd gjhkosdgflojhsdgfolzj sdgl
 
-		{#if isDataLoading}
-			<div class="loading-state">
-				<div class="spinner"></div>
-				<span>{t('loading')}</span>
-			</div>
-		{:else if error}
+		{#if statsError}
 			<div class="error-state">
 				<div class="error-icon">⚠️</div>
-				<p class="error-message">{error}</p>
-				<button class="btn-retry" onclick={loadStats}>
+				<p class="error-message">{statsError}</p>
+				<button class="btn-retry" onclick={reload}>
 					<span class="retry-icon">🔄</span>
 					Újrapróbálás
 				</button>
 			</div>
 		{:else if stats}
-			<!-- Összefoglaló kártyák -->
 			<div class="stats-grid">
 				<div class="stat-card">
 					<span class="stat-label">{t('dashboard.totalEmployees')}</span>
@@ -183,7 +284,6 @@
 				</div>
 			</div>
 
-			<!-- Legutóbbi függőben lévő kérelmek -->
 			<div class="recent-section">
 				<h3>{t('dashboard.recentRequests')}</h3>
 				{#if stats.recentPendingRequests.length === 0}
@@ -198,7 +298,89 @@
 									{formatDate(req.startDate)} – {formatDate(req.endDate)}
 								</div>
 								<div class="request-days">{req.days} nap</div>
-								<span class="badge pending">{t('leaveRequests.status.pending')}</span>
+								<span class="badge {statusClass(req.status)}">{statusLabel(req.status)}</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{/if}
+	{:else}
+		<!-- ========== Self-service nézet ========== -->
+		{#if selfError}
+			<div class="error-state">
+				<div class="error-icon">⚠️</div>
+				<p class="error-message">{selfError}</p>
+				<button class="btn-retry" onclick={reload}>
+					<span class="retry-icon">🔄</span>
+					Újrapróbálás
+				</button>
+			</div>
+		{:else if !myEmployee}
+			<div class="page-header">
+				<h2>{t('dashboard.title')}</h2>
+			</div>
+			<p class="empty-state">{t('dashboard.self.noEmployee')}</p>
+		{:else}
+			<div class="page-header self">
+				<div>
+					<h2>{t('dashboard.self.title', { name: myEmployee.userName })}</h2>
+					<p class="subtitle">{t('dashboard.self.subtitle')}</p>
+				</div>
+				<button class="btn-primary" onclick={handleNewRequest}>
+					+ {t('dashboard.self.newRequest')}
+				</button>
+			</div>
+
+			<div class="balance-card">
+				<div class="balance-header">
+					<span class="balance-title">{t('dashboard.self.balance', { year: thisYear })}</span>
+				</div>
+				{#if myBalance}
+					<div class="balance-stats">
+						<div class="balance-stat">
+							<span class="b-label">{t('dashboard.self.totalDays')}</span>
+							<span class="b-value">{myBalance.totalDays}</span>
+						</div>
+						<div class="balance-stat">
+							<span class="b-label">{t('dashboard.self.usedDays')}</span>
+							<span class="b-value used">{myBalance.usedDays}</span>
+						</div>
+						<div
+							class="balance-stat"
+							class:warning={myBalance.remainingDays < 5}
+						>
+							<span class="b-label">{t('dashboard.self.remainingDays')}</span>
+							<span class="b-value remaining">{myBalance.remainingDays}</span>
+						</div>
+					</div>
+					<div class="balance-bar">
+						<div
+							class="balance-bar-fill"
+							style="width: {myBalance.totalDays > 0
+								? Math.min(100, (myBalance.usedDays / myBalance.totalDays) * 100)
+								: 0}%"
+						></div>
+					</div>
+				{:else}
+					<p class="empty-state">{t('dashboard.self.noBalance')}</p>
+				{/if}
+			</div>
+
+			<div class="recent-section">
+				<h3>{t('dashboard.self.myRequests')}</h3>
+				{#if myRequests.length === 0}
+					<p class="empty-state">{t('dashboard.self.noMyRequests')}</p>
+				{:else}
+					<div class="requests-list">
+						{#each myRequests as req (req.id)}
+							<div class="request-row">
+								<div class="request-type">{leaveTypeLabel(req.leaveType)}</div>
+								<div class="request-dates">
+									{formatDate(req.startDate)} – {formatDate(req.endDate)}
+								</div>
+								<div class="request-days">{req.days} nap</div>
+								<span class="badge {statusClass(req.status)}">{statusLabel(req.status)}</span>
 							</div>
 						{/each}
 					</div>
@@ -216,6 +398,13 @@
 		gap: 2rem;
 	}
 
+	.page-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+	}
+
 	.page-header h2 {
 		font-size: 1.5rem;
 		font-weight: 700;
@@ -228,7 +417,7 @@
 		font-size: 0.875rem;
 	}
 
-	/* Kártyák */
+	/* Manager nézet — kártyák */
 	.stats-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -262,7 +451,74 @@
 	.stat-value.pending { color: #d97706; }
 	.stat-value.on-leave { color: #2563eb; }
 
-	/* Legutóbbi kérelmek */
+	/* Self-service nézet — keret kártya */
+	.balance-card {
+		padding: 1.25rem 1.5rem;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.75rem;
+		background: var(--color-card, #ffffff);
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.balance-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.balance-title {
+		font-size: 0.95rem;
+		font-weight: 600;
+	}
+
+	.balance-stats {
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 1rem;
+	}
+
+	.balance-stat {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.b-label {
+		font-size: 0.75rem;
+		color: var(--color-muted-foreground, #64748b);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.b-value {
+		font-size: 1.75rem;
+		font-weight: 700;
+		color: var(--color-foreground, #0f172a);
+		line-height: 1;
+	}
+
+	.b-value.used { color: #d97706; }
+	.b-value.remaining { color: #16a34a; }
+
+	.balance-stat.warning .b-value.remaining { color: #dc2626; }
+
+	.balance-bar {
+		width: 100%;
+		height: 6px;
+		background: var(--color-muted, #f1f5f9);
+		border-radius: 999px;
+		overflow: hidden;
+	}
+
+	.balance-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #3730a3, #6366f1);
+		transition: width 0.3s;
+	}
+
+	/* Közös — request rows */
 	.recent-section h3 {
 		font-size: 1rem;
 		font-weight: 600;
@@ -273,36 +529,6 @@
 		color: var(--color-muted-foreground, #94a3b8);
 		font-size: 0.875rem;
 		padding: 1rem 0;
-	}
-
-	/* No access message */
-	.no-access-message {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		text-align: center;
-		padding: 4rem 2rem;
-		gap: 1rem;
-	}
-
-	.no-access-icon {
-		font-size: 4rem;
-		opacity: 0.5;
-	}
-
-	.no-access-message h2 {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: var(--color-foreground, #0f172a);
-		margin: 0;
-	}
-
-	.no-access-message p {
-		color: var(--color-muted-foreground, #64748b);
-		font-size: 0.875rem;
-		margin: 0;
-		max-width: 400px;
 	}
 
 	.requests-list {
@@ -352,12 +578,24 @@
 		font-weight: 500;
 	}
 
-	.badge.pending {
-		background: #fef3c7;
-		color: #92400e;
+	.badge-pending { background: #fef3c7; color: #92400e; }
+	.badge-approved { background: #dcfce7; color: #166534; }
+	.badge-rejected { background: #fee2e2; color: #991b1b; }
+
+	.btn-primary {
+		background: var(--color-primary, #3730a3);
+		color: #fff;
+		border: none;
+		padding: 0.55rem 1rem;
+		border-radius: 0.5rem;
+		cursor: pointer;
+		font-size: 0.875rem;
+		font-weight: 500;
 	}
 
-	/* Betöltés / hiba */
+	.btn-primary:hover { opacity: 0.9; }
+
+	/* Loading / error */
 	.loading-state {
 		display: flex;
 		align-items: center;
@@ -425,69 +663,37 @@
 		font-size: 1rem;
 	}
 
-	.btn-secondary {
-		border: 1px solid var(--color-border, #e2e8f0);
-		background: transparent;
-		padding: 0.4rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		width: fit-content;
-	}
-
-	.btn-secondary:hover {
-		background: var(--color-accent, #f1f5f9);
-	}
-
 	/* Sötét mód */
-	:global(.dark) .stat-card {
-		background: var(--color-card, oklch(0.205 0 0));
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-	}
-
-	:global(.dark) .stat-label {
-		color: var(--color-muted-foreground, oklch(0.708 0 0));
-	}
-
-	:global(.dark) .stat-value {
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
+	:global(.dark) .stat-card,
+	:global(.dark) .balance-card,
 	:global(.dark) .request-row {
 		background: var(--color-card, oklch(0.205 0 0));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}
 
+	:global(.dark) .stat-label,
 	:global(.dark) .request-type,
-	:global(.dark) .request-dates {
+	:global(.dark) .request-dates,
+	:global(.dark) .b-label {
 		color: var(--color-muted-foreground, oklch(0.708 0 0));
 	}
 
-	:global(.dark) .btn-secondary {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
+	:global(.dark) .stat-value,
+	:global(.dark) .b-value {
 		color: var(--color-foreground, oklch(0.985 0 0));
 	}
 
-	:global(.dark) .btn-secondary:hover {
-		background: var(--color-accent, oklch(0.269 0 0));
+	:global(.dark) .balance-bar {
+		background: oklch(0.3 0 0);
 	}
+
+	:global(.dark) .badge-pending { background: oklch(0.3 0.05 60); color: #fde68a; }
+	:global(.dark) .badge-approved { background: oklch(0.25 0.05 145); color: #86efac; }
+	:global(.dark) .badge-rejected { background: oklch(0.25 0.05 20); color: #fca5a5; }
 
 	:global(.dark) .btn-retry {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
 		background: var(--color-card, oklch(0.205 0 0));
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
 		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .btn-retry:hover {
-		background: var(--color-accent, oklch(0.269 0 0));
-		border-color: var(--color-primary, oklch(0.66 0.12 264));
-	}
-
-	:global(.dark) .no-access-message h2 {
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .no-access-message p {
-		color: var(--color-muted-foreground, oklch(0.708 0 0));
 	}
 </style>

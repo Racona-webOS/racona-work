@@ -29,8 +29,19 @@
 
 	// Organization store - inicializálás
 	let orgStore = $state<OrganizationStore | null>(null);
-	let currentOrganization = $derived(orgStore?.currentOrganization ?? null);
-	let hasAccess = $derived(orgStore?.hasAccess ?? false);
+	let currentOrganization = $state<import('../../server/functions.js').Organization | null>(null);
+	let hasAccess = $state(false);
+
+	// --- Képességek ---
+	let canApprove = $state(false);
+	let canManageBalance = $state(false);
+	let isManagerView = $derived(canApprove);
+
+	// --- Saját dolgozói rekord (self-service) ---
+	let myEmployee = $state<import('../../server/functions.js').EmployeeRow | null>(null);
+
+	// --- Nézet: 'mine' vagy 'all'. Ha nem vagyunk manager, mindig 'mine'. ---
+	let viewMode = $state<'mine' | 'all'>('all');
 
 	function t(key: string, vars?: Record<string, string | number>): string {
 		let result = sdk?.i18n?.t(key) ?? key;
@@ -48,6 +59,7 @@
 	const renderComponent = $derived(sdk?.components?.renderComponent);
 	const renderSnippet = $derived(sdk?.components?.renderSnippet);
 	const createActionsColumn = $derived(sdk?.components?.createActionsColumn);
+	const DatePickerComponent = $derived(sdk?.components?.DatePicker ?? null);
 	let createRawSnippet: any = $state(null);
 
 	// --- Táblázat állapot ---
@@ -84,17 +96,23 @@
 
 		loading = true;
 		try {
+			const useEmployeeFilter = viewMode === 'mine' ? myEmployee?.id : undefined;
 			const result: PaginatedResult<LeaveRequestRow> = await sdk?.remote?.call('getLeaveRequests', {
 				organizationId: currentOrganization.id,
 				page: tableState.page,
 				pageSize: tableState.pageSize,
 				sortBy: tableState.sortBy,
-				sortOrder: tableState.sortOrder
+				sortOrder: tableState.sortOrder,
+				employeeId: useEmployeeFilter
 			});
 			data = result?.data ?? [];
 			paginationInfo = result?.pagination ?? { page: 1, pageSize: 20, totalCount: 0, totalPages: 0 };
-		} catch {
-			sdk?.ui?.toast(t('error.loadFailed'), 'error');
+		} catch (err: any) {
+			// Szerver hibaüzenet megjelenítése (REMOTE_ERROR: prefix eltávolítása),
+			// hogy a user lássa, miért nem sikerült (pl. nincs jogosultság).
+			const msg = err?.message?.replace(/^[A-Z_]+:\s*/, '') ?? t('error.loadFailed');
+			sdk?.ui?.toast(msg, 'error');
+			data = [];
 		} finally {
 			loading = false;
 		}
@@ -111,17 +129,50 @@
 		});
 	});
 
-	// Organization-changed event listener
 	$effect(() => {
-		const handleOrgChange = () => {
-			if (currentOrganization) loadData();
-		};
+		viewMode;
+		untrack(() => {
+			if (columns.length > 0 && sdk?.remote && currentOrganization) loadData();
+		});
+	});
 
+	// Szervezet váltáskor újratölt
+	$effect(() => {
+		currentOrganization;
+		untrack(() => {
+			if (currentOrganization && columns.length > 0 && sdk?.remote) loadData();
+		});
+	});
+
+	// organization-changed event: frissíti a currentOrganization $state-et
+	$effect(() => {
+		const handleOrgChange = async () => {
+			const store = (window as any).__racona_work_org_store__;
+			if (store) {
+				currentOrganization = store.currentOrganization;
+				hasAccess = store.hasAccess;
+				canApprove = store.can('leave.approve');
+				canManageBalance = store.can('leave.balance.manage');
+				viewMode = canApprove ? 'all' : 'mine';
+				// Új szervezet → új saját employee
+				if (currentOrganization && sdk?.remote) {
+					try {
+						myEmployee = (await sdk.remote.call('getMyEmployee', {
+							organizationId: currentOrganization.id
+						})) as typeof myEmployee;
+					} catch {
+						myEmployee = null;
+					}
+				} else {
+					myEmployee = null;
+				}
+				// Oszlopok frissítése, mert canApprove befolyásolja az action column-t
+				buildColumns();
+				if (columns.length > 0) loadData();
+			}
+		};
 		window.addEventListener('organization-changed', handleOrgChange);
-
-		return () => {
-			window.removeEventListener('organization-changed', handleOrgChange);
-		};
+		return () => window.removeEventListener('organization-changed', handleOrgChange);
 	});
 
 	// --- Jóváhagyás ---
@@ -169,15 +220,30 @@
 	// --- Új kérelem ---
 	async function openNewRequestModal() {
 		showNewRequestModal = true;
-		newReqEmployeeId = null;
 		newReqType = 'annual';
 		newReqStartDate = '';
 		newReqEndDate = '';
 		newReqReason = '';
 		newReqError = null;
+		if (!currentOrganization) return;
+
+		// Self-service: saját employee-t töltünk be, nem listát.
+		if (!canApprove) {
+			if (myEmployee) {
+				newReqEmployeeId = myEmployee.id;
+				employees = [];
+			} else {
+				newReqError = t('dashboard.self.noEmployee');
+			}
+			return;
+		}
+
+		// Manager: dolgozó-választóhoz lista kell.
+		newReqEmployeeId = null;
 		employeesLoading = true;
 		try {
 			const result: PaginatedResult<EmployeeRow> = await sdk?.remote?.call('getEmployees', {
+				organizationId: currentOrganization.id,
 				pageSize: 200,
 				status: 'active'
 			});
@@ -194,11 +260,16 @@
 			newReqError = t('form.required');
 			return;
 		}
+		if (!currentOrganization) {
+			newReqError = 'Nincs kiválasztott szervezet';
+			return;
+		}
 		newReqLoading = true;
 		newReqError = null;
 		try {
 			const result: any = await sdk?.remote?.call('createLeaveRequest', {
 				employeeId: newReqEmployeeId,
+				organizationId: currentOrganization.id,
 				leaveType: newReqType,
 				startDate: newReqStartDate,
 				endDate: newReqEndDate,
@@ -343,6 +414,9 @@
 		};
 
 		const actionsColumn = createActionsColumn((row: LeaveRequestRow) => {
+			// Ha a user nem manager, nem ajánlunk fel semmilyen action-t.
+			if (!canApprove) return [];
+
 			if (row.status === 'pending') {
 				return [
 					{
@@ -475,12 +549,33 @@
 			try {
 				orgStore = getOrganizationStore();
 			} catch {
-				// Ha még nincs store, létrehozzuk
 				orgStore = createOrganizationStore(pluginId, sdk);
 			}
 
-			// Szervezetek betöltése
-			await orgStore.loadOrganizations();
+			currentOrganization = orgStore.currentOrganization;
+			hasAccess = orgStore.hasAccess;
+
+			if (orgStore.availableOrganizations.length === 0) {
+				await orgStore.loadOrganizations();
+				currentOrganization = orgStore.currentOrganization;
+				hasAccess = orgStore.hasAccess;
+			}
+
+			canApprove = orgStore.can('leave.approve');
+			canManageBalance = orgStore.can('leave.balance.manage');
+			// Alap nézet: manager esetén 'all', dolgozó esetén 'mine'.
+			viewMode = canApprove ? 'all' : 'mine';
+
+			// Saját dolgozói rekord lekérése (self-service működéshez és szűréshez).
+			if (currentOrganization) {
+				try {
+					myEmployee = (await sdk.remote.call('getMyEmployee', {
+						organizationId: currentOrganization.id
+					})) as typeof myEmployee;
+				} catch {
+					myEmployee = null;
+				}
+			}
 		}
 
 		try {
@@ -514,8 +609,34 @@
 		<AccessDenied />
 	{:else}
 		<div class="title-block">
-			<h2>{t('leaveRequests.title')}</h2>
-			<p class="subtitle">{t('leaveRequests.subtitle')}</p>
+			<div class="title-row">
+				<div>
+					<h2>{t('leaveRequests.title')}</h2>
+					<p class="subtitle">
+						{canApprove
+							? t('leaveRequests.subtitle.manager')
+							: t('leaveRequests.subtitle.self')}
+					</p>
+				</div>
+				{#if canApprove}
+					<div class="view-toggle">
+						<button
+							class="chip"
+							class:active={viewMode === 'mine'}
+							onclick={() => (viewMode = 'mine')}
+						>
+							{t('leaveRequests.viewToggle.mine')}
+						</button>
+						<button
+							class="chip"
+							class:active={viewMode === 'all'}
+							onclick={() => (viewMode = 'all')}
+						>
+							{t('leaveRequests.viewToggle.all')}
+						</button>
+					</div>
+				{/if}
+			</div>
 		</div>
 
 		{#if DataTable && columns.length > 0}
@@ -545,19 +666,21 @@
 		<div class="modal">
 			<h3>{t('leaveRequests.newRequest')}</h3>
 
-			<label class="form-label">
-				{t('leaveRequests.form.employee')} *
-				{#if employeesLoading}
-					<div class="loading-inline"><div class="spinner-sm"></div></div>
-				{:else}
-					<select class="form-input" bind:value={newReqEmployeeId}>
-						<option value={null}>{t('form.selectEmployee')}</option>
-						{#each employees as emp (emp.id)}
-							<option value={emp.id}>{emp.userName} ({emp.userEmail})</option>
-						{/each}
-					</select>
-				{/if}
-			</label>
+			{#if canApprove}
+				<label class="form-label">
+					{t('leaveRequests.form.employee')} *
+					{#if employeesLoading}
+						<div class="loading-inline"><div class="spinner-sm"></div></div>
+					{:else}
+						<select class="form-input" bind:value={newReqEmployeeId}>
+							<option value={null}>{t('form.selectEmployee')}</option>
+							{#each employees as emp (emp.id)}
+								<option value={emp.id}>{emp.userName} ({emp.userEmail})</option>
+							{/each}
+						</select>
+					{/if}
+				</label>
+			{/if}
 
 			<label class="form-label">
 				{t('leaveRequests.form.type')} *
@@ -572,11 +695,19 @@
 			<div class="form-row">
 				<label class="form-label">
 					{t('leaveRequests.form.startDate')} *
-					<input class="form-input" type="date" bind:value={newReqStartDate} />
+					{#if DatePickerComponent}
+						<svelte:component this={DatePickerComponent} bind:value={newReqStartDate} locale="hu-HU" placeholder="Kezdő dátum..." />
+					{:else}
+						<input class="form-input" type="date" bind:value={newReqStartDate} />
+					{/if}
 				</label>
 				<label class="form-label">
 					{t('leaveRequests.form.endDate')} *
-					<input class="form-input" type="date" bind:value={newReqEndDate} />
+					{#if DatePickerComponent}
+						<svelte:component this={DatePickerComponent} bind:value={newReqEndDate} locale="hu-HU" placeholder="Záró dátum..." />
+					{:else}
+						<input class="form-input" type="date" bind:value={newReqEndDate} />
+					{/if}
 				</label>
 			</div>
 
@@ -662,6 +793,47 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
+	}
+
+	.title-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 1rem;
+	}
+
+	.view-toggle {
+		display: flex;
+		gap: 0.25rem;
+	}
+
+	.chip {
+		background: transparent;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 999px;
+		padding: 0.35rem 0.9rem;
+		font-size: 0.8rem;
+		cursor: pointer;
+		color: var(--color-muted-foreground, #64748b);
+	}
+
+	.chip:hover {
+		background: var(--color-accent, #f1f5f9);
+	}
+
+	.chip.active {
+		background: var(--color-primary-subtle, #eef2ff);
+		border-color: var(--color-primary, #3730a3);
+		color: var(--color-primary, #3730a3);
+		font-weight: 600;
+	}
+
+	:global(.dark) .chip:hover {
+		background: var(--color-accent, oklch(0.269 0 0));
+	}
+
+	:global(.dark) .chip.active {
+		background: var(--color-accent, oklch(0.25 0.03 var(--primary-h, 264)));
 	}
 
 
