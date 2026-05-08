@@ -653,34 +653,22 @@
 
 		buildColumns();
 		if (sdk?.remote && currentOrganization) loadData();
-
-		return () => sdk?.ui?.clearActionBar();
-	});
-
-	// ActionBar kezelése - csak akkor jelenjen meg, ha van hozzáférés
-	$effect(() => {
-		if (hasAccess && sdk?.ui) {
-			sdk.ui.setActionBar([
-				{
-					label: `+ ${t('employees.addEmployee')}`,
-					onClick: () => (modalMode = 'choose'),
-					variant: 'default',
-                    size: 'lg'
-				}
-			]);
-		} else if (sdk?.ui) {
-			sdk.ui.clearActionBar();
-		}
 	});
 </script>
 
+<div class="rw">
 <section class="page">
 	{#if !hasAccess}
 		<AccessDenied />
 	{:else}
-		<div class="title-block">
-			<h2>{t('employees.title')}</h2>
-			<p class="subtitle">{t('employees.subtitle')}</p>
+		<div class="page-header">
+			<div class="page-header-title">
+				<h2>{t('employees.title')}</h2>
+				<p class="subtitle">{t('employees.subtitle')}</p>
+			</div>
+			<button class="btn-primary" onclick={() => (modalMode = 'choose')}>
+				+ {t('employees.addEmployee')}
+			</button>
 		</div>
 
 		{#if DataTable && columns.length > 0}
@@ -717,6 +705,7 @@
 		{/if}
 	{/if}
 </section>
+</div>
 
 <!-- Modal: Választás -->
 {#if modalMode === 'choose'}
@@ -948,95 +937,14 @@
 {/if}
 
 <style>
+	@import '../styles/shared.css';
+
 	.page {
 		padding: 2rem;
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
 	}
-
-	.title-block {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.title-block h2 {
-		font-size: 1.5rem;
-		font-weight: 700;
-		margin: 0;
-	}
-
-	.subtitle {
-		color: var(--color-muted-foreground, #64748b);
-		margin: 0;
-		font-size: 0.875rem;
-	}
-
-	/* Gombok */
-	.btn-primary {
-		background: var(--color-primary, #3730a3);
-		color: #fff;
-		border: none;
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		font-weight: 500;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-
-	.btn-primary:hover { opacity: 0.9; }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-	.btn-secondary {
-		border: 1px solid var(--color-border, #e2e8f0);
-		background: transparent;
-		padding: 0.4rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-	}
-
-	.btn-secondary:hover { background: var(--color-accent, #f1f5f9); }
-
-	.btn-danger {
-		background: #dc2626;
-		color: #fff;
-		border: none;
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		font-weight: 500;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-
-	.btn-danger:hover { opacity: 0.9; }
-	.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
-
-	/* Betöltés */
-	.loading-state {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		color: var(--color-muted-foreground, #64748b);
-		padding: 2rem 0;
-	}
-
-	.spinner {
-		width: 1.25rem;
-		height: 1.25rem;
-		border: 2px solid var(--color-border, #e2e8f0);
-		border-top-color: var(--color-primary, #3730a3);
-		border-radius: 50%;
-		animation: spin 0.7s linear infinite;
-		flex-shrink: 0;
-	}
-
-	@keyframes spin { to { transform: rotate(360deg); } }
 
 	/* Badge */
 	:global(.badge) {
@@ -1201,11 +1109,6 @@
 		color: #dc2626;
 		font-size: 0.8rem;
 		margin: 0;
-	}
-
-	.empty-state {
-		color: var(--color-muted-foreground, #94a3b8);
-		font-size: 0.875rem;
 	}
 
 	.modal-description {
@@ -1433,15 +1336,6 @@
 		background: var(--color-input, oklch(1 0 0 / 15%));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .btn-secondary {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .btn-secondary:hover {
-		background: var(--color-accent, oklch(0.269 0 0));
 	}
 
 	:global(.dark) :global(.avatar-placeholder) {

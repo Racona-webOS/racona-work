@@ -145,6 +145,7 @@
 	});
 </script>
 
+<div class="rw">
 <section class="page">
 	{#if !hasAccess}
 		<AccessDenied />
@@ -220,8 +221,11 @@
 		{/if}
 	{/if}
 </section>
+</div>
 
 <style>
+	@import '../styles/shared.css';
+
 	.page {
 		padding: 2rem;
 		display: flex;
@@ -234,12 +238,6 @@
 		font-size: 1.5rem;
 		font-weight: 700;
 		margin: 0 0 0.25rem;
-	}
-
-	.subtitle {
-		color: var(--color-muted-foreground, #64748b);
-		margin: 0;
-		font-size: 0.875rem;
 	}
 
 	.settings-section {
@@ -313,19 +311,6 @@
 		object-fit: cover;
 	}
 
-	.avatar-placeholder {
-		width: 2rem;
-		height: 2rem;
-		border-radius: 50%;
-		background: var(--color-primary-subtle, #e0e7ff);
-		color: var(--color-primary, #3730a3);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.7rem;
-		font-weight: 700;
-	}
-
 	.employee-info {
 		display: flex;
 		flex-direction: column;
@@ -376,45 +361,6 @@
 		justify-content: flex-end;
 	}
 
-	.btn-primary {
-		background: var(--color-primary, #3730a3);
-		color: #fff;
-		border: none;
-		padding: 0.5rem 1.5rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		font-weight: 500;
-	}
-
-	.btn-primary:hover { opacity: 0.9; }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-	.loading-state {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		color: var(--color-muted-foreground, #64748b);
-		padding: 1rem 0;
-	}
-
-	.spinner {
-		width: 1.25rem;
-		height: 1.25rem;
-		border: 2px solid var(--color-border, #e2e8f0);
-		border-top-color: var(--color-primary, #3730a3);
-		border-radius: 50%;
-		animation: spin 0.7s linear infinite;
-		flex-shrink: 0;
-	}
-
-	@keyframes spin { to { transform: rotate(360deg); } }
-
-	.empty-state {
-		color: var(--color-muted-foreground, #94a3b8);
-		font-size: 0.875rem;
-	}
-
 	:global(.dark) .settings-section {
 		background: var(--color-card, oklch(0.205 0 0));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
@@ -438,9 +384,5 @@
 
 	:global(.dark) .employee-meta {
 		color: var(--color-muted-foreground, oklch(0.708 0 0));
-	}
-
-	:global(.dark) .avatar-placeholder {
-		background: var(--color-primary-subtle, oklch(0.269 0 0));
 	}
 </style>

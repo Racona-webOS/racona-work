@@ -40,6 +40,7 @@
 	});
 </script>
 
+<div class="rw">
 <section class="page">
 	{#if !hasAccess}
 		<AccessDenied />
@@ -52,8 +53,11 @@
 		</div>
 	{/if}
 </section>
+</div>
 
 <style>
+	@import '../styles/shared.css';
+
 	.page {
 		padding: 2rem;
 		height: 100%;

@@ -584,60 +584,46 @@
 		} catch {}
 		buildColumns();
 		if (sdk?.remote && currentOrganization) loadData();
-
-		return () => sdk?.ui?.clearActionBar();
-	});
-
-	// ActionBar kezelése - csak akkor jelenjen meg, ha van hozzáférés
-	$effect(() => {
-		if (hasAccess && sdk?.ui) {
-			sdk.ui.setActionBar([
-				{
-					label: `+ ${t('leaveRequests.newRequest')}`,
-					onClick: openNewRequestModal,
-					variant: 'default'
-				}
-			]);
-		} else if (sdk?.ui) {
-			sdk.ui.clearActionBar();
-		}
 	});
 </script>
 
+<div class="rw">
 <section class="page">
 	{#if !hasAccess}
 		<AccessDenied />
 	{:else}
-		<div class="title-block">
-			<div class="title-row">
-				<div>
-					<h2>{t('leaveRequests.title')}</h2>
-					<p class="subtitle">
-						{canApprove
-							? t('leaveRequests.subtitle.manager')
-							: t('leaveRequests.subtitle.self')}
-					</p>
-				</div>
-				{#if canApprove}
-					<div class="view-toggle">
-						<button
-							class="chip"
-							class:active={viewMode === 'mine'}
-							onclick={() => (viewMode = 'mine')}
-						>
-							{t('leaveRequests.viewToggle.mine')}
-						</button>
-						<button
-							class="chip"
-							class:active={viewMode === 'all'}
-							onclick={() => (viewMode = 'all')}
-						>
-							{t('leaveRequests.viewToggle.all')}
-						</button>
-					</div>
-				{/if}
+		<div class="page-header">
+			<div class="page-header-title">
+				<h2>{t('leaveRequests.title')}</h2>
+				<p class="subtitle">
+					{canApprove
+						? t('leaveRequests.subtitle.manager')
+						: t('leaveRequests.subtitle.self')}
+				</p>
 			</div>
+			<button class="btn-primary" onclick={openNewRequestModal}>
+				+ {t('leaveRequests.newRequest')}
+			</button>
 		</div>
+
+		{#if canApprove}
+			<div class="view-toggle">
+				<button
+					class="chip"
+					class:active={viewMode === 'mine'}
+					onclick={() => (viewMode = 'mine')}
+				>
+					{t('leaveRequests.viewToggle.mine')}
+				</button>
+				<button
+					class="chip"
+					class:active={viewMode === 'all'}
+					onclick={() => (viewMode = 'all')}
+				>
+					{t('leaveRequests.viewToggle.all')}
+				</button>
+			</div>
+		{/if}
 
 		{#if DataTable && columns.length > 0}
 			{#key data}
@@ -659,6 +645,7 @@
 		{/if}
 	{/if}
 </section>
+</div>
 
 <!-- Új kérelem modal -->
 {#if showNewRequestModal}
@@ -788,96 +775,13 @@
 {/if}
 
 <style>
+	@import '../styles/shared.css';
+
 	.page {
 		padding: 2rem;
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
-	}
-
-	.title-row {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: 1rem;
-	}
-
-	.view-toggle {
-		display: flex;
-		gap: 0.25rem;
-	}
-
-	.chip {
-		background: transparent;
-		border: 1px solid var(--color-border, #e2e8f0);
-		border-radius: 999px;
-		padding: 0.35rem 0.9rem;
-		font-size: 0.8rem;
-		cursor: pointer;
-		color: var(--color-muted-foreground, #64748b);
-	}
-
-	.chip:hover {
-		background: var(--color-accent, #f1f5f9);
-	}
-
-	.chip.active {
-		background: var(--color-primary-subtle, #eef2ff);
-		border-color: var(--color-primary, #3730a3);
-		color: var(--color-primary, #3730a3);
-		font-weight: 600;
-	}
-
-	:global(.dark) .chip:hover {
-		background: var(--color-accent, oklch(0.269 0 0));
-	}
-
-	:global(.dark) .chip.active {
-		background: var(--color-accent, oklch(0.25 0.03 var(--primary-h, 264)));
-	}
-
-
-	.subtitle {
-		color: var(--color-muted-foreground, #64748b);
-		margin: 0;
-		font-size: 0.875rem;
-	}
-
-	/* Gombok */
-	.btn-primary {
-		background: var(--color-primary, #3730a3);
-		color: #fff;
-		border: none;
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		font-weight: 500;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-
-	.btn-primary:hover { opacity: 0.9; }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-	.btn-secondary {
-		border: 1px solid var(--color-border, #e2e8f0);
-		background: transparent;
-		padding: 0.4rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-	}
-
-	.btn-secondary:hover { background: var(--color-accent, #f1f5f9); }
-
-	/* Betöltés */
-	.loading-state {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		color: var(--color-muted-foreground, #64748b);
-		padding: 2rem 0;
 	}
 
 	.loading-inline {
@@ -886,26 +790,14 @@
 		padding: 0.4rem 0;
 	}
 
-	.spinner {
-		width: 1.25rem;
-		height: 1.25rem;
-		border: 2px solid var(--color-border, #e2e8f0);
-		border-top-color: var(--color-primary, #3730a3);
-		border-radius: 50%;
-		animation: spin 0.7s linear infinite;
-		flex-shrink: 0;
-	}
-
 	.spinner-sm {
 		width: 1rem;
 		height: 1rem;
 		border: 2px solid var(--color-border, #e2e8f0);
 		border-top-color: var(--color-primary, #3730a3);
 		border-radius: 50%;
-		animation: spin 0.7s linear infinite;
+		animation: rw-spin 0.7s linear infinite;
 	}
-
-	@keyframes spin { to { transform: rotate(360deg); } }
 
 	/* Badge */
 	:global(.badge) {
@@ -1003,11 +895,6 @@
 		margin: 0;
 	}
 
-	.empty-state {
-		color: var(--color-muted-foreground, #94a3b8);
-		font-size: 0.875rem;
-	}
-
 	/* No access message */
 	.no-access-message {
 		display: flex;
@@ -1102,15 +989,6 @@
 		background: var(--color-input, oklch(1 0 0 / 15%));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .btn-secondary {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .btn-secondary:hover {
-		background: var(--color-accent, oklch(0.269 0 0));
 	}
 
 	:global(.dark) .balance-table {

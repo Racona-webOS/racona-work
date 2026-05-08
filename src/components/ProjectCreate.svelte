@@ -111,6 +111,7 @@
 	});
 </script>
 
+<div class="rw">
 <section class="page">
 	{#if !hasAccess}
 		<AccessDenied />
@@ -171,8 +172,11 @@
 		</form>
 	{/if}
 </section>
+</div>
 
 <style>
+	@import '../styles/shared.css';
+
 	.page {
 		padding: 1.5rem;
 		max-width: 720px;
@@ -185,13 +189,6 @@
 		font-size: 1.5rem;
 		font-weight: 700;
 		margin: 0;
-	}
-
-	.no-access {
-		padding: 1rem;
-		border: 1px solid var(--color-border, #e2e8f0);
-		border-radius: 0.5rem;
-		color: var(--color-muted-foreground, #64748b);
 	}
 
 	.form {
@@ -208,38 +205,6 @@
 		grid-column: 1 / -1;
 	}
 
-	label {
-		display: flex;
-		flex-direction: column;
-		gap: 0.35rem;
-		font-size: 0.85rem;
-	}
-
-	label span {
-		font-weight: 500;
-		color: var(--color-foreground, #0f172a);
-	}
-
-	.input {
-		padding: 0.5rem 0.75rem;
-		border: 1px solid var(--color-border, #e2e8f0);
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		background: var(--color-background, #fff);
-		color: var(--color-foreground, #0f172a);
-	}
-
-	.input:focus {
-		outline: none;
-		border-color: var(--color-primary, #3730a3);
-		box-shadow: 0 0 0 3px var(--color-primary-subtle, #eef2ff);
-	}
-
-	.textarea {
-		resize: vertical;
-		font-family: inherit;
-	}
-
 	.actions {
 		display: flex;
 		justify-content: flex-end;
@@ -248,49 +213,8 @@
 		border-top: 1px solid var(--color-border, #e2e8f0);
 	}
 
-	.btn-primary {
-		background: var(--color-primary, #3730a3);
-		color: #fff;
-		border: none;
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		font-weight: 500;
-	}
-
-	.btn-primary:hover { opacity: 0.9; }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-	.btn-secondary {
-		background: transparent;
-		border: 1px solid var(--color-border, #e2e8f0);
-		color: var(--color-foreground, #0f172a);
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-	}
-
-	.btn-secondary:hover {
-		background: var(--color-accent, #f1f5f9);
-	}
-
-	.error-banner {
-		padding: 0.75rem 1rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 0.5rem;
-		color: #dc2626;
-		font-size: 0.875rem;
-	}
-
 	:global(.dark) .form {
 		background: var(--color-card, oklch(0.205 0 0));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
-	}
-
-	:global(.dark) .btn-secondary:hover {
-		background: var(--color-accent, oklch(0.269 0 0));
 	}
 </style>

@@ -150,6 +150,7 @@
 	});
 </script>
 
+<div class="rw">
 <section class="page">
 	{#if !hasAccess}
 		<AccessDenied />
@@ -219,8 +220,11 @@
 		{/if}
 	{/if}
 </section>
+</div>
 
 <style>
+	@import '../styles/shared.css';
+
 	.page {
 		padding: 1.5rem;
 		display: flex;
@@ -228,39 +232,11 @@
 		gap: 1rem;
 	}
 
-	.page-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.page-header h2 {
-		font-size: 1.5rem;
-		font-weight: 700;
-		margin: 0 0 0.25rem;
-	}
-
-	.subtitle {
-		color: var(--color-muted-foreground, #64748b);
-		margin: 0;
-		font-size: 0.875rem;
-	}
-
 	.toolbar {
 		display: flex;
 		gap: 0.75rem;
 		align-items: center;
 		flex-wrap: wrap;
-	}
-
-	.input {
-		padding: 0.5rem 0.75rem;
-		border: 1px solid var(--color-border, #e2e8f0);
-		border-radius: 0.375rem;
-		font-size: 0.875rem;
-		background: var(--color-background, #fff);
-		color: var(--color-foreground, #0f172a);
 	}
 
 	.search {
@@ -273,27 +249,6 @@
 		display: flex;
 		gap: 0.25rem;
 		flex-wrap: wrap;
-	}
-
-	.chip {
-		background: transparent;
-		border: 1px solid var(--color-border, #e2e8f0);
-		border-radius: 999px;
-		padding: 0.35rem 0.75rem;
-		font-size: 0.8rem;
-		cursor: pointer;
-		color: var(--color-muted-foreground, #64748b);
-	}
-
-	.chip:hover {
-		background: var(--color-accent, #f1f5f9);
-	}
-
-	.chip.active {
-		background: var(--color-primary-subtle, #eef2ff);
-		border-color: var(--color-primary, #3730a3);
-		color: var(--color-primary, #3730a3);
-		font-weight: 600;
 	}
 
 	.project-list {
@@ -361,78 +316,10 @@
 		white-space: nowrap;
 	}
 
-	.status-active {
-		background: #dcfce7;
-		color: #15803d;
-	}
-
-	.status-paused {
-		background: #fef3c7;
-		color: #a16207;
-	}
-
-	.status-completed {
-		background: #dbeafe;
-		color: #1d4ed8;
-	}
-
-	.status-archived {
-		background: #e5e7eb;
-		color: #374151;
-	}
-
-	.btn-primary {
-		background: var(--color-primary, #3730a3);
-		color: #fff;
-		border: none;
-		padding: 0.5rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		font-weight: 500;
-		flex-shrink: 0;
-	}
-
-	.btn-primary:hover {
-		opacity: 0.9;
-	}
-
-	.loading-state {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		color: var(--color-muted-foreground, #64748b);
-		padding: 1rem 0;
-		font-size: 0.875rem;
-	}
-
-	.spinner {
-		width: 1.25rem;
-		height: 1.25rem;
-		border: 2px solid var(--color-border, #e2e8f0);
-		border-top-color: var(--color-primary, #3730a3);
-		border-radius: 50%;
-		animation: spin 0.7s linear infinite;
-	}
-
-	@keyframes spin { to { transform: rotate(360deg); } }
-
-	.empty-state {
-		color: var(--color-muted-foreground, #94a3b8);
-		font-size: 0.875rem;
-		margin: 0;
-		padding: 2rem 0;
-		text-align: center;
-	}
-
-	.error-banner {
-		padding: 0.75rem 1rem;
-		background: #fef2f2;
-		border: 1px solid #fecaca;
-		border-radius: 0.5rem;
-		color: #dc2626;
-		font-size: 0.875rem;
-	}
+	.status-active { background: #dcfce7; color: #15803d; }
+	.status-paused { background: #fef3c7; color: #a16207; }
+	.status-completed { background: #dbeafe; color: #1d4ed8; }
+	.status-archived { background: #e5e7eb; color: #374151; }
 
 	:global(.dark) .project-card {
 		background: var(--color-card, oklch(0.205 0 0));
@@ -445,14 +332,6 @@
 
 	:global(.dark) .project-name {
 		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .chip:hover {
-		background: var(--color-accent, oklch(0.269 0 0));
-	}
-
-	:global(.dark) .chip.active {
-		background: var(--color-accent, oklch(0.25 0.03 var(--primary-h, 264)));
 	}
 
 	:global(.dark) .status-active { background: rgba(22, 163, 74, 0.2); color: #86efac; }

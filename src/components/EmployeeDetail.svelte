@@ -258,8 +258,8 @@ return store?.currentOrganization?.id ?? null;
 	}
 </script>
 
+<div class="rw">
 <section class="page">
-	<!-- Fejléc -->
 	<div class="page-header">
 		<button class="btn-back" onclick={() => sdk?.ui?.navigateTo('EmployeeList')}>← Vissza</button>
 		<h2>{t('employeeDetail.title')}</h2>
@@ -476,8 +476,11 @@ return store?.currentOrganization?.id ?? null;
 		</div><!-- /two-col-grid -->
 	{/if}
 </section>
+</div>
 
 <style>
+	@import '../styles/shared.css';
+
 	.page {
         --max-col-width: 600px;
 		padding: 2rem;
@@ -570,18 +573,6 @@ return store?.currentOrganization?.id ?? null;
 	.text-danger { color: #dc2626; font-weight: 600; }
 	.text-success { color: #16a34a; font-weight: 600; }
 	.empty-hint { color: var(--color-muted-foreground, #94a3b8); font-size: 0.875rem; margin: 0; }
-
-	.page-header {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.page-header h2 {
-		font-size: 1.5rem;
-		font-weight: 700;
-		margin: 0;
-	}
 
 	/* Kártya */
 	.card {
@@ -771,31 +762,6 @@ return store?.currentOrganization?.id ?? null;
 	}
 
 	/* Gombok */
-	.btn-primary {
-		background: var(--color-primary, #3730a3);
-		color: #fff;
-		border: none;
-		padding: 0.4rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		font-weight: 500;
-	}
-
-	.btn-primary:hover { opacity: 0.9; }
-	.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-	.btn-secondary {
-		border: 1px solid var(--color-border, #e2e8f0);
-		background: transparent;
-		padding: 0.4rem 1rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-	}
-
-	.btn-secondary:hover { background: var(--color-accent, #f1f5f9); }
-
 	.btn-ghost {
 		border: none;
 		background: transparent;
@@ -848,38 +814,12 @@ return store?.currentOrganization?.id ?? null;
 	.badge-onLeave { background: #dbeafe; color: #1e40af; }
 
 	/* Betöltés / hiba */
-	.loading-state {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		color: var(--color-muted-foreground, #64748b);
-		padding: 2rem 0;
-	}
-
-	.spinner {
-		width: 1.25rem;
-		height: 1.25rem;
-		border: 2px solid var(--color-border, #e2e8f0);
-		border-top-color: var(--color-primary, #3730a3);
-		border-radius: 50%;
-		animation: spin 0.7s linear infinite;
-		flex-shrink: 0;
-	}
-
-	@keyframes spin { to { transform: rotate(360deg); } }
-
 	.error-state {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
 		color: #dc2626;
 		padding: 1rem 0;
-	}
-
-	.empty-state {
-		color: var(--color-muted-foreground, #94a3b8);
-		font-size: 0.875rem;
-		margin: 0;
 	}
 
 	/* Sötét mód fallback értékek (ha a CSS változók nem örökölnek) */
