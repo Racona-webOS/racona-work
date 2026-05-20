@@ -1,69 +1,16 @@
 /**
  * Racona Work — közös stílusok
  *
- * Minden szabály a `.rw` wrapper osztályon belül érvényes (nested CSS).
- * A komponens template-ben:
- *
- *   <div class="rw">
- *     <section class="page">...</section>
- *   </div>
+ * A gomb-, modal- és általános UI-stílusok globálisan érvényesek,
+ * hogy a position:fixed modalokban is működjenek.
+ * Az oldal-layout szabályok a `.rw` wrapper osztályon belül vannak (nested CSS).
  *
  * Importálás a komponens <style> blokkjában:
  *   @import '../styles/shared.css';
  */
 
-.rw {
-
 /* ═══════════════════════════════════════════════════════════════
-   OLDAL LAYOUT
-   ═══════════════════════════════════════════════════════════════ */
-
-.page {
-	padding: 2rem;
-	display: flex;
-	flex-direction: column;
-	gap: 1.5rem;
-}
-
-.page-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	margin-bottom: 1rem;
-}
-
-.page-header-title {
-	display: flex;
-	flex-direction: column;
-}
-
-.page-header h2 {
-	font-size: 1.5rem;
-	font-weight: 700;
-	margin: 0;
-}
-
-.subtitle {
-	color: var(--color-muted-foreground, #64748b);
-	margin: 0;
-	font-size: 0.875rem;
-}
-
-.section-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 0.5rem;
-}
-
-.section-header h3 {
-	font-size: 1rem;
-	font-weight: 600;
-	margin: 0;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   GOMBOK
+   GOMBOK — globális
    ═══════════════════════════════════════════════════════════════ */
 
 .btn-primary {
@@ -113,7 +60,7 @@
 .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ═══════════════════════════════════════════════════════════════
-   CHIP / TOGGLE
+   CHIP / TOGGLE — globális
    ═══════════════════════════════════════════════════════════════ */
 
 .chip {
@@ -141,9 +88,11 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   FORM ELEMEK
+   FORM ELEMEK — globális
    ═══════════════════════════════════════════════════════════════ */
 
+/* Általános form-label stílus. Komponensek ahol másféle label kell
+   (pl. EmployeeList .user-item), ott explicit felülírás szükséges. */
 label {
 	display: flex;
 	flex-direction: column;
@@ -178,7 +127,7 @@ label span {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MODAL
+   MODAL — globális (position:fixed)
    ═══════════════════════════════════════════════════════════════ */
 
 .modal-overlay {
@@ -252,7 +201,7 @@ label span {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ÁLLAPOTOK (loading, empty, error)
+   ÁLLAPOTOK — globális
    ═══════════════════════════════════════════════════════════════ */
 
 .loading-state {
@@ -313,7 +262,7 @@ label span {
 .error-banner button:hover { background: rgba(220, 38, 38, 0.1); }
 
 /* ═══════════════════════════════════════════════════════════════
-   AVATAR
+   AVATAR — globális
    ═══════════════════════════════════════════════════════════════ */
 
 .avatar img {
@@ -337,7 +286,7 @@ label span {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   EGYÉB KÖZÖS
+   EGYÉB KÖZÖS — globális
    ═══════════════════════════════════════════════════════════════ */
 
 .remove-btn {
@@ -375,14 +324,62 @@ label span {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SÖTÉT MÓD
+   OLDAL LAYOUT — .rw wrapperben (nested CSS)
    ═══════════════════════════════════════════════════════════════ */
+
+.rw {
+
+.page {
+	padding: 2rem;
+	display: flex;
+	flex-direction: column;
+	gap: 1.5rem;
+}
+
+.page-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 1rem;
+}
+
+.page-header-title {
+	display: flex;
+	flex-direction: column;
+}
+
+.page-header h2 {
+	font-size: 1.5rem;
+	font-weight: 700;
+	margin: 0;
+}
+
+.subtitle {
+	color: var(--color-muted-foreground, #64748b);
+	margin: 0;
+	font-size: 0.875rem;
+}
+
+.section-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.section-header h3 {
+	font-size: 1rem;
+	font-weight: 600;
+	margin: 0;
+}
 
 } /* .rw záró */
 
-:global(.dark) .rw {
+/* ═══════════════════════════════════════════════════════════════
+   SÖTÉT MÓD
+   ═══════════════════════════════════════════════════════════════ */
 
-	.subtitle { color: var(--color-muted-foreground, oklch(0.708 0 0)); }
+:global(.dark) {
 
 	.btn-secondary {
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
@@ -419,4 +416,6 @@ label span {
 		background: rgba(220, 38, 38, 0.1);
 		border-color: rgba(220, 38, 38, 0.3);
 	}
+
+	.subtitle { color: var(--color-muted-foreground, oklch(0.708 0 0)); }
 }

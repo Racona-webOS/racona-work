@@ -1047,6 +1047,16 @@
 		border-top: 1px solid var(--color-border, #e2e8f0);
 	}
 
+	/* Gomb stílusok a modalokhoz (.rw scopeon kívül vannak, :global kell) */
+
+	/* Label override-ok: a shared.css globálisan flex-direction:column-t állít be
+	   minden label-re, ezeket a modal-specifikus label-eknél felül kell írni. */
+	.user-item,
+	.role-option,
+	.employee-item {
+		flex-direction: row;
+	}
+
 	/* Felhasználó lista */
 	.user-list {
 		display: flex;
@@ -1061,6 +1071,7 @@
 
 	.user-item {
 		display: flex;
+		flex-direction: row;
 		align-items: center;
 		gap: 0.75rem;
 		padding: 0.5rem 0.75rem;
@@ -1305,7 +1316,6 @@
 	:global(.dark) .modal-footer {
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}
-
 	:global(.dark) .choice-btn {
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 		color: var(--color-foreground, oklch(0.985 0 0));

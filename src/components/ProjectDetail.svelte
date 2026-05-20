@@ -24,7 +24,9 @@
 		PaginatedResult,
 		WorkEntryRow,
 		WorkEntryListResult,
-		ProjectReport
+		WorkEntryCategory,
+		ProjectReport,
+		ProjectReportCategory
 	} from '../../server/functions.js';
 	import AccessDenied from './AccessDenied.svelte';
 	import Checkbox from './ui/Checkbox.svelte';
@@ -94,7 +96,11 @@
 	let workHours = $state<number>(1);
 	let workWorkDate = $state(new Date().toISOString().slice(0, 10));
 	let workForEmployeeId = $state<number | null>(null);
+	let workCategoryId = $state<number | null>(null);
 	let workSaving = $state(false);
+
+	// Munkabejegyzés kategóriák
+	let workCategories = $state<WorkEntryCategory[]>([]);
 
 	// --- Riport (aggregált projekt-áttekintés menedzsereknek) ----------------
 	let report = $state<ProjectReport | null>(null);
@@ -103,6 +109,13 @@
 
 	// Csak akkor látható a fül és érdemes betölteni, ha van jog.
 	let canViewReport = $derived(canViewAllWork);
+
+	// Kategória max (riport bar skálázáshoz)
+	let reportCatMax = $derived(
+		report?.byCategory?.length
+			? Math.max(1, ...report.byCategory.map((c) => c.totalHours))
+			: 1
+	);
 
 	// --- Projekt-szintű jogosultságok ----------------------------------------
 	interface RoleRow {
@@ -307,7 +320,18 @@
 		}
 	}
 
-	// --- Munkanapló: handler-ek ---------------------------------------------
+	async function loadWorkCategories() {
+		if (!currentOrganization || !sdk?.remote) return;
+		try {
+			const result = (await sdk.remote.call('getWorkEntryCategories', {
+				organizationId: currentOrganization.id
+			})) as WorkEntryCategory[];
+			workCategories = Array.isArray(result) ? result : [];
+		} catch {
+			workCategories = [];
+		}
+	}
+
 	async function loadWorkEntries() {
 		if (!projectId || !sdk?.remote) return;
 		workLoading = true;
@@ -357,6 +381,7 @@
 		workHours = 1;
 		workWorkDate = new Date().toISOString().slice(0, 10);
 		workForEmployeeId = null; // saját magam
+		workCategoryId = null;
 		showWorkForm = true;
 	}
 
@@ -368,6 +393,7 @@
 		workHours = entry.hours;
 		workWorkDate = entry.workDate?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
 		workForEmployeeId = entry.employeeId;
+		workCategoryId = entry.categoryId ?? null;
 		showWorkForm = true;
 	}
 
@@ -377,11 +403,16 @@
 			sdk?.ui?.toast?.(t('work.form.title') + ': ' + t('form.required'), 'error');
 			return;
 		}
+		if (!workCategoryId) {
+			sdk?.ui?.toast?.(t('work.form.category') + ': ' + t('form.required'), 'error');
+			return;
+		}
 		workSaving = true;
 		try {
 			if (workFormMode === 'edit' && workEditId !== null) {
 				await sdk.remote.call('updateWorkEntry', {
 					id: workEditId,
+					categoryId: workCategoryId,
 					title: workTitle.trim(),
 					description: workDescription.trim() || null,
 					hours: Number(workHours),
@@ -391,6 +422,7 @@
 				await sdk.remote.call('createWorkEntry', {
 					projectId: project.id,
 					employeeId: workForEmployeeId ?? undefined,
+					categoryId: workCategoryId,
 					title: workTitle.trim(),
 					description: workDescription.trim() || undefined,
 					hours: Number(workHours),
@@ -436,7 +468,7 @@
 	$effect(() => {
 		activeTab;
 		untrack(() => {
-			if (activeTab === 'report' && canViewReport && !report && !reportLoading) {
+			if (activeTab === 'report' && canViewReport && !reportLoading) {
 				loadReport();
 			}
 		});
@@ -585,6 +617,7 @@
 			await Promise.all([loadOrgRoles(), loadOverrides()]);
 		}
 		await loadWorkEntries();
+		await loadWorkCategories();
 	});
 
 	// plugin-capabilities-changed: ha a store capabilities halmaza frissül
@@ -902,6 +935,9 @@
 									</div>
 									<div class="entry-main">
 										<div class="entry-title">{entry.title}</div>
+										{#if entry.categoryName}
+											<div class="entry-category">{entry.categoryName}</div>
+										{/if}
 										{#if entry.description}
 											<div class="entry-desc">{entry.description}</div>
 										{/if}
@@ -909,7 +945,7 @@
 											<div class="entry-meta">👤 {entry.employeeName}</div>
 										{/if}
 									</div>
-									<div class="entry-hours">{entry.hours.toFixed(2)} h</div>
+									<div class="entry-hours">{entry.hours.toFixed(2)} {t('work.columns.hours').toLowerCase()}</div>
 									<div class="entry-actions">
 										<button
 											class="icon-btn"
@@ -945,7 +981,7 @@
 						<div class="kpi-grid">
 							<div class="kpi">
 								<span class="kpi-label">{t('report.totalHours')}</span>
-								<span class="kpi-value">{report.totals.totalHours.toFixed(1)} h</span>
+								<span class="kpi-value">{report.totals.totalHours.toFixed(1)} {t('work.columns.hours').toLowerCase()}</span>
 							</div>
 							<div class="kpi">
 								<span class="kpi-label">{t('report.totalEntries')}</span>
@@ -959,7 +995,7 @@
 							</div>
 							<div class="kpi">
 								<span class="kpi-label">{t('report.avgHoursPerDay')}</span>
-								<span class="kpi-value">{report.totals.avgHoursPerActiveDay.toFixed(1)} h</span>
+								<span class="kpi-value">{report.totals.avgHoursPerActiveDay.toFixed(1)} {t('work.columns.hours').toLowerCase()}</span>
 							</div>
 							<div class="kpi">
 								<span class="kpi-label">{t('report.firstEntry')}</span>
@@ -1077,6 +1113,37 @@
 							{/if}
 						</div>
 
+						<!-- Kategóriánkénti bontás -->
+						<div class="report-section">
+							<h3>{t('report.byCategory')}</h3>
+							{#if !report.byCategory || report.byCategory.length === 0}
+								<p class="empty-state">{t('report.daily.empty')}</p>
+							{:else}
+								<div class="cat-list">
+									{#each report.byCategory as cat (cat.categoryId ?? 'none')}
+										<div class="cat-row">
+											<div class="cat-info">
+												<span class="cat-name">{cat.categoryName}</span>
+												<span class="cat-meta">
+													{cat.entryCount} {t('report.byEmployee.entries')} ·
+													{cat.totalHours.toFixed(1)} {t('work.columns.hours').toLowerCase()}
+												</span>
+											</div>
+											<div class="cat-bar-wrap">
+												<div
+													class="cat-bar-fill"
+													style="width: {Math.round((cat.totalHours / reportCatMax) * 100)}%"
+												></div>
+											</div>
+											<span class="cat-hours">
+												{cat.totalHours.toFixed(1)} {t('work.columns.hours').toLowerCase()}
+											</span>
+										</div>
+									{/each}
+								</div>
+							{/if}
+						</div>
+
 						<!-- Utolsó 30 nap napi bontás -->
 						<div class="report-section">
 							<h3>{t('report.daily.title')}</h3>
@@ -1086,7 +1153,7 @@
 								{@const dailyMax = Math.max(1, ...report.daily.map((d) => d.hours))}
 								<div class="daily-chart">
 									{#each report.daily as d (d.date)}
-										<div class="daily-bar" title="{d.date}: {d.hours.toFixed(1)} h">
+										<div class="daily-bar" title="{d.date}: {d.hours.toFixed(1)} {t('work.columns.hours').toLowerCase()}">
 											<div
 												class="daily-bar-fill"
 												style="height: {(d.hours / dailyMax) * 100}%"
@@ -1160,7 +1227,7 @@
 												{/if}
 												<div class="entry-meta">👤 {entry.employeeName}</div>
 											</div>
-											<div class="entry-hours">{entry.hours.toFixed(2)} h</div>
+											<div class="entry-hours">{entry.hours.toFixed(2)} {t('work.columns.hours').toLowerCase()}</div>
 										</div>
 									{/each}
 								</div>
@@ -1401,6 +1468,15 @@
 						<input class="input" type="text" bind:value={workTitle} />
 					</label>
 					<label>
+						<span>{t('work.form.category')} *</span>
+						<select class="input" bind:value={workCategoryId}>
+							<option value={null} disabled>{t('work.form.category.none')}</option>
+							{#each workCategories as cat (cat.id)}
+								<option value={cat.id}>{cat.name}</option>
+							{/each}
+						</select>
+					</label>
+					<label>
 						<span>{t('work.form.description')}</span>
 						<textarea class="input textarea" rows="2" bind:value={workDescription}></textarea>
 					</label>
@@ -1440,7 +1516,7 @@
 					<button
 						class="btn-primary"
 						onclick={submitWorkEntry}
-						disabled={workSaving || !workTitle.trim()}
+						disabled={workSaving || !workTitle.trim() || !workCategoryId}
 					>
 						{workSaving ? t('loading') : t('form.save')}
 					</button>
@@ -1893,6 +1969,24 @@
 		color: var(--color-muted-foreground, #64748b);
 	}
 
+	.entry-category {
+		display: inline-block;
+		font-size: 0.7rem;
+		font-weight: 500;
+		color: var(--color-primary, #3730a3);
+		background: color-mix(in srgb, var(--color-primary, #3730a3) 10%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-primary, #3730a3) 25%, transparent);
+		border-radius: 999px;
+		padding: 0.1rem 0.5rem;
+		margin-top: 0.15rem;
+	}
+
+	:global(.dark) .entry-category {
+		color: oklch(0.75 0.12 264);
+		background: oklch(0.75 0.12 264 / 12%);
+		border-color: oklch(0.75 0.12 264 / 30%);
+	}
+
 	.entry-meta {
 		font-size: 0.7rem;
 		color: var(--color-muted-foreground, #94a3b8);
@@ -2052,6 +2146,71 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.625rem;
+	}
+
+	/* Kategóriánkénti bontás */
+	.cat-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.cat-row {
+		display: grid;
+		grid-template-columns: 1fr 120px 4rem;
+		gap: 0.75rem;
+		align-items: center;
+	}
+
+	.cat-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+		min-width: 0;
+	}
+
+	.cat-name {
+		font-size: 0.85rem;
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.cat-meta {
+		font-size: 0.72rem;
+		color: var(--color-muted-foreground, #64748b);
+	}
+
+	.cat-bar-wrap {
+		width: 100%;
+		height: 8px;
+		background: var(--color-muted, #f1f5f9);
+		border-radius: 999px;
+		overflow: hidden;
+	}
+
+	.cat-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #0f766e, #14b8a6);
+		border-radius: 999px;
+		transition: width 0.3s;
+	}
+
+	.cat-hours {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: #0f766e;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	:global(.dark) .cat-bar-wrap {
+		background: oklch(0.3 0 0);
+	}
+
+	:global(.dark) .cat-hours {
+		color: #2dd4bf;
 	}
 
 	.emp-row {

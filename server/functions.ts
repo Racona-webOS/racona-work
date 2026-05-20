@@ -2226,15 +2226,18 @@ export {
 	createWorkEntry,
 	updateWorkEntry,
 	deleteWorkEntry,
-	getProjectReport
+	getProjectReport,
+	getWorkEntryCategories
 } from './work-entries.js';
 
 export type {
 	WorkEntry,
 	WorkEntryRow,
+	WorkEntryCategory,
 	WorkEntryListParams,
 	WorkEntryListResult,
 	ProjectReport,
 	ProjectReportEmployee,
+	ProjectReportCategory,
 	ProjectReportDaily
 } from './work-entries.js';

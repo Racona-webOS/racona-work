@@ -281,6 +281,8 @@
 	"work.emptyMine": "Még nem rögzítettél bejegyzést ezen a projekten",
 	"work.totalHours": "Összesen: {hours} óra",
 	"work.form.title": "Feladat címe",
+	"work.form.category": "Kategória",
+	"work.form.category.none": "— Kategória nélkül —",
 	"work.form.description": "Leírás",
 	"work.form.hours": "Óra",
 	"work.form.workDate": "Dátum",
@@ -308,6 +310,7 @@
 	"report.progress": "Idővonal",
 
 	"report.byEmployee": "Dolgozónkénti bontás",
+	"report.byCategory": "Kategóriánkénti bontás",
 	"report.byEmployee.empty": "Még nincs tag a projektben",
 	"report.byEmployee.hours": "óra",
 	"report.byEmployee.entries": "bejegyzés",

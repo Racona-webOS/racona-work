@@ -282,6 +282,8 @@
 	"work.emptyMine": "You haven't logged any work on this project yet",
 	"work.totalHours": "Total: {hours} h",
 	"work.form.title": "Task title",
+	"work.form.category": "Category",
+	"work.form.category.none": "— No category —",
 	"work.form.description": "Description",
 	"work.form.hours": "Hours",
 	"work.form.workDate": "Date",
@@ -309,6 +311,7 @@
 	"report.progress": "Timeline",
 
 	"report.byEmployee": "Per employee breakdown",
+	"report.byCategory": "Per category breakdown",
 	"report.byEmployee.empty": "No members yet",
 	"report.byEmployee.hours": "hours",
 	"report.byEmployee.entries": "entries",

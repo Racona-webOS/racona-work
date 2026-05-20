@@ -14,10 +14,18 @@
 import type { RemoteContext } from './functions.js';
 import { hasCapability, requireCapability } from './permissions.js';
 
+export interface WorkEntryCategory {
+	id: number;
+	name: string;
+	sortOrder: number;
+	isActive: boolean;
+}
+
 export interface WorkEntry {
 	id: number;
 	projectId: number;
 	employeeId: number;
+	categoryId: number | null;
 	title: string;
 	description: string | null;
 	hours: number;
@@ -31,6 +39,7 @@ export interface WorkEntryRow extends WorkEntry {
 	employeeName: string;
 	employeeEmail: string;
 	projectName: string;
+	categoryName: string | null;
 }
 
 export interface WorkEntryListParams {
@@ -109,6 +118,8 @@ function mapRow(row: any): WorkEntryRow {
 		id: row.id,
 		projectId: row.project_id,
 		employeeId: row.employee_id,
+		categoryId: row.category_id ?? null,
+		categoryName: row.category_name ?? null,
 		title: row.title,
 		description: row.description ?? null,
 		hours: typeof row.hours === 'string' ? parseFloat(row.hours) : Number(row.hours),
@@ -238,12 +249,14 @@ export async function listWorkEntries(
 	const dataR = await context.db.query(
 		`SELECT we.id, we.project_id, we.employee_id, we.title, we.description,
 		        we.hours, we.work_date, we.status, we.created_at, we.updated_at,
+		        we.category_id, wec.name AS category_name,
 		        u.full_name AS employee_name, u.email AS employee_email,
 		        p.name AS project_name
 		   FROM app__racona_work.work_entries we
 		   JOIN app__racona_work.projects p ON p.id = we.project_id
 		   JOIN app__racona_work.employees e ON e.id = we.employee_id
 		   JOIN auth.users u ON u.id = e.user_id
+		   LEFT JOIN app__racona_work.work_entry_categories wec ON wec.id = we.category_id
 		  ${where}
 		  ORDER BY ${sortCol} ${sortOrder}, we.id DESC
 		  LIMIT $${qParams.length - 1} OFFSET $${qParams.length}`,
@@ -268,6 +281,7 @@ export async function createWorkEntry(
 	params: {
 		projectId: number;
 		employeeId?: number; // ha megadva, más nevében rögzít (csak work.view.all + project.manage-nek enged)
+		categoryId?: number | null;
 		title: string;
 		description?: string;
 		hours: number;
@@ -277,6 +291,7 @@ export async function createWorkEntry(
 ): Promise<WorkEntry> {
 	if (!params?.projectId) throw new Error('Érvénytelen projekt azonosító');
 	if (!params.title || !params.title.trim()) throw new Error('A bejegyzés címe kötelező');
+	if (!params.categoryId) throw new Error('A kategória megadása kötelező');
 	validateHours(params.hours);
 	validateWorkDate(params.workDate);
 
@@ -332,15 +347,28 @@ export async function createWorkEntry(
 		throw new Error('A dolgozó nem tagja ennek a projektnek');
 	}
 
+	// Kategória validáció (ha meg van adva)
+	let categoryId: number | null = params.categoryId ?? null;
+	if (categoryId !== null) {
+		const catCheck = await context.db.query(
+			`SELECT id FROM app__racona_work.work_entry_categories WHERE id = $1 AND is_active = TRUE`,
+			[categoryId]
+		);
+		if (catCheck.rows.length === 0) {
+			throw new Error('A megadott kategória nem létezik vagy inaktív');
+		}
+	}
+
 	const insert = await context.db.query(
 		`INSERT INTO app__racona_work.work_entries
-		    (project_id, employee_id, title, description, hours, work_date, status, created_at, updated_at)
-		  VALUES ($1, $2, $3, $4, $5, $6, 'completed', NOW(), NOW())
-		  RETURNING id, project_id, employee_id, title, description, hours, work_date,
+		    (project_id, employee_id, category_id, title, description, hours, work_date, status, created_at, updated_at)
+		  VALUES ($1, $2, $3, $4, $5, $6, $7, 'completed', NOW(), NOW())
+		  RETURNING id, project_id, employee_id, category_id, title, description, hours, work_date,
 		            status, created_at, updated_at`,
 		[
 			params.projectId,
 			targetEmployeeId,
+			categoryId,
 			params.title.trim(),
 			params.description?.trim() || null,
 			params.hours,
@@ -352,6 +380,7 @@ export async function createWorkEntry(
 		id: row.id,
 		projectId: row.project_id,
 		employeeId: row.employee_id,
+		categoryId: row.category_id ?? null,
 		title: row.title,
 		description: row.description ?? null,
 		hours: typeof row.hours === 'string' ? parseFloat(row.hours) : Number(row.hours),
@@ -367,6 +396,7 @@ export async function createWorkEntry(
 export async function updateWorkEntry(
 	params: {
 		id: number;
+		categoryId?: number | null;
 		title?: string;
 		description?: string | null;
 		hours?: number;
@@ -418,15 +448,27 @@ export async function updateWorkEntry(
 	if (params.hours !== undefined) validateHours(params.hours);
 	if (params.workDate !== undefined) validateWorkDate(params.workDate);
 
+	// Kategória validáció (ha meg van adva és nem null)
+	if (params.categoryId !== undefined && params.categoryId !== null) {
+		const catCheck = await context.db.query(
+			`SELECT id FROM app__racona_work.work_entry_categories WHERE id = $1 AND is_active = TRUE`,
+			[params.categoryId]
+		);
+		if (catCheck.rows.length === 0) {
+			throw new Error('A megadott kategória nem létezik vagy inaktív');
+		}
+	}
+
 	const update = await context.db.query(
 		`UPDATE app__racona_work.work_entries SET
 		    title = COALESCE($2, title),
 		    description = CASE WHEN $3::boolean THEN $4 ELSE description END,
 		    hours = COALESCE($5, hours),
 		    work_date = COALESCE($6, work_date),
+		    category_id = CASE WHEN $7::boolean THEN $8 ELSE category_id END,
 		    updated_at = NOW()
 		 WHERE id = $1
-		 RETURNING id, project_id, employee_id, title, description, hours, work_date,
+		 RETURNING id, project_id, employee_id, category_id, title, description, hours, work_date,
 		           status, created_at, updated_at`,
 		[
 			row.id,
@@ -438,7 +480,9 @@ export async function updateWorkEntry(
 					? null
 					: String(params.description).trim() || null,
 			params.hours ?? null,
-			params.workDate ?? null
+			params.workDate ?? null,
+			params.categoryId !== undefined,
+			params.categoryId !== undefined ? (params.categoryId ?? null) : null
 		]
 	);
 	const r = update.rows[0] as any;
@@ -446,6 +490,7 @@ export async function updateWorkEntry(
 		id: r.id,
 		projectId: r.project_id,
 		employeeId: r.employee_id,
+		categoryId: r.category_id ?? null,
 		title: r.title,
 		description: r.description ?? null,
 		hours: typeof r.hours === 'string' ? parseFloat(r.hours) : Number(r.hours),
@@ -521,6 +566,13 @@ export interface ProjectReportDaily {
 	entries: number;
 }
 
+export interface ProjectReportCategory {
+	categoryId: number | null;
+	categoryName: string;
+	totalHours: number;
+	entryCount: number;
+}
+
 export interface ProjectReport {
 	project: {
 		id: number;
@@ -544,6 +596,8 @@ export interface ProjectReport {
 		avgHoursPerActiveDay: number;
 	};
 	byEmployee: ProjectReportEmployee[];
+	/** Kategóriánkénti összesítés. */
+	byCategory: ProjectReportCategory[];
 	/** Utolsó 30 nap napi bontásban. */
 	daily: ProjectReportDaily[];
 	/** Top 10 legutóbbi bejegyzés. */
@@ -667,18 +721,41 @@ export async function getProjectReport(
 	const recentR = await context.db.query(
 		`SELECT we.id, we.project_id, we.employee_id, we.title, we.description,
 		        we.hours, we.work_date, we.status, we.created_at, we.updated_at,
+		        we.category_id, wec.name AS category_name,
 		        u.full_name AS employee_name, u.email AS employee_email,
 		        p.name AS project_name
 		   FROM app__racona_work.work_entries we
 		   JOIN app__racona_work.projects p ON p.id = we.project_id
 		   JOIN app__racona_work.employees e ON e.id = we.employee_id
 		   JOIN auth.users u ON u.id = e.user_id
+		   LEFT JOIN app__racona_work.work_entry_categories wec ON wec.id = we.category_id
 		  WHERE we.project_id = $1
 		  ORDER BY we.work_date DESC, we.created_at DESC
 		  LIMIT 10`,
 		[params.projectId]
 	);
 	const recentEntries: WorkEntryRow[] = recentR.rows.map(mapRow);
+
+	// --- Kategóriánkénti összesítés ---
+	const byCatR = await context.db.query(
+		`SELECT
+		        wec.id         AS category_id,
+		        COALESCE(wec.name, 'Kategória nélkül') AS category_name,
+		        COALESCE(SUM(we.hours), 0) AS total_hours,
+		        COUNT(we.id)::int AS entry_count
+		   FROM app__racona_work.work_entries we
+		   LEFT JOIN app__racona_work.work_entry_categories wec ON wec.id = we.category_id
+		  WHERE we.project_id = $1
+		  GROUP BY wec.id, wec.name
+		  ORDER BY total_hours DESC, wec.name ASC NULLS LAST`,
+		[params.projectId]
+	);
+	const byCategory: ProjectReportCategory[] = byCatR.rows.map((r: any) => ({
+		categoryId: r.category_id ?? null,
+		categoryName: r.category_name,
+		totalHours: typeof r.total_hours === 'string' ? parseFloat(r.total_hours) : Number(r.total_hours),
+		entryCount: r.entry_count
+	}));
 
 	// --- Inaktív tagok (14+ nap nincs bejegyzés, vagy soha nem logoltak) ---
 	const inactivityThreshold = new Date();
@@ -733,8 +810,41 @@ export async function getProjectReport(
 				activeDayCount > 0 ? Math.round((totalHours / activeDayCount) * 100) / 100 : 0
 		},
 		byEmployee,
+		byCategory,
 		daily,
 		recentEntries,
 		inactiveMembers
 	};
+}
+
+// --- Kategóriák lekérdezése -------------------------------------------------
+
+/**
+ * Az aktív munkabejegyzés-kategóriák listája.
+ * Minden bejelentkezett felhasználó lekérdezheti (work.log capability elegendő).
+ */
+export async function getWorkEntryCategories(
+	params: { organizationId: number },
+	context: RemoteContext
+): Promise<WorkEntryCategory[]> {
+	if (!params?.organizationId || params.organizationId <= 0) {
+		throw new Error('Érvénytelen szervezet azonosító');
+	}
+
+	// Alap jog: legalább work.log szükséges (minden aktív dolgozó rendelkezik vele)
+	await requireCapability(context, params.organizationId, 'work.log');
+
+	const result = await context.db.query(
+		`SELECT id, name, sort_order, is_active, created_at, updated_at
+		   FROM app__racona_work.work_entry_categories
+		  WHERE is_active = TRUE
+		  ORDER BY sort_order ASC, id ASC`
+	);
+
+	return result.rows.map((r: any) => ({
+		id: r.id,
+		name: r.name,
+		sortOrder: r.sort_order,
+		isActive: r.is_active
+	}));
 }
