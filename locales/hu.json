@@ -293,7 +293,13 @@
 	"work.deleteConfirm": "Törlöd a munkabejegyzést?",
 	"work.notMember": "Nem vagy tag ezen a projekten, nem rögzíthetsz bejegyzést",
 
+	"filter.from": "-tól",
+	"filter.to": "-ig",
+	"filter.clear": "Szűrő törlése",
+
 	"report.title": "Projekt riport",
+	"report.noAccess": "Nincs jogosultságod a riport megtekintéséhez",
+	"report.summary": "Áttekintés",
 	"report.noAccess": "Nincs jogosultságod a riport megtekintéséhez",
 	"report.summary": "Áttekintés",
 	"report.totalHours": "Összes logolt óra",
@@ -319,6 +325,7 @@
 	"report.byEmployee.inactive": "inaktív",
 
 	"report.daily.title": "Utolsó 30 nap",
+	"report.daily.title.filtered": "Napi bontás (szűrt időszak)",
 	"report.daily.empty": "Nincs bejegyzés az utolsó 30 napban",
 	"report.daily.hours": "óra",
 

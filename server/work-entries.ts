@@ -614,10 +614,13 @@ function daysBetween(a: Date, b: Date): number {
 }
 
 export async function getProjectReport(
-	params: { projectId: number },
+	params: { projectId: number; from?: string; to?: string },
 	context: RemoteContext
 ): Promise<ProjectReport> {
 	if (!params?.projectId) throw new Error('Érvénytelen projekt azonosító');
+
+	if (params.from) validateWorkDate(params.from);
+	if (params.to) validateWorkDate(params.to);
 
 	const projR = await context.db.query(
 		`SELECT id, organization_id, name, status, start_date, end_date
@@ -647,6 +650,26 @@ export async function getProjectReport(
 		}
 	}
 
+	// Dátumszűrő feltételek a work_entries lekérdezésekhez
+	const dateParams: unknown[] = [];
+	const dateWhereAlias: string[] = []; // JOIN-os lekérdezésekhez (we. alias)
+	const dateWhereDirect: string[] = []; // Közvetlen work_entries lekérdezésekhez
+
+	if (params.from) {
+		dateParams.push(params.from);
+		const idx = dateParams.length + 1; // $1 = projectId, ezért +1
+		dateWhereAlias.push(`we.work_date >= $${idx}`);
+		dateWhereDirect.push(`work_date >= $${idx}`);
+	}
+	if (params.to) {
+		dateParams.push(params.to);
+		const idx = dateParams.length + 1;
+		dateWhereAlias.push(`we.work_date <= $${idx}`);
+		dateWhereDirect.push(`work_date <= $${idx}`);
+	}
+	const dateWhere = dateWhereAlias.length > 0 ? ` AND ${dateWhereAlias.join(' AND ')}` : '';
+	const dateWhereDirect_ = dateWhereDirect.length > 0 ? ` AND ${dateWhereDirect.join(' AND ')}` : '';
+
 	// --- Összesítés: dolgozónként ---
 	const perEmp = await context.db.query(
 		`SELECT e.id AS employee_id,
@@ -660,11 +683,11 @@ export async function getProjectReport(
 		   FROM app__racona_work.project_members pm
 		   JOIN app__racona_work.employees e ON e.id = pm.employee_id
 		   JOIN auth.users u ON u.id = e.user_id
-		   LEFT JOIN app__racona_work.work_entries we ON we.employee_id = e.id AND we.project_id = pm.project_id
+		   LEFT JOIN app__racona_work.work_entries we ON we.employee_id = e.id AND we.project_id = pm.project_id${dateWhere}
 		  WHERE pm.project_id = $1
 		  GROUP BY e.id, e.user_id, u.full_name, u.email, u.image
 		  ORDER BY total_hours DESC, u.full_name ASC`,
-		[params.projectId]
+		[params.projectId, ...dateParams]
 	);
 
 	const byEmployee: ProjectReportEmployee[] = perEmp.rows.map((r: any) => ({
@@ -685,9 +708,9 @@ export async function getProjectReport(
 		        MIN(work_date) AS first_date,
 		        MAX(work_date) AS last_date,
 		        COUNT(DISTINCT work_date)::int AS active_days
-		   FROM app__racona_work.work_entries
-		  WHERE project_id = $1`,
-		[params.projectId]
+		   FROM app__racona_work.work_entries we
+		  WHERE project_id = $1${dateWhereDirect_}`,
+		[params.projectId, ...dateParams]
 	);
 	const totalsRow = totalsR.rows[0] as any;
 	const totalHours =
@@ -699,17 +722,30 @@ export async function getProjectReport(
 	const totalMemberCount = byEmployee.length;
 	const activeMemberCount = byEmployee.filter((e) => e.entryCount > 0).length;
 
-	// --- Utolsó 30 nap napi bontás ---
+	// --- Utolsó 30 nap napi bontás (vagy szűrt időszak) ---
+	let dailyFromCondition: string;
+	let dailyFromParams: unknown[];
+	if (params.from || params.to) {
+		// Ha van szűrő, a szűrt intervallumban adjuk vissza a napi bontást
+		const conds: string[] = [`project_id = $1`];
+		const p: unknown[] = [params.projectId];
+		if (params.from) { p.push(params.from); conds.push(`work_date >= $${p.length}`); }
+		if (params.to) { p.push(params.to); conds.push(`work_date <= $${p.length}`); }
+		dailyFromCondition = conds.join(' AND ');
+		dailyFromParams = p;
+	} else {
+		dailyFromCondition = `project_id = $1 AND work_date >= (CURRENT_DATE - INTERVAL '29 days')`;
+		dailyFromParams = [params.projectId];
+	}
 	const dailyR = await context.db.query(
 		`SELECT work_date AS date,
 		        COALESCE(SUM(hours), 0) AS hours,
 		        COUNT(*)::int AS entries
 		   FROM app__racona_work.work_entries
-		  WHERE project_id = $1
-		    AND work_date >= (CURRENT_DATE - INTERVAL '29 days')
+		  WHERE ${dailyFromCondition}
 		  GROUP BY work_date
 		  ORDER BY work_date ASC`,
-		[params.projectId]
+		dailyFromParams
 	);
 	const daily: ProjectReportDaily[] = dailyR.rows.map((r: any) => ({
 		date: r.date,
@@ -729,10 +765,10 @@ export async function getProjectReport(
 		   JOIN app__racona_work.employees e ON e.id = we.employee_id
 		   JOIN auth.users u ON u.id = e.user_id
 		   LEFT JOIN app__racona_work.work_entry_categories wec ON wec.id = we.category_id
-		  WHERE we.project_id = $1
+		  WHERE we.project_id = $1${dateWhere}
 		  ORDER BY we.work_date DESC, we.created_at DESC
 		  LIMIT 10`,
-		[params.projectId]
+		[params.projectId, ...dateParams]
 	);
 	const recentEntries: WorkEntryRow[] = recentR.rows.map(mapRow);
 
@@ -745,10 +781,10 @@ export async function getProjectReport(
 		        COUNT(we.id)::int AS entry_count
 		   FROM app__racona_work.work_entries we
 		   LEFT JOIN app__racona_work.work_entry_categories wec ON wec.id = we.category_id
-		  WHERE we.project_id = $1
+		  WHERE we.project_id = $1${dateWhere}
 		  GROUP BY wec.id, wec.name
 		  ORDER BY total_hours DESC, wec.name ASC NULLS LAST`,
-		[params.projectId]
+		[params.projectId, ...dateParams]
 	);
 	const byCategory: ProjectReportCategory[] = byCatR.rows.map((r: any) => ({
 		categoryId: r.category_id ?? null,

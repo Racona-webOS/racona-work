@@ -81,8 +81,11 @@
 	let addMemberRole = $state<'member' | 'lead' | 'owner'>('member');
 	let addMemberSaving = $state(false);
 
-	// --- Munkanapló (work entries) -------------------------------------------
+	// --- SDK DatePicker komponens ---
+	const DatePickerComponent = $derived((sdk as any)?.components?.DatePicker ?? null);
 	let workScope = $state<'mine' | 'all'>('mine');
+	let workFrom = $state('');
+	let workTo = $state('');
 	let workEntries = $state<WorkEntryRow[]>([]);
 	let workTotalHours = $state(0);
 	let workLoading = $state(false);
@@ -106,6 +109,8 @@
 	let report = $state<ProjectReport | null>(null);
 	let reportLoading = $state(false);
 	let reportError = $state<string | null>(null);
+	let reportFrom = $state('');
+	let reportTo = $state('');
 
 	// Csak akkor látható a fül és érdemes betölteni, ha van jog.
 	let canViewReport = $derived(canViewAllWork);
@@ -342,7 +347,9 @@
 				scope,
 				pageSize: 200,
 				sortBy: 'work_date',
-				sortOrder: 'desc'
+				sortOrder: 'desc',
+				...(workFrom ? { from: workFrom } : {}),
+				...(workTo ? { to: workTo } : {})
 			})) as WorkEntryListResult;
 			workEntries = result?.data ?? [];
 			workTotalHours = result?.totalHours ?? 0;
@@ -362,7 +369,9 @@
 		reportError = null;
 		try {
 			const result = (await sdk.remote.call('getProjectReport', {
-				projectId
+				projectId,
+				...(reportFrom ? { from: reportFrom } : {}),
+				...(reportTo ? { to: reportTo } : {})
 			})) as ProjectReport;
 			report = result ?? null;
 		} catch (err: any) {
@@ -460,18 +469,22 @@
 
 	$effect(() => {
 		workScope;
+		workFrom;
+		workTo;
 		untrack(() => {
 			if (projectId && sdk?.remote) loadWorkEntries();
 		});
 	});
 
 	$effect(() => {
-		activeTab;
-		untrack(() => {
-			if (activeTab === 'report' && canViewReport && !reportLoading) {
-				loadReport();
-			}
-		});
+		// Az activeTab, reportFrom, reportTo változások triggereljék az újratöltést.
+		// Az untrack itt NEM használható, mert a feltételt reaktívan kell kiértékelni.
+		const _tab = activeTab;
+		const _from = reportFrom;
+		const _to = reportTo;
+		if (_tab === 'report' && canViewReport) {
+			loadReport();
+		}
 	});
 
 	// --- Projekt-szintű jogosultságok: handler-ek ----------------------------
@@ -920,6 +933,31 @@
 						</div>
 					</div>
 
+					<!-- Intervallum szűrő -->
+					<div class="date-filter-bar">
+						{#if DatePickerComponent}
+							<svelte:component this={DatePickerComponent} bind:value={workFrom} locale="hu-HU" placeholder="éééé. hh. nn." />
+						{:else}
+							<input class="input input-sm" type="date" bind:value={workFrom} />
+						{/if}
+						<span class="date-filter-label">{t('filter.from')}</span>
+						{#if DatePickerComponent}
+							<svelte:component this={DatePickerComponent} bind:value={workTo} locale="hu-HU" placeholder="éééé. hh. nn." />
+						{:else}
+							<input class="input input-sm" type="date" bind:value={workTo} />
+						{/if}
+						<span class="date-filter-label">{t('filter.to')}</span>
+						{#if workFrom || workTo}
+							<button
+								class="btn-ghost-sm"
+								onclick={() => { workFrom = ''; workTo = ''; }}
+								title={t('filter.clear')}
+							>
+								✕ {t('filter.clear')}
+							</button>
+						{/if}
+					</div>
+
 					{#if workLoading}
 						<div class="loading-state"><div class="spinner"></div><span>{t('loading')}</span></div>
 					{:else if workEntries.length === 0}
@@ -972,6 +1010,31 @@
 			<!-- Riport -->
 			{#if activeTab === 'report' && canViewReport}
 				<div class="tab-content">
+					<!-- Intervallum szűrő -->
+					<div class="date-filter-bar">
+						{#if DatePickerComponent}
+							<svelte:component this={DatePickerComponent} bind:value={reportFrom} locale="hu-HU" placeholder="éééé. hh. nn." />
+						{:else}
+							<input class="input input-sm" type="date" bind:value={reportFrom} />
+						{/if}
+						<span class="date-filter-label">{t('filter.from')}</span>
+						{#if DatePickerComponent}
+							<svelte:component this={DatePickerComponent} bind:value={reportTo} locale="hu-HU" placeholder="éééé. hh. nn." />
+						{:else}
+							<input class="input input-sm" type="date" bind:value={reportTo} />
+						{/if}
+						<span class="date-filter-label">{t('filter.to')}</span>
+						{#if reportFrom || reportTo}
+							<button
+								class="btn-ghost-sm"
+								onclick={() => { reportFrom = ''; reportTo = ''; }}
+								title={t('filter.clear')}
+							>
+								✕ {t('filter.clear')}
+							</button>
+						{/if}
+					</div>
+
 					{#if reportLoading}
 						<div class="loading-state"><div class="spinner"></div><span>{t('loading')}</span></div>
 					{:else if reportError}
@@ -1146,7 +1209,13 @@
 
 						<!-- Utolsó 30 nap napi bontás -->
 						<div class="report-section">
-							<h3>{t('report.daily.title')}</h3>
+							<h3>
+								{#if reportFrom || reportTo}
+									{t('report.daily.title.filtered')}
+								{:else}
+									{t('report.daily.title')}
+								{/if}
+							</h3>
 							{#if report.daily.length === 0}
 								<p class="empty-state">{t('report.daily.empty')}</p>
 							{:else}
@@ -1483,7 +1552,11 @@
 					<div class="form-row-2">
 						<label>
 							<span>{t('work.form.workDate')} *</span>
-							<input class="input" type="date" bind:value={workWorkDate} />
+							{#if DatePickerComponent}
+								<svelte:component this={DatePickerComponent} bind:value={workWorkDate} locale="hu-HU" placeholder="éééé. hh. nn." />
+							{:else}
+								<input class="input" type="date" bind:value={workWorkDate} />
+							{/if}
 						</label>
 						<label>
 							<span>{t('work.form.hours')} *</span>
@@ -1784,6 +1857,61 @@
 	}
 
 	:global(.dark) .danger-zone p { color: #fca5a5; }
+
+	/* ---------- Intervallum szűrő ---------- */
+	.date-filter-bar {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: nowrap;
+		padding: 0.5rem 0.75rem;
+		background: var(--color-muted, #f8fafc);
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.5rem;
+	}
+
+	.date-filter-label {
+		font-size: 0.8rem;
+		color: var(--color-muted-foreground, #64748b);
+		font-weight: 500;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+
+	.input-sm {
+		padding: 0.25rem 0.5rem;
+		font-size: 0.8rem;
+		height: auto;
+	}
+
+	.btn-ghost-sm {
+		background: transparent;
+		border: 1px solid var(--color-border, #e2e8f0);
+		color: var(--color-muted-foreground, #64748b);
+		padding: 0.25rem 0.625rem;
+		border-radius: 0.375rem;
+		cursor: pointer;
+		font-size: 0.75rem;
+		margin-left: auto;
+		white-space: nowrap;
+		flex-shrink: 0;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.btn-ghost-sm:hover {
+		background: var(--color-accent, #f1f5f9);
+		color: var(--color-foreground, #0f172a);
+	}
+
+	:global(.dark) .date-filter-bar {
+		background: oklch(0.18 0 0);
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
+	}
+
+	:global(.dark) .btn-ghost-sm:hover {
+		background: var(--color-accent, oklch(0.269 0 0));
+		color: oklch(0.985 0 0);
+	}
 
 	/* ---------- Permissions fül ---------- */
 	.perm-hint {

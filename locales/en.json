@@ -294,6 +294,10 @@
 	"work.deleteConfirm": "Delete this work entry?",
 	"work.notMember": "You are not a member of this project, you cannot log work",
 
+	"filter.from": "From",
+	"filter.to": "To",
+	"filter.clear": "Clear filter",
+
 	"report.title": "Project report",
 	"report.noAccess": "You don't have permission to view this report",
 	"report.summary": "Summary",
@@ -320,6 +324,7 @@
 	"report.byEmployee.inactive": "inactive",
 
 	"report.daily.title": "Last 30 days",
+	"report.daily.title.filtered": "Daily breakdown (filtered period)",
 	"report.daily.empty": "No entries in the last 30 days",
 	"report.daily.hours": "h",
 

@@ -8,7 +8,7 @@
 		"hu": "An Racona application",
 		"en": "An Racona application"
 	},
-	"version": "0.6.1",
+	"version": "0.6.6",
 	"author": "Racona Developer <dev@example.com>",
 	"entry": "dist/index.iife.js",
 	"icon": "icon.webp",
