@@ -5,11 +5,11 @@
 		"en": "Racona Work"
 	},
 	"description": {
-		"hu": "An Racona application",
+		"hu": "Céges nyilvántartó alkalmazás (dolgozó kezelése, projektek, szabadságok).",
 		"en": "An Racona application"
 	},
-	"version": "0.6.6",
-	"author": "Racona Developer <dev@example.com>",
+	"version": "0.8.6",
+	"author": "Racona Developer <szigeti.developer@gmail.com>",
 	"entry": "dist/index.iife.js",
 	"icon": "icon.webp",
 	"iconStyle": "cover",

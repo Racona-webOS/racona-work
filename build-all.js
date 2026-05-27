@@ -5,7 +5,7 @@
  */
 
 import { execSync } from 'child_process';
-import { readdirSync, existsSync } from 'fs';
+import { readdirSync, existsSync, rmSync } from 'fs';
 import { resolve } from 'path';
 
 const __dirname = import.meta.dir;
@@ -25,6 +25,11 @@ try {
 // 2. Build components
 const componentsDir = resolve(__dirname, 'src/components');
 if (existsSync(componentsDir)) {
+	// Töröljük a dist/components-t hogy a vite cache ne skippelje a módosult fájlokat
+	const distComponentsDir = resolve(__dirname, 'dist/components');
+	if (existsSync(distComponentsDir)) {
+		rmSync(distComponentsDir, { recursive: true, force: true });
+	}
 	const files = readdirSync(componentsDir);
 	const svelteFiles = files.filter((f) => f.endsWith('.svelte'));
 

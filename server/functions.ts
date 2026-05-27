@@ -344,15 +344,54 @@ export async function createEmployeeWithUser(
 		);
 		const companyName = companyNameResult.rows[0]?.value ?? 'Racona';
 
+		// Szervezet neve, amibe a dolgozót felvették.
+		const orgResult = await context.db.query(
+			`SELECT name FROM ${schemaName}.organizations WHERE id = $1`,
+			[params.organizationId]
+		);
+		const organizationName = orgResult.rows[0]?.name ?? '';
+
+		// A plugin megjelenített neve (HU lokalizált) a platform.apps táblából.
+		// Fallback a pluginId-ra, ha nincs bejegyzés vagy hiba lép fel.
+		let pluginName = context.pluginId;
+		try {
+			const appResult = await context.db.query(
+				`SELECT name FROM platform.apps WHERE app_id = $1`,
+				[context.pluginId]
+			);
+			const nameJson = appResult.rows[0]?.name as Record<string, string> | null | undefined;
+			if (nameJson && typeof nameJson === 'object') {
+				pluginName = nameJson['hu'] ?? nameJson['en'] ?? context.pluginId;
+			}
+		} catch (lookupErr) {
+			console.warn('[Work] Plugin név lekérése sikertelen:', lookupErr);
+		}
+
+		// A template engine csak {{var}} szintaxist támogat (nincs {{#if}}),
+		// ezért a feltételes blokkokat itt formázzuk előre. Ha nincs érték,
+		// üres string megy át, és a placeholder eltűnik a kimenetből.
+		const positionHtml = params.position
+			? `<p style="margin: 0 0 4px; font-size: 14px; color: #18181b;"><strong>Beosztás:</strong> ${params.position}</p>`
+			: '';
+		const departmentHtml = params.department
+			? `<p style="margin: 0; font-size: 14px; color: #18181b;"><strong>Részleg:</strong> ${params.department}</p>`
+			: '';
+		const positionText = params.position ? `  Beosztás: ${params.position}\n` : '';
+		const departmentText = params.department ? `  Részleg: ${params.department}\n` : '';
+
 		await context.email?.send({
 			to: params.email,
 			template: 'employee_welcome',
 			data: {
 				name: params.name,
 				email: params.email,
-				position: params.position ?? null,
-				department: params.department ?? null,
-				companyName
+				companyName,
+				organizationName,
+				pluginName,
+				positionHtml,
+				departmentHtml,
+				positionText,
+				departmentText
 			},
 			locale: 'hu'
 		});

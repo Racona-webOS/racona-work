@@ -9,7 +9,7 @@
 </script>
 
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, createRawSnippet } from 'svelte';
 	import type {} from '@racona/sdk/types';
 	import type {
 		EmployeeRow,
@@ -45,7 +45,6 @@
 	const createActionsColumn = $derived(sdk?.components?.createActionsColumn);
 	const Input = $derived(sdk?.components?.Input);
 	const Button = $derived(sdk?.components?.Button);
-	let createRawSnippet: any = $state(null);
 
 	// --- Táblázat állapot ---
 	let data = $state<EmployeeRow[]>([]);
@@ -187,7 +186,7 @@
 
 	// --- Oszlopok ---
 	function buildColumns() {
-		if (!DataTableColumnHeader || !renderComponent || !renderSnippet || !createRawSnippet || !createActionsColumn) {
+		if (!DataTableColumnHeader || !renderComponent || !renderSnippet || !createActionsColumn) {
 			columns = [];
 			return;
 		}
@@ -645,11 +644,6 @@
 			currentOrganization = orgStore.currentOrganization;
 			hasAccess = orgStore.hasAccess;
 		}
-
-		try {
-			const svelteModule = await import('svelte');
-			createRawSnippet = svelteModule.createRawSnippet;
-		} catch {}
 
 		buildColumns();
 		if (sdk?.remote && currentOrganization) loadData();

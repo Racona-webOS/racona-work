@@ -723,29 +723,40 @@ export async function getProjectReport(
 	const activeMemberCount = byEmployee.filter((e) => e.entryCount > 0).length;
 
 	// --- Utolsó 30 nap napi bontás (vagy szűrt időszak) ---
-	let dailyFromCondition: string;
-	let dailyFromParams: unknown[];
+	// Minden napot visszaadunk az intervallumban (0 órával is), hogy a chart
+	// folytonos legyen, ne csak az aktív napokat mutassa.
+	let dailyFromExpr: string;
+	let dailyToExpr: string;
+	const dailyParams: unknown[] = [params.projectId];
 	if (params.from || params.to) {
-		// Ha van szűrő, a szűrt intervallumban adjuk vissza a napi bontást
-		const conds: string[] = [`project_id = $1`];
-		const p: unknown[] = [params.projectId];
-		if (params.from) { p.push(params.from); conds.push(`work_date >= $${p.length}`); }
-		if (params.to) { p.push(params.to); conds.push(`work_date <= $${p.length}`); }
-		dailyFromCondition = conds.join(' AND ');
-		dailyFromParams = p;
+		if (params.from) {
+			dailyParams.push(params.from);
+			dailyFromExpr = `$${dailyParams.length}::date`;
+		} else {
+			// Nincs from → a projekten belüli legkorábbi bejegyzés (vagy ma, ha üres)
+			dailyFromExpr = `(SELECT COALESCE(MIN(work_date), CURRENT_DATE) FROM app__racona_work.work_entries WHERE project_id = $1)`;
+		}
+		if (params.to) {
+			dailyParams.push(params.to);
+			dailyToExpr = `$${dailyParams.length}::date`;
+		} else {
+			dailyToExpr = `CURRENT_DATE`;
+		}
 	} else {
-		dailyFromCondition = `project_id = $1 AND work_date >= (CURRENT_DATE - INTERVAL '29 days')`;
-		dailyFromParams = [params.projectId];
+		dailyFromExpr = `(CURRENT_DATE - INTERVAL '29 days')::date`;
+		dailyToExpr = `CURRENT_DATE`;
 	}
+
 	const dailyR = await context.db.query(
-		`SELECT work_date AS date,
-		        COALESCE(SUM(hours), 0) AS hours,
-		        COUNT(*)::int AS entries
-		   FROM app__racona_work.work_entries
-		  WHERE ${dailyFromCondition}
-		  GROUP BY work_date
-		  ORDER BY work_date ASC`,
-		dailyFromParams
+		`SELECT to_char(d::date, 'YYYY-MM-DD') AS date,
+		        COALESCE(SUM(we.hours), 0) AS hours,
+		        COUNT(we.id)::int AS entries
+		   FROM generate_series(${dailyFromExpr}, ${dailyToExpr}, INTERVAL '1 day') d
+		   LEFT JOIN app__racona_work.work_entries we
+		          ON we.work_date = d::date AND we.project_id = $1
+		  GROUP BY d
+		  ORDER BY d ASC`,
+		dailyParams
 	);
 	const daily: ProjectReportDaily[] = dailyR.rows.map((r: any) => ({
 		date: r.date,

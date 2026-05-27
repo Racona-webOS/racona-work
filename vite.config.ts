@@ -74,9 +74,19 @@ export default defineConfig(({ command }) => ({
 						formats: ['iife']
 					},
 					rollupOptions: {
+						// A Svelte runtime-ot a core osztja meg minden pluginnal
+						// (window.__RACONA_SVELTE__, window.__RACONA_SVELTE_INTERNAL_CLIENT__).
+						// Így minden plugin ugyanazt a Svelte runtime-ot használja, mint a
+						// core, és nem dobódik `effect_orphan` hiba a core-ból átadott
+						// komponensek (DataTable, Input, stb.) renderelésekor.
+						external: ['svelte', 'svelte/internal/client'],
 						output: {
 							entryFileNames: `${fileName}.iife.js`,
-							inlineDynamicImports: true
+							inlineDynamicImports: true,
+							globals: {
+								svelte: '__RACONA_SVELTE__',
+								'svelte/internal/client': '__RACONA_SVELTE_INTERNAL_CLIENT__'
+							}
 						}
 					},
 					outDir: 'dist',

@@ -78,7 +78,17 @@
 	let orgEmployees = $state<EmployeeRow[]>([]);
 	let showAddMember = $state(false);
 	let addMemberEmployeeId = $state<number | null>(null);
-	let addMemberRole = $state<'member' | 'lead' | 'owner'>('member');
+	type ProjectMemberRole =
+		| 'member'
+		| 'member_developer'
+		| 'member_designer'
+		| 'member_tester'
+		| 'member_external'
+		| 'member_consultant'
+		| 'member_observer'
+		| 'lead'
+		| 'owner';
+	let addMemberRole = $state<ProjectMemberRole>('member');
 	let addMemberSaving = $state(false);
 
 	// --- SDK DatePicker komponens ---
@@ -114,6 +124,93 @@
 
 	// Csak akkor látható a fül és érdemes betölteni, ha van jog.
 	let canViewReport = $derived(canViewAllWork);
+
+	// --- CSV export ----------------------------------------------------------
+	let exportLoading = $state(false);
+
+	async function exportReportCsv() {
+		if (!project || exportLoading) return;
+		exportLoading = true;
+		try {
+			// Összes bejegyzés lekérése (max 10 000 sor)
+			const result = (await sdk.remote.call('listWorkEntries', {
+				projectId,
+				scope: 'all',
+				pageSize: 10000,
+				sortBy: 'work_date',
+				sortOrder: 'asc',
+				...(reportFrom ? { from: reportFrom } : {}),
+				...(reportTo ? { to: reportTo } : {})
+			})) as WorkEntryListResult;
+
+			const entries = result?.data ?? [];
+
+			// Fejléc
+			const headers = [
+				'ID',
+				t('work.columns.date') || 'Dátum',
+				t('work.columns.employee') || 'Dolgozó',
+				'E-mail',
+				t('work.form.category') || 'Kategória',
+				t('work.columns.title') || 'Megnevezés',
+				t('work.form.description') || 'Leírás',
+				t('work.columns.hours') || 'Óra',
+				t('projects.detail.createdAt') || 'Létrehozva',
+				t('projects.detail.updatedAt') || 'Módosítva'
+			];
+
+			const escapeCell = (val: string | number | null | undefined): string => {
+				if (val === null || val === undefined) return '';
+				const s = String(val);
+				// Ha tartalmaz vesszőt, idézőjelet vagy sortörést, idézőjelbe tesszük
+				if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+					return '"' + s.replace(/"/g, '""') + '"';
+				}
+				return s;
+			};
+
+			const formatDateOnly = (raw: string | null | undefined): string => {
+				if (!raw) return '';
+				// YYYY-MM-DD alakú stringből csak a dátumot vesszük
+				return String(raw).slice(0, 10);
+			};
+
+			const rows = entries.map((e) => [
+				escapeCell(e.id),
+				escapeCell(formatDateOnly(e.workDate)),
+				escapeCell(e.employeeName),
+				escapeCell(e.employeeEmail),
+				escapeCell(e.categoryName ?? ''),
+				escapeCell(e.title),
+				escapeCell(e.description ?? ''),
+				escapeCell(e.hours),
+				escapeCell(formatDateOnly(e.createdAt)),
+				escapeCell(formatDateOnly(e.updatedAt))
+			]);
+
+			const csvContent =
+				'\uFEFF' + // BOM az Excel kompatibilitáshoz
+				[headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+
+			const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			const projectSlug = project.name.replace(/[^a-zA-Z0-9áéíóöőúüűÁÉÍÓÖŐÚÜŰ]/g, '_').toLowerCase();
+			const dateStr = new Date().toISOString().slice(0, 10);
+			a.href = url;
+			a.download = `${projectSlug}_feladatok_${dateStr}.csv`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+
+			sdk?.ui?.toast?.(t('report.export.success') || 'CSV exportálva', 'success');
+		} catch (err: any) {
+			sdk?.ui?.toast?.(err?.message ?? (t('error.saveFailed') || 'Export sikertelen'), 'error');
+		} finally {
+			exportLoading = false;
+		}
+	}
 
 	// Kategória max (riport bar skálázáshoz)
 	let reportCatMax = $derived(
@@ -972,10 +1069,10 @@
 										{new Date(entry.workDate).toLocaleDateString()}
 									</div>
 									<div class="entry-main">
-										<div class="entry-title">{entry.title}</div>
 										{#if entry.categoryName}
 											<div class="entry-category">{entry.categoryName}</div>
 										{/if}
+										<div class="entry-title">{entry.title}</div>
 										{#if entry.description}
 											<div class="entry-desc">{entry.description}</div>
 										{/if}
@@ -1041,7 +1138,19 @@
 						<div class="error-banner">{reportError}</div>
 					{:else if report}
 						<!-- Összegző kártyák -->
-						<div class="kpi-grid">
+						<div class="kpi-block">
+							<div class="kpi-block-header">
+								<span></span>
+								<button
+									class="btn-secondary btn-sm"
+									onclick={exportReportCsv}
+									disabled={exportLoading}
+									title={t('report.export.tooltip') || 'Feladatok exportálása CSV-be'}
+								>
+									{exportLoading ? (t('loading') || '...') : ('⬇ CSV')}
+								</button>
+							</div>
+							<div class="kpi-grid">
 							<div class="kpi">
 								<span class="kpi-label">{t('report.totalHours')}</span>
 								<span class="kpi-value">{report.totals.totalHours.toFixed(1)} {t('work.columns.hours').toLowerCase()}</span>
@@ -1076,6 +1185,7 @@
 										: '—'}
 								</span>
 							</div>
+						</div>
 						</div>
 
 						<!-- Projekt idővonal -->
@@ -1432,6 +1542,12 @@
 						<span>{t('projects.members.role')}</span>
 						<select class="input" bind:value={addMemberRole}>
 							<option value="member">{t('projects.members.roleOptions.member')}</option>
+							<option value="member_developer">{t('projects.members.roleOptions.member_developer')}</option>
+							<option value="member_designer">{t('projects.members.roleOptions.member_designer')}</option>
+							<option value="member_tester">{t('projects.members.roleOptions.member_tester')}</option>
+							<option value="member_external">{t('projects.members.roleOptions.member_external')}</option>
+							<option value="member_consultant">{t('projects.members.roleOptions.member_consultant')}</option>
+							<option value="member_observer">{t('projects.members.roleOptions.member_observer')}</option>
 							<option value="lead">{t('projects.members.roleOptions.lead')}</option>
 							<option value="owner">{t('projects.members.roleOptions.owner')}</option>
 						</select>
@@ -1552,11 +1668,7 @@
 					<div class="form-row-2">
 						<label>
 							<span>{t('work.form.workDate')} *</span>
-							{#if DatePickerComponent}
-								<svelte:component this={DatePickerComponent} bind:value={workWorkDate} locale="hu-HU" placeholder="éééé. hh. nn." />
-							{:else}
-								<input class="input" type="date" bind:value={workWorkDate} />
-							{/if}
+							<input class="input date-input" type="date" bind:value={workWorkDate} />
 						</label>
 						<label>
 							<span>{t('work.form.hours')} *</span>
@@ -2099,6 +2211,7 @@
 
 	.entry-category {
 		display: inline-block;
+		align-self: flex-start;
 		font-size: 0.7rem;
 		font-weight: 500;
 		color: var(--color-primary, #3730a3);
@@ -2145,12 +2258,40 @@
 		gap: 0.75rem;
 	}
 
+	/* Natív date input — visszaadjuk a böngésző gyári naptár ikonját */
+	.date-input {
+		appearance: auto;
+		-webkit-appearance: auto;
+	}
+
+	.date-input::-webkit-calendar-picker-indicator {
+		display: block;
+		cursor: pointer;
+		opacity: 0.7;
+	}
+
+	.date-input::-webkit-calendar-picker-indicator:hover {
+		opacity: 1;
+	}
+
 	:global(.dark) .entry-row {
 		background: var(--color-card, oklch(0.205 0 0));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}
 
 	/* ---------- Riport fül ---------- */
+	.kpi-block {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.kpi-block-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+	}
+
 	.kpi-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

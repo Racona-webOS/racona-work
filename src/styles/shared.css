@@ -44,6 +44,11 @@
 
 .btn-secondary:hover { background: var(--color-accent, #f1f5f9); }
 
+.btn-sm {
+	padding: 0.25rem 0.625rem;
+	font-size: 0.8rem;
+}
+
 .btn-danger {
 	background: #dc2626;
 	color: white;
@@ -100,6 +105,20 @@ label {
 }
 
 label span {
+	font-size: 0.875rem;
+	font-weight: 500;
+	color: var(--color-foreground, #0f172a);
+}
+
+/* DatePicker és más interaktív komponensek wrapper-e label helyett,
+   hogy elkerüljük a label click-forwarding problémát */
+.input-group {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+
+.input-group span {
 	font-size: 0.875rem;
 	font-weight: 500;
 	color: var(--color-foreground, #0f172a);
@@ -374,6 +393,20 @@ label span {
 }
 
 } /* .rw záró */
+
+/* ═══════════════════════════════════════════════════════════════
+   DATEPICKER PORTAL Z-INDEX FIX
+   A bits-ui Popover portálba rendereli a naptárat (document.body),
+   de a modal overlay z-index:100 alá esne. Globálisan felülírjuk.
+   ═══════════════════════════════════════════════════════════════ */
+
+:global([data-slot="popover-content"]) {
+	z-index: 9999 !important;
+}
+
+:global([data-bits-floating-content]) {
+	z-index: 9999 !important;
+}
 
 /* ═══════════════════════════════════════════════════════════════
    SÖTÉT MÓD

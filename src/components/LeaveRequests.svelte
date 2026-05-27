@@ -9,7 +9,7 @@
 </script>
 
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, createRawSnippet } from 'svelte';
 	import type {} from '@racona/sdk/types';
 	import type {
 		LeaveRequestRow,
@@ -60,7 +60,6 @@
 	const renderSnippet = $derived(sdk?.components?.renderSnippet);
 	const createActionsColumn = $derived(sdk?.components?.createActionsColumn);
 	const DatePickerComponent = $derived(sdk?.components?.DatePicker ?? null);
-	let createRawSnippet: any = $state(null);
 
 	// --- Táblázat állapot ---
 	let data = $state<LeaveRequestRow[]>([]);
@@ -404,7 +403,7 @@
 
 	// --- Oszlopok ---
 	function buildColumns() {
-		if (!DataTableColumnHeader || !renderComponent || !renderSnippet || !createRawSnippet || !createActionsColumn) {
+		if (!DataTableColumnHeader || !renderComponent || !renderSnippet || !createActionsColumn) {
 			columns = [];
 			return;
 		}
@@ -578,10 +577,6 @@
 			}
 		}
 
-		try {
-			const svelteModule = await import('svelte');
-			createRawSnippet = svelteModule.createRawSnippet;
-		} catch {}
 		buildColumns();
 		if (sdk?.remote && currentOrganization) loadData();
 	});

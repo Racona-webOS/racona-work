@@ -388,11 +388,6 @@
 		background: var(--color-primary-subtle, #eef2ff);
 	}
 
-	.org-item-icon {
-		font-size: 1.25rem;
-		flex-shrink: 0;
-	}
-
 	.org-item-details {
 		display: flex;
 		flex-direction: column;
