@@ -341,6 +341,9 @@
 	"report.inactive.description": "Project members who haven't logged work in the last 14 days",
 	"report.inactive.empty": "All members are active",
 
+	"report.section.collapse": "Collapse",
+	"report.section.expand": "Expand",
+
 	"projects.permissions.title": "Project permissions",
 	"projects.permissions.subtitle": "Project-level role overrides",
 	"projects.permissions.selectProject": "Select a project",

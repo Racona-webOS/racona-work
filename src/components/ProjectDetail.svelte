@@ -125,6 +125,18 @@
 	// Csak akkor látható a fül és érdemes betölteni, ha van jog.
 	let canViewReport = $derived(canViewAllWork);
 
+	// --- Riport szekció collapse állapotok -----------------------------------
+	let sectionCollapsed = $state<Record<string, boolean>>({
+		byEmployee: false,
+		byCategory: false,
+		inactive: false,
+		recent: false
+	});
+
+	function toggleSection(key: string) {
+		sectionCollapsed[key] = !sectionCollapsed[key];
+	}
+
 	// --- CSV export ----------------------------------------------------------
 	let exportLoading = $state(false);
 
@@ -147,16 +159,13 @@
 
 			// Fejléc
 			const headers = [
-				'ID',
 				t('work.columns.date') || 'Dátum',
 				t('work.columns.employee') || 'Dolgozó',
 				'E-mail',
 				t('work.form.category') || 'Kategória',
 				t('work.columns.title') || 'Megnevezés',
 				t('work.form.description') || 'Leírás',
-				t('work.columns.hours') || 'Óra',
-				t('projects.detail.createdAt') || 'Létrehozva',
-				t('projects.detail.updatedAt') || 'Módosítva'
+				t('work.columns.hours') || 'Óra'
 			];
 
 			const escapeCell = (val: string | number | null | undefined): string => {
@@ -176,16 +185,13 @@
 			};
 
 			const rows = entries.map((e) => [
-				escapeCell(e.id),
 				escapeCell(formatDateOnly(e.workDate)),
 				escapeCell(e.employeeName),
 				escapeCell(e.employeeEmail),
 				escapeCell(e.categoryName ?? ''),
 				escapeCell(e.title),
 				escapeCell(e.description ?? ''),
-				escapeCell(e.hours),
-				escapeCell(formatDateOnly(e.createdAt)),
-				escapeCell(formatDateOnly(e.updatedAt))
+				escapeCell(e.hours)
 			]);
 
 			const csvContent =
@@ -1189,6 +1195,7 @@
 						</div>
 
 						<!-- Projekt idővonal -->
+						{#if report.project.startDate || report.project.endDate}
 						<div class="report-section">
 							<div class="section-header">
 								<h3>{t('report.progress')}</h3>
@@ -1231,89 +1238,114 @@
 								{/if}
 							</div>
 						</div>
+						{/if}
 
 						<!-- Dolgozónkénti bontás -->
 						<div class="report-section">
-							<h3>{t('report.byEmployee')}</h3>
-							{#if report.byEmployee.length === 0}
-								<p class="empty-state">{t('report.byEmployee.empty')}</p>
-							{:else}
-								{@const maxHours = Math.max(
-									1,
-									...report.byEmployee.map((e) => e.totalHours)
-								)}
-								<div class="emp-list">
-									{#each report.byEmployee as emp (emp.employeeId)}
-										<div class="emp-row">
-											<div class="avatar">
-												{#if emp.userImage}
-													<img src={emp.userImage} alt={emp.userName} />
-												{:else}
-													<div class="avatar-placeholder">
-														{emp.userName?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() ?? '?'}
+							<div class="section-collapse-header">
+								<h3>{t('report.byEmployee')}</h3>
+								<button
+									class="collapse-btn"
+									onclick={() => toggleSection('byEmployee')}
+									title={sectionCollapsed.byEmployee ? t('report.section.expand') : t('report.section.collapse')}
+									aria-expanded={!sectionCollapsed.byEmployee}
+								>
+									<svg class="collapse-icon" class:rotated={sectionCollapsed.byEmployee} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+								</button>
+							</div>
+							{#if !sectionCollapsed.byEmployee}
+								{#if report.byEmployee.length === 0}
+									<p class="empty-state">{t('report.byEmployee.empty')}</p>
+								{:else}
+									{@const maxHours = Math.max(
+										1,
+										...report.byEmployee.map((e) => e.totalHours)
+									)}
+									<div class="emp-list">
+										{#each report.byEmployee as emp (emp.employeeId)}
+											<div class="emp-row">
+												<div class="avatar">
+													{#if emp.userImage}
+														<img src={emp.userImage} alt={emp.userName} />
+													{:else}
+														<div class="avatar-placeholder">
+															{emp.userName?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() ?? '?'}
+														</div>
+													{/if}
+												</div>
+												<div class="emp-main">
+													<div class="emp-head">
+														<span class="emp-name">{emp.userName}</span>
+														<span class="emp-hours">
+															{emp.totalHours.toFixed(1)} {t('report.byEmployee.hours')}
+														</span>
 													</div>
-												{/if}
-											</div>
-											<div class="emp-main">
-												<div class="emp-head">
-													<span class="emp-name">{emp.userName}</span>
-													<span class="emp-hours">
-														{emp.totalHours.toFixed(1)} {t('report.byEmployee.hours')}
-													</span>
-												</div>
-												<div class="emp-bar">
-													<div
-														class="emp-bar-fill"
-														style="width: {(emp.totalHours / maxHours) * 100}%"
-													></div>
-												</div>
-												<div class="emp-meta">
-													<span>
-														{emp.entryCount} {t('report.byEmployee.entries')}
-													</span>
-													<span>·</span>
-													<span>
-														{t('report.byEmployee.lastEntry')}:
-														{emp.lastEntryDate
-															? new Date(emp.lastEntryDate).toLocaleDateString()
-															: t('report.byEmployee.never')}
-													</span>
+													<div class="emp-bar">
+														<div
+															class="emp-bar-fill"
+															style="width: {(emp.totalHours / maxHours) * 100}%"
+														></div>
+													</div>
+													<div class="emp-meta">
+														<span>
+															{emp.entryCount} {t('report.byEmployee.entries')}
+														</span>
+														<span>·</span>
+														<span>
+															{t('report.byEmployee.lastEntry')}:
+															{emp.lastEntryDate
+																? new Date(emp.lastEntryDate).toLocaleDateString()
+																: t('report.byEmployee.never')}
+														</span>
+													</div>
 												</div>
 											</div>
-										</div>
-									{/each}
-								</div>
+										{/each}
+									</div>
+								{/if}
 							{/if}
 						</div>
 
 						<!-- Kategóriánkénti bontás -->
 						<div class="report-section">
-							<h3>{t('report.byCategory')}</h3>
-							{#if !report.byCategory || report.byCategory.length === 0}
-								<p class="empty-state">{t('report.daily.empty')}</p>
-							{:else}
-								<div class="cat-list">
-									{#each report.byCategory as cat (cat.categoryId ?? 'none')}
-										<div class="cat-row">
-											<div class="cat-info">
-												<span class="cat-name">{cat.categoryName}</span>
-												<span class="cat-meta">
-													{cat.entryCount} {t('report.byEmployee.entries')} ·
+							<div class="section-collapse-header">
+								<h3>{t('report.byCategory')}</h3>
+								<button
+									class="collapse-btn"
+									onclick={() => toggleSection('byCategory')}
+									title={sectionCollapsed.byCategory ? t('report.section.expand') : t('report.section.collapse')}
+									aria-expanded={!sectionCollapsed.byCategory}
+								>
+									<svg class="collapse-icon" class:rotated={sectionCollapsed.byCategory} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+								</button>
+							</div>
+							{#if !sectionCollapsed.byCategory}
+								{#if !report.byCategory || report.byCategory.length === 0}
+									<p class="empty-state">{t('report.daily.empty')}</p>
+								{:else}
+									<div class="cat-list">
+										{#each report.byCategory as cat (cat.categoryId ?? 'none')}
+											<div class="cat-row">
+												<div class="cat-info">
+													<span class="cat-name">{cat.categoryName}</span>
+													<span class="cat-meta">
+														{cat.entryCount} {t('report.byEmployee.entries')} ·
+														{cat.totalHours.toFixed(1)} {t('work.columns.hours').toLowerCase()}
+													</span>
+												</div>
+												<div class="cat-bar-wrap">
+													<div
+														class="cat-bar-fill"
+														style="width: {Math.round((cat.totalHours / reportCatMax) * 100)}%"
+													></div>
+												</div>
+												<span class="cat-hours">
 													{cat.totalHours.toFixed(1)} {t('work.columns.hours').toLowerCase()}
 												</span>
 											</div>
-											<div class="cat-bar-wrap">
-												<div
-													class="cat-bar-fill"
-													style="width: {Math.round((cat.totalHours / reportCatMax) * 100)}%"
-												></div>
-											</div>
-											<span class="cat-hours">
-												{cat.totalHours.toFixed(1)} {t('work.columns.hours').toLowerCase()}
-											</span>
-										</div>
-									{/each}
-								</div>
+										{/each}
+									</div>
+								{/if}
 							{/if}
 						</div>
 
@@ -1354,62 +1386,86 @@
 						<!-- Inaktív tagok -->
 						{#if report.inactiveMembers.length > 0}
 							<div class="report-section">
-								<div class="section-header">
+								<div class="section-collapse-header">
 									<div>
 										<h3>{t('report.inactive.title')}</h3>
-										<p class="perm-hint">{t('report.inactive.description')}</p>
+										{#if !sectionCollapsed.inactive}
+											<p class="perm-hint">{t('report.inactive.description')}</p>
+										{/if}
 									</div>
+									<button
+										class="collapse-btn"
+										onclick={() => toggleSection('inactive')}
+										title={sectionCollapsed.inactive ? t('report.section.expand') : t('report.section.collapse')}
+										aria-expanded={!sectionCollapsed.inactive}
+									>
+										<svg class="collapse-icon" class:rotated={sectionCollapsed.inactive} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+									</button>
 								</div>
-								<div class="inactive-list">
-									{#each report.inactiveMembers as emp (emp.employeeId)}
-										<div class="inactive-row">
-											<div class="avatar">
-												{#if emp.userImage}
-													<img src={emp.userImage} alt={emp.userName} />
-												{:else}
-													<div class="avatar-placeholder">
-														{emp.userName?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() ?? '?'}
-													</div>
-												{/if}
+								{#if !sectionCollapsed.inactive}
+									<div class="inactive-list">
+										{#each report.inactiveMembers as emp (emp.employeeId)}
+											<div class="inactive-row">
+												<div class="avatar">
+													{#if emp.userImage}
+														<img src={emp.userImage} alt={emp.userName} />
+													{:else}
+														<div class="avatar-placeholder">
+															{emp.userName?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() ?? '?'}
+														</div>
+													{/if}
+												</div>
+												<div class="inactive-info">
+													<span class="emp-name">{emp.userName}</span>
+													<span class="emp-meta-sub">
+														{emp.lastEntryDate
+															? `${t('report.byEmployee.lastEntry')}: ${new Date(emp.lastEntryDate).toLocaleDateString()}`
+															: t('report.byEmployee.never')}
+													</span>
+												</div>
+												<span class="tag tag-warn">{t('report.byEmployee.inactive')}</span>
 											</div>
-											<div class="inactive-info">
-												<span class="emp-name">{emp.userName}</span>
-												<span class="emp-meta-sub">
-													{emp.lastEntryDate
-														? `${t('report.byEmployee.lastEntry')}: ${new Date(emp.lastEntryDate).toLocaleDateString()}`
-														: t('report.byEmployee.never')}
-												</span>
-											</div>
-											<span class="tag tag-warn">{t('report.byEmployee.inactive')}</span>
-										</div>
-									{/each}
-								</div>
+										{/each}
+									</div>
+								{/if}
 							</div>
 						{/if}
 
 						<!-- Legutóbbi bejegyzések -->
 						<div class="report-section">
-							<h3>{t('report.recent.title')}</h3>
-							{#if report.recentEntries.length === 0}
-								<p class="empty-state">{t('report.recent.empty')}</p>
-							{:else}
-								<div class="entries-list">
-									{#each report.recentEntries as entry (entry.id)}
-										<div class="entry-row">
-											<div class="entry-date">
-												{new Date(entry.workDate).toLocaleDateString()}
+							<div class="section-collapse-header">
+								<h3>{t('report.recent.title')}</h3>
+								<button
+									class="collapse-btn"
+									onclick={() => toggleSection('recent')}
+									title={sectionCollapsed.recent ? t('report.section.expand') : t('report.section.collapse')}
+									aria-expanded={!sectionCollapsed.recent}
+								>
+									<svg class="collapse-icon" class:rotated={sectionCollapsed.recent} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+								</button>
+							</div>
+							{#if !sectionCollapsed.recent}
+								{#if report.recentEntries.length === 0}
+									<p class="empty-state">{t('report.recent.empty')}</p>
+								{:else}
+									<div class="entries-list">
+										{#each report.recentEntries as entry (entry.id)}
+											<div class="entry-row">
+												<div class="entry-date">
+													{new Date(entry.workDate).toLocaleDateString()}
+												</div>
+												<div class="entry-main">
+													<div class="entry-title">{entry.title}</div>
+													{#if entry.description}
+														<div class="entry-desc">{entry.description}</div>
+													{/if}
+													<div class="entry-meta">👤 {entry.employeeName}</div>
+												</div>
+												<div class="entry-hours">{entry.hours.toFixed(2)} {t('work.columns.hours').toLowerCase()}</div>
 											</div>
-											<div class="entry-main">
-												<div class="entry-title">{entry.title}</div>
-												{#if entry.description}
-													<div class="entry-desc">{entry.description}</div>
-												{/if}
-												<div class="entry-meta">👤 {entry.employeeName}</div>
-											</div>
-											<div class="entry-hours">{entry.hours.toFixed(2)} {t('work.columns.hours').toLowerCase()}</div>
-										</div>
-									{/each}
-								</div>
+										{/each}
+									</div>
+								{/if}
 							{/if}
 						</div>
 					{/if}
@@ -2340,6 +2396,53 @@
 		margin: 0;
 		font-size: 1rem;
 		font-weight: 600;
+	}
+
+	.section-collapse-header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.section-collapse-header > div {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.collapse-btn {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.75rem;
+		height: 1.75rem;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.375rem;
+		background: transparent;
+		color: var(--color-muted-foreground, #64748b);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+		margin-top: 0.05rem;
+	}
+
+	.collapse-btn:hover {
+		background: var(--color-accent, #f1f5f9);
+		color: var(--color-foreground, #0f172a);
+	}
+
+	.collapse-icon {
+		transition: transform 0.2s ease;
+	}
+
+	.collapse-icon.rotated {
+		transform: rotate(180deg);
+	}
+
+	:global(.dark) .collapse-btn:hover {
+		background: var(--color-accent, oklch(0.269 0 0));
+		color: oklch(0.985 0 0);
 	}
 
 	.tag {
