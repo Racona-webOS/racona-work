@@ -26,7 +26,8 @@
 		WorkEntryListResult,
 		WorkEntryCategory,
 		ProjectReport,
-		ProjectReportCategory
+		ProjectReportCategory,
+		ProjectReportEmployeeCategory
 	} from '../../server/functions.js';
 	import AccessDenied from './AccessDenied.svelte';
 	import Checkbox from './ui/Checkbox.svelte';
@@ -135,6 +136,19 @@
 
 	function toggleSection(key: string) {
 		sectionCollapsed[key] = !sectionCollapsed[key];
+	}
+
+	// --- Dolgozónkénti kategória-bontás expand állapot -----------------------
+	let expandedEmployees = $state<Set<number>>(new Set());
+
+	function toggleEmployeeExpand(employeeId: number) {
+		const next = new Set(expandedEmployees);
+		if (next.has(employeeId)) {
+			next.delete(employeeId);
+		} else {
+			next.add(employeeId);
+		}
+		expandedEmployees = next;
 	}
 
 	// --- CSV export ----------------------------------------------------------
@@ -1263,42 +1277,80 @@
 									)}
 									<div class="emp-list">
 										{#each report.byEmployee as emp (emp.employeeId)}
-											<div class="emp-row">
-												<div class="avatar">
-													{#if emp.userImage}
-														<img src={emp.userImage} alt={emp.userName} />
-													{:else}
-														<div class="avatar-placeholder">
-															{emp.userName?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() ?? '?'}
+											{@const isExpanded = expandedEmployees.has(emp.employeeId)}
+											{@const hasCats = emp.byCategory && emp.byCategory.length > 0}
+											<div class="emp-row" class:emp-row-expanded={isExpanded}>
+												<div class="emp-row-main">
+													<div class="avatar">
+														{#if emp.userImage}
+															<img src={emp.userImage} alt={emp.userName} />
+														{:else}
+															<div class="avatar-placeholder">
+																{emp.userName?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() ?? '?'}
+															</div>
+														{/if}
+													</div>
+													<div class="emp-main">
+														<div class="emp-head">
+															<span class="emp-name">{emp.userName}</span>
+															<span class="emp-hours">
+																{emp.totalHours.toFixed(1)} {t('report.byEmployee.hours')}
+															</span>
 														</div>
+														<div class="emp-bar">
+															<div
+																class="emp-bar-fill"
+																style="width: {(emp.totalHours / maxHours) * 100}%"
+															></div>
+														</div>
+														<div class="emp-meta">
+															<span>
+																{emp.entryCount} {t('report.byEmployee.entries')}
+															</span>
+															<span>·</span>
+															<span>
+																{t('report.byEmployee.lastEntry')}:
+																{emp.lastEntryDate
+																	? new Date(emp.lastEntryDate).toLocaleDateString()
+																	: t('report.byEmployee.never')}
+															</span>
+														</div>
+													</div>
+													{#if hasCats}
+														<button
+															class="emp-expand-btn"
+															class:emp-expand-btn-open={isExpanded}
+															onclick={() => toggleEmployeeExpand(emp.employeeId)}
+															title={isExpanded ? 'Kategóriák elrejtése' : 'Kategóriák megjelenítése'}
+															aria-expanded={isExpanded}
+														>
+															<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+														</button>
 													{/if}
 												</div>
-												<div class="emp-main">
-													<div class="emp-head">
-														<span class="emp-name">{emp.userName}</span>
-														<span class="emp-hours">
-															{emp.totalHours.toFixed(1)} {t('report.byEmployee.hours')}
-														</span>
+												{#if isExpanded && hasCats}
+													{@const empCatMax = Math.max(1, ...emp.byCategory.map((c) => c.totalHours))}
+													<div class="emp-cat-breakdown">
+														{#each emp.byCategory as cat (cat.categoryId ?? 'none')}
+															<div class="emp-cat-row">
+																<div class="emp-cat-info">
+																	<span class="emp-cat-dot"></span>
+																	<span class="emp-cat-name" title={cat.categoryName}>{cat.categoryName}</span>
+																</div>
+																<div class="emp-cat-bar-wrap">
+																	<div
+																		class="emp-cat-bar-fill"
+																		style="width: {Math.round((cat.totalHours / empCatMax) * 100)}%"
+																	></div>
+																</div>
+																<div class="emp-cat-stats">
+																	<span class="emp-cat-hours">{cat.totalHours.toFixed(1)} {t('work.columns.hours').toLowerCase()}</span>
+																	<span class="emp-cat-entries">{cat.entryCount} {t('report.byEmployee.entries')}</span>
+																</div>
+															</div>
+														{/each}
 													</div>
-													<div class="emp-bar">
-														<div
-															class="emp-bar-fill"
-															style="width: {(emp.totalHours / maxHours) * 100}%"
-														></div>
-													</div>
-													<div class="emp-meta">
-														<span>
-															{emp.entryCount} {t('report.byEmployee.entries')}
-														</span>
-														<span>·</span>
-														<span>
-															{t('report.byEmployee.lastEntry')}:
-															{emp.lastEntryDate
-																? new Date(emp.lastEntryDate).toLocaleDateString()
-																: t('report.byEmployee.never')}
-														</span>
-													</div>
-												</div>
+												{/if}
 											</div>
 										{/each}
 									</div>
@@ -2586,10 +2638,29 @@
 	}
 
 	.emp-row {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.625rem;
+		overflow: hidden;
+		transition: border-color 0.15s;
+	}
+
+	.emp-row:hover {
+		border-color: var(--color-primary, #3730a3);
+	}
+
+	.emp-row-expanded {
+		border-color: var(--color-primary, #3730a3);
+	}
+
+	.emp-row-main {
 		display: grid;
-		grid-template-columns: 2.25rem 1fr;
+		grid-template-columns: 2.25rem 1fr auto;
 		gap: 0.625rem;
 		align-items: center;
+		padding: 0.75rem;
 	}
 
 	.emp-main {
@@ -2636,6 +2707,158 @@
 		color: var(--color-muted-foreground, #64748b);
 		display: flex;
 		gap: 0.35rem;
+	}
+
+	.emp-expand-btn {
+		flex-shrink: 0;
+		width: 1.75rem;
+		height: 1.75rem;
+		border-radius: 0.375rem;
+		border: 1px solid var(--color-border, #e2e8f0);
+		background: transparent;
+		color: var(--color-muted-foreground, #64748b);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.15s ease;
+	}
+
+	.emp-expand-btn:hover {
+		background: var(--color-accent, #f1f5f9);
+		color: var(--color-foreground, #0f172a);
+		border-color: var(--color-primary, #3730a3);
+	}
+
+	.emp-expand-btn svg {
+		transition: transform 0.2s ease;
+	}
+
+	.emp-expand-btn-open svg {
+		transform: rotate(180deg);
+	}
+
+	.emp-cat-breakdown {
+		border-top: 1px solid var(--color-border, #e2e8f0);
+		background: var(--color-accent, #f8fafc);
+		padding: 0.75rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.emp-cat-row {
+		display: grid;
+		grid-template-columns: minmax(10rem, 18rem) 1fr 7rem;
+		gap: 0.75rem;
+		align-items: center;
+		padding: 0.25rem 0.375rem;
+		border-radius: 0.375rem;
+		transition: background 0.15s ease;
+	}
+
+	.emp-cat-row:hover {
+		background: rgba(99, 102, 241, 0.07);
+	}
+
+	.emp-cat-info {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		min-width: 0;
+	}
+
+	.emp-cat-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--color-primary, #3730a3);
+		flex-shrink: 0;
+		opacity: 0.6;
+	}
+
+	.emp-cat-name {
+		font-size: 0.78rem;
+		color: var(--color-foreground, #0f172a);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.emp-cat-bar-wrap {
+		width: 100%;
+		height: 5px;
+		background: var(--color-border, #e2e8f0);
+		border-radius: 999px;
+		overflow: hidden;
+	}
+
+	.emp-cat-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #6366f1, #a5b4fc);
+		border-radius: 999px;
+		transition: width 0.3s;
+	}
+
+	.emp-cat-stats {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 0.1rem;
+	}
+
+	.emp-cat-hours {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-primary, #3730a3);
+		white-space: nowrap;
+	}
+
+	.emp-cat-entries {
+		font-size: 0.68rem;
+		color: var(--color-muted-foreground, #94a3b8);
+		white-space: nowrap;
+	}
+
+	:global(.dark) .emp-row {
+		border-color: oklch(1 0 0 / 10%);
+	}
+
+	:global(.dark) .emp-row:hover,
+	:global(.dark) .emp-row-expanded {
+		border-color: oklch(0.66 0.12 264);
+	}
+
+	:global(.dark) .emp-expand-btn {
+		border-color: oklch(1 0 0 / 10%);
+		color: oklch(0.708 0 0);
+	}
+
+	:global(.dark) .emp-expand-btn:hover {
+		background: oklch(0.269 0 0);
+		color: oklch(0.985 0 0);
+		border-color: oklch(0.66 0.12 264);
+	}
+
+	:global(.dark) .emp-cat-breakdown {
+		background: oklch(0.18 0 0);
+		border-top-color: oklch(1 0 0 / 8%);
+	}
+
+	:global(.dark) .emp-cat-row:hover {
+		background: rgba(99, 102, 241, 0.12);
+	}
+
+	:global(.dark) .emp-cat-name {
+		color: oklch(0.85 0 0);
+	}
+
+	:global(.dark) .emp-cat-bar-wrap {
+		background: oklch(0.3 0 0);
+	}
+
+	:global(.dark) .emp-cat-hours {
+		color: oklch(0.75 0.12 264);
 	}
 
 	.daily-chart {

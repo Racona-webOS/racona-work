@@ -549,6 +549,13 @@ export async function deleteWorkEntry(
 
 // --- Projekt riport --------------------------------------------------------
 
+export interface ProjectReportEmployeeCategory {
+	categoryId: number | null;
+	categoryName: string;
+	totalHours: number;
+	entryCount: number;
+}
+
 export interface ProjectReportEmployee {
 	employeeId: number;
 	userId: number;
@@ -558,6 +565,8 @@ export interface ProjectReportEmployee {
 	totalHours: number;
 	entryCount: number;
 	lastEntryDate: string | null;
+	/** Kategóriánkénti bontás az adott dolgozóhoz */
+	byCategory: ProjectReportEmployeeCategory[];
 }
 
 export interface ProjectReportDaily {
@@ -698,8 +707,39 @@ export async function getProjectReport(
 		userImage: r.user_image ?? null,
 		totalHours: typeof r.total_hours === 'string' ? parseFloat(r.total_hours) : Number(r.total_hours),
 		entryCount: r.entry_count,
-		lastEntryDate: r.last_entry_date ?? null
+		lastEntryDate: r.last_entry_date ?? null,
+		byCategory: []
 	}));
+
+	// --- Dolgozónkénti + kategóriánkénti bontás ---
+	const perEmpCatR = await context.db.query(
+		`SELECT e.id AS employee_id,
+		        wec.id AS category_id,
+		        COALESCE(wec.name, 'Kategória nélkül') AS category_name,
+		        COALESCE(SUM(we.hours), 0) AS total_hours,
+		        COUNT(we.id)::int AS entry_count
+		   FROM app__racona_work.project_members pm
+		   JOIN app__racona_work.employees e ON e.id = pm.employee_id
+		   JOIN app__racona_work.work_entries we ON we.employee_id = e.id AND we.project_id = pm.project_id${dateWhere}
+		   LEFT JOIN app__racona_work.work_entry_categories wec ON wec.id = we.category_id
+		  WHERE pm.project_id = $1
+		  GROUP BY e.id, wec.id, wec.name
+		  ORDER BY e.id ASC, total_hours DESC`,
+		[params.projectId, ...dateParams]
+	);
+
+	// Hozzárendeljük a kategória-bontást az egyes dolgozókhoz
+	for (const row of perEmpCatR.rows as any[]) {
+		const emp = byEmployee.find((e) => e.employeeId === row.employee_id);
+		if (emp) {
+			emp.byCategory.push({
+				categoryId: row.category_id ?? null,
+				categoryName: row.category_name,
+				totalHours: typeof row.total_hours === 'string' ? parseFloat(row.total_hours) : Number(row.total_hours),
+				entryCount: row.entry_count
+			});
+		}
+	}
 
 	// --- Globális összesítés ---
 	const totalsR = await context.db.query(

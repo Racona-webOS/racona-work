@@ -2277,6 +2277,7 @@ export type {
 	WorkEntryListResult,
 	ProjectReport,
 	ProjectReportEmployee,
+	ProjectReportEmployeeCategory,
 	ProjectReportCategory,
 	ProjectReportDaily
 } from './work-entries.js';
