@@ -137,6 +137,34 @@ export function calculateWorkingDays(
 }
 
 /**
+ * Egy dátumtartomány munkanapjai a szervezet munkanaptára szerint.
+ *
+ * A kérelem-űrlap hívja élőben, hogy a beadás előtt látszódjon, hány
+ * munkanapot jelent a kiválasztott időszak. Ugyanazt a számítást használja,
+ * mint a createLeaveRequest, így a kiírt és a ténylegesen levont napok
+ * nem csúszhatnak el egymástól.
+ *
+ * @param params - A szervezet azonosítója és a dátumtartomány.
+ * @param context - Remote futási kontextus.
+ * @returns A munkanapok száma.
+ */
+export async function previewLeaveDays(
+	params: { organizationId: number; startDate: string; endDate: string },
+	context: RemoteContext
+): Promise<{ days: number }> {
+	const { organizationId, startDate, endDate } = params;
+
+	if (!organizationId || organizationId <= 0) {
+		throw new Error('Érvénytelen szervezet azonosító');
+	}
+
+	await requireCapability(context, organizationId, 'leave.request');
+
+	const calendar = await getWorkCalendarOverrides(context, organizationId, startDate, endDate);
+	return { days: calculateWorkingDays(startDate, endDate, calendar) };
+}
+
+/**
  * Szabadságkérelmek lapozott, szűrt listája JOIN-olva a dolgozó nevével.
  * Követelmények: 6.5, 6.6, 8.1, 8.2
  */

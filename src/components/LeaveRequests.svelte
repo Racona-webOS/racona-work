@@ -76,6 +76,12 @@
 	let newReqType = $state('annual');
 	let newReqStartDate = $state('');
 	let newReqEndDate = $state('');
+
+	// Élő munkanap-számláló: a szerver számol, hogy a kiírt és a ténylegesen
+	// levont napok ne csúszhassanak el (ugyanaz a munkanaptár, ugyanaz a logika).
+	let previewDays = $state<number | null>(null);
+	let previewLoading = $state(false);
+	let previewTimer: ReturnType<typeof setTimeout> | null = null;
 	let newReqReason = $state('');
 	let newReqLoading = $state(false);
 	let newReqError = $state<string | null>(null);
@@ -253,6 +259,48 @@
 			employeesLoading = false;
 		}
 	}
+
+	/**
+	 * A kiválasztott időszak munkanapjainak lekérése, 300 ms késleltetéssel.
+	 * A dátumválasztó gyors kattintgatása így nem indít hívást minden lépésre.
+	 */
+	function schedulePreview() {
+		if (previewTimer) clearTimeout(previewTimer);
+
+		if (!newReqStartDate || !newReqEndDate || !currentOrganization) {
+			previewDays = null;
+			previewLoading = false;
+			return;
+		}
+		if (newReqStartDate > newReqEndDate) {
+			previewDays = null;
+			previewLoading = false;
+			return;
+		}
+
+		previewLoading = true;
+		previewTimer = setTimeout(async () => {
+			try {
+				const result = await sdk?.remote?.call('previewLeaveDays', {
+					organizationId: currentOrganization!.id,
+					startDate: newReqStartDate,
+					endDate: newReqEndDate
+				});
+				previewDays = result?.days ?? null;
+			} catch {
+				// A számláló csak tájékoztat — hiba esetén elrejtjük, a beadást nem blokkolja
+				previewDays = null;
+			} finally {
+				previewLoading = false;
+			}
+		}, 300);
+	}
+
+	$effect(() => {
+		newReqStartDate;
+		newReqEndDate;
+		schedulePreview();
+	});
 
 	async function submitNewRequest() {
 		if (!newReqEmployeeId || !newReqStartDate || !newReqEndDate) {
@@ -693,6 +741,16 @@
 				</label>
 			</div>
 
+			{#if previewLoading}
+				<p class="day-preview is-loading">{t('leaveRequests.form.daysCalculating')}</p>
+			{:else if previewDays !== null}
+				<p class="day-preview">
+					{previewDays === 0
+						? t('leaveRequests.form.daysZero')
+						: `${t('leaveRequests.form.daysPrefix')} ${previewDays} ${t('leaveRequests.form.daysSuffix')}`}
+				</p>
+			{/if}
+
 			<label class="form-label">
 				{t('leaveRequests.form.reason')}
 				<textarea class="form-input form-textarea" bind:value={newReqReason} rows="3"></textarea>
@@ -771,6 +829,18 @@
 
 <style>
 	@import '../styles/shared.css';
+
+	.day-preview {
+		margin: 0.25rem 0 0.75rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--primary, #2563eb);
+	}
+
+	.day-preview.is-loading {
+		color: var(--muted-foreground, #71717a);
+		font-weight: 400;
+	}
 
 	.page {
 		padding: 2rem;

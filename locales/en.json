@@ -465,5 +465,9 @@
 	"workCalendar.weekdayShort.3": "Th",
 	"workCalendar.weekdayShort.4": "Fr",
 	"workCalendar.weekdayShort.5": "Sa",
-	"workCalendar.weekdayShort.6": "Su"
+	"workCalendar.weekdayShort.6": "Su",
+	"leaveRequests.form.daysCalculating": "Calculating working days…",
+	"leaveRequests.form.daysPrefix": "That is",
+	"leaveRequests.form.daysSuffix": "working days per the work calendar.",
+	"leaveRequests.form.daysZero": "There are no working days in the selected range — this request would deduct 0 days."
 }
