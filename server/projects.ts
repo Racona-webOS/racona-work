@@ -10,7 +10,8 @@
  * A publikus (remote hívható) funkciók a functions.ts-ben vannak reexportálva.
  */
 
-import type { RemoteContext } from './functions.js';
+import type { RemoteContext } from './context.js';
+import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { hasCapability, requireCapability } from './permissions.js';
 
 // --- Típusok ----------------------------------------------------------------
@@ -81,23 +82,6 @@ const ALLOWED_SORT: Record<string, string> = {
 
 const VALID_STATUSES: readonly ProjectStatus[] = ['active', 'paused', 'completed', 'archived'];
 
-function isDevMode(context: RemoteContext): boolean {
-	return typeof context.userId === 'string' && isNaN(Number(context.userId));
-}
-
-function isCoreAdmin(context: RemoteContext): boolean {
-	return context.permissions?.includes('admin') === true;
-}
-
-async function resolveUserId(context: RemoteContext): Promise<number> {
-	if (typeof context.userId === 'number') return context.userId;
-	if (typeof context.userId === 'string' && !isNaN(Number(context.userId))) {
-		return Number(context.userId);
-	}
-	const result = await context.db.query(`SELECT id FROM auth.users ORDER BY id LIMIT 1`);
-	if (result.rows.length === 0) throw new Error('Nincs felhasználó az adatbázisban');
-	return (result.rows[0] as { id: number }).id;
-}
 
 function mapProjectRow(row: any): ProjectRow {
 	return {

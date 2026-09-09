@@ -15,6 +15,7 @@ import { serve } from 'bun';
 import { readFile } from 'fs/promises';
 import { join, extname, resolve, normalize } from 'path';
 import { Pool } from 'pg';
+import type { RemoteContext } from './server/context.ts';
 
 const PORT = parseInt(process.env.PORT ?? '5175', 10);
 const ROOT = import.meta.dir;
@@ -53,13 +54,23 @@ async function runMigrations(pool: Pool): Promise<void> {
 	try {
 		await client.query(`CREATE SCHEMA IF NOT EXISTS ${PLUGIN_SCHEMA}`);
 		await client.query(`SET search_path TO ${PLUGIN_SCHEMA}, auth, public`);
+		// Ugyanaz a nyilvántartó tábla, mint amit a core PluginInstaller használ
+		// (app__<id>.migrations), hogy a dev és az éles séma megegyezzen.
 		await client.query(`
-			CREATE TABLE IF NOT EXISTS _migrations (
+			CREATE TABLE IF NOT EXISTS migrations (
 				id SERIAL PRIMARY KEY,
-				filename TEXT NOT NULL UNIQUE,
-				applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+				filename VARCHAR(255) NOT NULL UNIQUE,
+				applied_at TIMESTAMPTZ DEFAULT NOW()
 			)
 		`);
+		// Régebbi dev adatbázisok a _migrations nevet használták — átvesszük a
+		// bejegyzéseket, hogy ne fussanak le újra a már alkalmazott migrációk.
+		await client.query(`
+			INSERT INTO migrations (filename, applied_at)
+			SELECT filename, applied_at FROM _migrations
+			ON CONFLICT (filename) DO NOTHING
+		`).catch(() => { /* nincs _migrations tábla — friss adatbázis */ });
+		await client.query('DROP TABLE IF EXISTS _migrations');
 
 		const devMigrationsDir = join(ROOT, 'migrations', 'dev');
 		let devFiles: string[] = [];
@@ -86,7 +97,7 @@ async function runMigrations(pool: Pool): Promise<void> {
 			prodFiles = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
 		} catch { /* nincs mappa */ }
 
-		const { rows: applied } = await client.query<{ filename: string }>('SELECT filename FROM _migrations');
+		const { rows: applied } = await client.query<{ filename: string }>('SELECT filename FROM migrations');
 		const appliedSet = new Set(applied.map((r) => r.filename));
 
 		for (const file of prodFiles) {
@@ -94,7 +105,7 @@ async function runMigrations(pool: Pool): Promise<void> {
 			try {
 				const sql = await readFile(join(migrationsDir, file), 'utf-8');
 				await client.query(sql);
-				await client.query('INSERT INTO _migrations (filename) VALUES ($1)', [file]);
+				await client.query('INSERT INTO migrations (filename) VALUES ($1)', [file]);
 				console.log(`[DevServer] Migration alkalmazva: ${file}`);
 			} catch (err) {
 				console.error(`[DevServer] HIBA: Migráció sikertelen: ${file}`, err);
@@ -107,35 +118,36 @@ async function runMigrations(pool: Pool): Promise<void> {
 	}
 }
 
-interface RemoteContext {
-	pluginId: string;
-	userId: string;
-	db: {
-		query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-		connect: () => Promise<{ query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>; release: () => void }>;
-	};
-	permissions: string[];
-	email: { send: (params: unknown) => Promise<{ success: boolean }> };
-}
-
+/**
+ * Ugyanaz a kontextus forma, mint amit a Racona core ad át a szerver
+ * függvényeknek, kiegészítve a `devMode: true` jelzővel. A jelző alapján a
+ * jogosultság-logika (server/context.ts) lazább: nem numerikus DEV_USER_ID
+ * esetén az első auth.users rekordot használja hívóként.
+ */
 function buildContext(pool: Pool): RemoteContext {
 	return {
 		pluginId: PLUGIN_ID,
 		userId: DEV_USER_ID,
 		db: {
-			query: pool.query.bind(pool) as (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>,
+			query: pool.query.bind(pool) as RemoteContext['db']['query'],
 			connect: async () => {
 				const client = await pool.connect();
 				return {
-					query: client.query.bind(client) as (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>,
+					query: client.query.bind(client) as RemoteContext['db']['query'],
 					release: () => client.release()
 				};
 			}
 		},
-		permissions: ['database', 'remote_functions', 'notifications'],
+		// A core itt a hívó user core jogait adja ('admin' vagy üres);
+		// dev módban nincs core admin, a képességeket a devMode jelző nyitja meg.
+		permissions: [],
 		email: {
-			send: async (params: unknown) => { console.log('[DevServer] [email.send stub]', params); return { success: true }; }
-		}
+			send: async (params) => {
+				console.log('[DevServer] [email.send stub]', params);
+				return { success: true };
+			}
+		},
+		devMode: true
 	};
 }
 

@@ -450,7 +450,6 @@
 		formLoading = true;
 		formError = null;
 		try {
-			console.log('[EmployeeList] submitLinkUser - organizationId:', currentOrganization.id);
 
 			await sdk?.remote?.call('createEmployeeFromUser', {
 				userId: selectedUserId,

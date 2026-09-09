@@ -11,7 +11,8 @@
  *   - project.manage  → a projekt minden bejegyzését láthatja/törölheti
  */
 
-import type { RemoteContext } from './functions.js';
+import type { RemoteContext } from './context.js';
+import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { hasCapability, requireCapability } from './permissions.js';
 
 export interface WorkEntryCategory {
@@ -63,23 +64,6 @@ export interface WorkEntryListResult {
 
 // --- Helperek ---------------------------------------------------------------
 
-function isDevMode(context: RemoteContext): boolean {
-	return typeof context.userId === 'string' && isNaN(Number(context.userId));
-}
-
-function isCoreAdmin(context: RemoteContext): boolean {
-	return context.permissions?.includes('admin') === true;
-}
-
-async function resolveUserId(context: RemoteContext): Promise<number> {
-	if (typeof context.userId === 'number') return context.userId;
-	if (typeof context.userId === 'string' && !isNaN(Number(context.userId))) {
-		return Number(context.userId);
-	}
-	const r = await context.db.query(`SELECT id FROM auth.users ORDER BY id LIMIT 1`);
-	if (r.rows.length === 0) throw new Error('Nincs felhasználó az adatbázisban');
-	return (r.rows[0] as { id: number }).id;
-}
 
 /**
  * A hívó saját employee rekordja egy adott szervezetben, vagy null.

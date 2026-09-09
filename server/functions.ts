@@ -6,31 +6,14 @@
  */
 
 import { requireCapability, seedDefaultRoles, hasCapability } from './permissions.js';
+import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
+import type { RemoteContext } from './context.js';
+
+// A kontextus típusok a context.ts-ben élnek; innen is elérhetők a kliens kód
+// (`../../server/functions.js`) importjai miatt.
+export type { RemoteContext, PluginEmailService } from './context.js';
 
 // --- TypeScript típusok ---
-
-export interface PluginEmailService {
-	send(params: {
-		to: string | string[];
-		template: string;
-		data: Record<string, unknown>;
-		locale?: string;
-	}): Promise<{ success: boolean; messageId?: string; error?: string }>;
-}
-
-export interface RemoteContext {
-	pluginId: string;
-	userId: string;
-	db: {
-		query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }>;
-		connect: () => Promise<{
-			query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }>;
-			release: () => void;
-		}>;
-	};
-	permissions: string[];
-	email?: PluginEmailService;
-}
 
 export interface Employee {
 	id: number;
@@ -184,9 +167,7 @@ export async function getUnlinkedUsers(
 ): Promise<UnlinkedUser[]> {
 	// Védelem: core admin bármikor lekérdezheti; egyéb esetben a hívónak
 	// employee.manage képességgel kell rendelkeznie a megadott szervezetre.
-	const isDev = typeof context.userId === 'string' && isNaN(Number(context.userId));
-	const isAdmin = context.permissions?.includes('admin') === true;
-	if (!isDev && !isAdmin) {
+	if (!isDevMode(context) && !isCoreAdmin(context)) {
 		if (!params?.organizationId || params.organizationId <= 0) {
 			throw new Error('Érvénytelen szervezet azonosító');
 		}
@@ -922,17 +903,8 @@ context: RemoteContext
 
 	// Ha az employee nem a hívó saját rekordja → leave.approve szükséges.
 	// Core admin / dev mód automatikusan ok.
-	const isDevMode = typeof context.userId === 'string' && isNaN(Number(context.userId));
-	const isCoreAdmin = context.permissions?.includes('admin') === true;
-	if (!isDevMode && !isCoreAdmin) {
-		let callerUserId: number;
-		if (typeof context.userId === 'number') callerUserId = context.userId;
-		else if (typeof context.userId === 'string' && !isNaN(Number(context.userId))) {
-			callerUserId = Number(context.userId);
-		} else {
-			const u = await context.db.query(`SELECT id FROM auth.users ORDER BY id LIMIT 1`);
-			callerUserId = (u.rows[0] as { id: number }).id;
-		}
+	if (!isDevMode(context) && !isCoreAdmin(context)) {
+		const callerUserId = await resolveUserId(context);
 		const empRow = await context.db.query(
 			`SELECT user_id FROM app__racona_work.employees WHERE id = $1 AND organization_id = $2`,
 			[employeeId, organizationId]
@@ -1298,9 +1270,7 @@ export async function getDashboardStats(
 
 	// Vezetői dashboard: leave.approve VAGY employee.manage kell.
 	// Alap dolgozó (csak leave.request + employee.view) self-service nézetet kap a kliensen.
-	const isDev = typeof context.userId === 'string' && isNaN(Number(context.userId));
-	const isAdmin = context.permissions?.includes('admin') === true;
-	if (!isDev && !isAdmin) {
+	if (!isDevMode(context) && !isCoreAdmin(context)) {
 		const canApprove = await hasCapability(context, params.organizationId, 'leave.approve');
 		const canManageEmp = canApprove
 			? true
@@ -1477,10 +1447,8 @@ export function generateSlug(name: string): string {
  * Követelmény: 2.1
  */
 function requireAdmin(context: RemoteContext): void {
-	// Dev módban (amikor userId nem numerikus) ne ellenőrizzük a jogosultságot
-	const isDevMode = typeof context.userId === 'string' && isNaN(Number(context.userId));
-
-	if (!isDevMode && !context.permissions.includes('admin')) {
+	// Dev módban ne ellenőrizzük a jogosultságot
+	if (!isDevMode(context) && !isCoreAdmin(context)) {
 		throw new Error('Ez a művelet adminisztrátori jogosultságot igényel');
 	}
 }
@@ -1496,52 +1464,19 @@ async function requireOrganizationMember(
 	context: RemoteContext,
 	organizationId: number
 ): Promise<void> {
-	console.log('[requireOrganizationMember] DEBUG - organizationId:', organizationId);
-	console.log('[requireOrganizationMember] DEBUG - context.userId:', context.userId, 'type:', typeof context.userId);
-	console.log('[requireOrganizationMember] DEBUG - context.permissions:', context.permissions);
-
 	// Admin userek esetén nincs szükség szervezeti tagság ellenőrzésre
-	const isDevMode = typeof context.userId === 'string' && isNaN(Number(context.userId));
-	console.log('[requireOrganizationMember] DEBUG - isDevMode:', isDevMode);
-
-	if (!isDevMode && context.permissions.includes('admin')) {
-		console.log('[requireOrganizationMember] DEBUG - Admin user detected, access granted');
-		return; // Admin user, hozzáférés engedélyezve
+	if (!isDevMode(context) && isCoreAdmin(context)) {
+		return;
 	}
 
-	console.log('[requireOrganizationMember] DEBUG - Not admin, checking organization membership');
+	const userId = await resolveUserId(context);
 
-	// context.userId lehet string (dev módban) vagy number
-	// Ha nem numerikus string, akkor lekérdezzük a valódi user id-t
-	let userId: number | string = context.userId;
-
-	if (typeof context.userId === 'string' && isNaN(Number(context.userId))) {
-		// Dev módban a context.userId lehet "dev-user" vagy hasonló
-		// Ilyenkor az első user-t használjuk (dev seed)
-		const userResult = await context.db.query(
-			`SELECT id FROM auth.users ORDER BY id LIMIT 1`
-		);
-
-		if (userResult.rows.length > 0) {
-			userId = userResult.rows[0].id;
-		} else {
-			throw new Error('Nincs felhasználó az adatbázisban');
-		}
-	} else if (typeof context.userId === 'string') {
-		// Ha numerikus string, konvertáljuk number-re
-		userId = Number(context.userId);
-	}
-
-	console.log('[requireOrganizationMember] DEBUG - Resolved userId:', userId);
-
-	// ÚJ: Közvetlenül az employees táblából ellenőrizzük a tagságot organization_id alapján
+	// Közvetlenül az employees táblából ellenőrizzük a tagságot organization_id alapján
 	const result = await context.db.query(
 		`SELECT 1 FROM app__racona_work.employees
 		 WHERE organization_id = $1 AND user_id = $2`,
 		[organizationId, userId]
 	);
-
-	console.log('[requireOrganizationMember] DEBUG - Membership check result:', result.rows.length > 0 ? 'MEMBER' : 'NOT MEMBER');
 
 	if (result.rows.length === 0) {
 		throw new Error('Nincs hozzáférésed ehhez a szervezethez');
@@ -1582,12 +1517,8 @@ export async function createOrganization(
 	// Rendszer szerepek seedelése + a létrehozó user org_admin szerephez rendelése.
 	// Best-effort: ha hiba van, ne bontsuk vissza a szervezetet, csak logoljunk.
 	try {
-		let creatorUserId: number | undefined;
-		if (typeof context.userId === 'number') {
-			creatorUserId = context.userId;
-		} else if (typeof context.userId === 'string' && !isNaN(Number(context.userId))) {
-			creatorUserId = Number(context.userId);
-		}
+		// Dev módban nincs valódi hívó, ilyenkor nem rendelünk org_admin-t.
+		const creatorUserId = isDevMode(context) ? undefined : await resolveUserId(context);
 		await seedDefaultRoles({ organizationId: row.id, creatorUserId }, context);
 	} catch (err) {
 		console.error('[createOrganization] Szerepek seedelése sikertelen:', err);
@@ -1615,22 +1546,9 @@ export async function isUserAdmin(
 	params: {},
 	context: RemoteContext
 ): Promise<boolean> {
-	console.log('[isUserAdmin] DEBUG - context.userId:', context.userId, 'type:', typeof context.userId);
-	console.log('[isUserAdmin] DEBUG - context.permissions:', context.permissions);
-
-	const isDevMode = typeof context.userId === 'string' && isNaN(Number(context.userId));
-	console.log('[isUserAdmin] DEBUG - isDevMode:', isDevMode);
-
-	// Dev módban ne ellenőrizzük
-	if (isDevMode) {
-		console.log('[isUserAdmin] DEBUG - Dev mode, returning false');
-		return false;
-	}
-
-	const isAdmin = context.permissions.includes('admin');
-	console.log('[isUserAdmin] DEBUG - isAdmin:', isAdmin);
-
-	return isAdmin;
+	// Dev módban nincs core admin
+	if (isDevMode(context)) return false;
+	return isCoreAdmin(context);
 }
 
 /**
@@ -1644,11 +1562,8 @@ export async function getUserOrganizations(
 	params: {},
 	context: RemoteContext
 ): Promise<Organization[]> {
-	const isDevMode = typeof context.userId === 'string' && isNaN(Number(context.userId));
-	const isAdmin = !isDevMode && context.permissions.includes('admin');
-
 	// Admin userek az összes szervezetet látják
-	if (isAdmin) {
+	if (!isDevMode(context) && isCoreAdmin(context)) {
 		const result = await context.db.query(
 			`SELECT id, name, slug, address, phone, email, website, notes, created_at, updated_at
 			 FROM app__racona_work.organizations
@@ -1694,22 +1609,9 @@ export async function getUserOrganizations(
 	}
 
 	// Nem-admin userek: csak a saját szervezeteik
-	let userId: number | string = context.userId;
+	const userId = await resolveUserId(context);
 
-	if (typeof context.userId === 'string' && isNaN(Number(context.userId))) {
-		const userResult = await context.db.query(
-			`SELECT id FROM auth.users ORDER BY id LIMIT 1`
-		);
-		if (userResult.rows.length > 0) {
-			userId = userResult.rows[0].id;
-		} else {
-			throw new Error('Nincs felhasználó az adatbázisban');
-		}
-	} else if (typeof context.userId === 'string') {
-		userId = Number(context.userId);
-	}
-
-	// ÚJ: Közvetlenül az employees táblából lekérdezzük a szervezeteket
+	// Közvetlenül az employees táblából lekérdezzük a szervezeteket
 	const result = await context.db.query(
 		`SELECT DISTINCT o.id, o.name, o.slug, o.address, o.phone, o.email, o.website, o.notes, o.created_at, o.updated_at
 		 FROM app__racona_work.organizations o
@@ -2221,15 +2123,7 @@ export async function getMyEmployee(
 	await requireCapability(context, params.organizationId, 'leave.request');
 
 	// User id feloldása (dev mód: az első user)
-	let userId: number;
-	if (typeof context.userId === 'number') userId = context.userId;
-	else if (typeof context.userId === 'string' && !isNaN(Number(context.userId))) {
-		userId = Number(context.userId);
-	} else {
-		const u = await context.db.query(`SELECT id FROM auth.users ORDER BY id LIMIT 1`);
-		if (u.rows.length === 0) return null;
-		userId = (u.rows[0] as { id: number }).id;
-	}
+	const userId = await resolveUserId(context);
 
 	const result = await context.db.query(
 		`SELECT e.id, e.user_id, e.position, e.department, e.hire_date, e.status,

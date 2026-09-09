@@ -13,13 +13,9 @@
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
-	console.log('[OrganizationSwitcher] Component initialized with pluginId:', pluginId);
-
 	const sdk = $derived(
 		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
 	);
-
-	console.log('[OrganizationSwitcher] SDK:', sdk);
 
 	function t(key: string): string {
 		return sdk?.i18n?.t(key) ?? key;
@@ -46,22 +42,14 @@
 		}
 	}
 
-	console.log('[OrganizationSwitcher] currentOrganization:', currentOrganization);
-	console.log('[OrganizationSwitcher] availableOrganizations:', availableOrganizations);
-
 	// --- Inicializálás ---
 	onMount(() => {
-		console.log('[OrganizationSwitcher] onMount called');
-		console.log('[OrganizationSwitcher] sdk:', sdk);
-		console.log('[OrganizationSwitcher] sdk.remote:', sdk?.remote);
 
 		if (sdk?.remote) {
 			try {
 				store = getOrganizationStore();
-				console.log('[OrganizationSwitcher] Got existing store');
 			} catch {
 				store = createOrganizationStore(pluginId, sdk);
-				console.log('[OrganizationSwitcher] Created new store');
 			}
 
 			// Kezdeti értékek szinkronizálása
@@ -69,10 +57,8 @@
 
 			// Csak akkor töltjük be, ha még nincs adat
 			if (store.availableOrganizations.length === 0) {
-				console.log('[OrganizationSwitcher] Loading organizations...');
 				store.loadOrganizations().then(() => syncFromStore());
 			} else {
-				console.log('[OrganizationSwitcher] Store already has organizations, skipping load');
 				// Újranyitáskor a plugin singleton store élve maradt, de a core
 				// pluginCapabilitiesStore üres lehet (pl. ha az ablakot bezárták
 				// és most nyitottuk újra). A capabilities-t publikáljuk, hogy a

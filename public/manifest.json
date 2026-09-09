@@ -6,7 +6,7 @@
 	},
 	"description": {
 		"hu": "Céges nyilvántartó alkalmazás (dolgozó kezelése, projektek, szabadságok).",
-		"en": "An Racona application"
+		"en": "Company records app (employee management, projects, leave requests)."
 	},
 	"version": "0.8.14",
 	"author": "Racona Developer <szigeti.developer@gmail.com>",

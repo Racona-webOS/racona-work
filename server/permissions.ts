@@ -16,7 +16,8 @@
  *   - seedDefaultRoles({ organizationId }) // új szervezethez (createOrganization hívja)
  */
 
-import type { RemoteContext } from './functions.js';
+import type { RemoteContext } from './context.js';
+import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 
 /** Képesség-kulcsok whitelist. Új képesség hozzáadása: bővítsd a tömböt és a UI-t. */
 export const CAPABILITIES = [
@@ -107,30 +108,6 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 		capabilities: ['leave.request', 'project.view.own', 'employee.view', 'work.log']
 	}
 ];
-
-// --- Közös segédfüggvények ---------------------------------------------------
-
-function isDevMode(context: RemoteContext): boolean {
-	return typeof context.userId === 'string' && isNaN(Number(context.userId));
-}
-
-function isCoreAdmin(context: RemoteContext): boolean {
-	return context.permissions?.includes('admin') === true;
-}
-
-/**
- * Feloldja a context.userId-t numerikus user id-ra.
- * Dev módban az első auth.users rekordot használja.
- */
-async function resolveUserId(context: RemoteContext): Promise<number> {
-	if (typeof context.userId === 'number') return context.userId;
-	if (typeof context.userId === 'string' && !isNaN(Number(context.userId))) {
-		return Number(context.userId);
-	}
-	const result = await context.db.query(`SELECT id FROM auth.users ORDER BY id LIMIT 1`);
-	if (result.rows.length === 0) throw new Error('Nincs felhasználó az adatbázisban');
-	return (result.rows[0] as { id: number }).id;
-}
 
 // --- Capability lekérdezés ---------------------------------------------------
 
