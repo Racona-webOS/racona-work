@@ -468,5 +468,8 @@
 	"leaveRequests.form.daysCalculating": "Munkanapok számítása…",
 	"leaveRequests.form.daysPrefix": "Ez",
 	"leaveRequests.form.daysSuffix": "munkanap a munkanaptár szerint.",
-	"leaveRequests.form.daysZero": "A kiválasztott időszakban nincs munkanap — ez a kérelem 0 napot vonna le."
+	"leaveRequests.form.daysZero": "A kiválasztott időszakban nincs munkanap — ez a kérelem 0 napot vonna le.",
+	"workCalendar.kind.none": "Nincs kivétel – alapszabály szerint",
+	"workCalendar.editor.defaultWeekend": "Hétvége: alapból nem munkanap. Válassz típust, ha ezen a napon mégis dolgozni kell.",
+	"workCalendar.editor.defaultWeekday": "Hétköznap: alapból munkanap. Válassz típust, ha ezen a napon mégsem kell dolgozni."
 }

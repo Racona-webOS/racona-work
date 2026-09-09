@@ -41,7 +41,7 @@
 	// Szerkesztő modal
 	let editorOpen = $state(false);
 	let editorDay = $state('');
-	let editorKind = $state<CalendarDayKind>('public_holiday');
+	let editorKind = $state<EditorKind>('none');
 	let editorNote = $state('');
 	let editorExisting = $state(false);
 	let editorSaving = $state(false);
@@ -57,7 +57,15 @@
 		company_day: false
 	};
 
-	const KIND_OPTIONS: CalendarDayKind[] = [
+	/**
+	 * A legördülő értékei. A 'none' nem tárolt típus, hanem a "nincs kivétel"
+	 * állapot: ilyenkor a napra az alapszabály érvényes (hétvége = szabad,
+	 * hétköznap = munkanap). Mentéskor a meglévő bejegyzés törlésével jár.
+	 */
+	type EditorKind = CalendarDayKind | 'none';
+
+	const KIND_OPTIONS: EditorKind[] = [
+		'none',
 		'public_holiday',
 		'relocated_rest_day',
 		'relocated_work_day',
@@ -160,7 +168,10 @@
 		const entry = dayMap.get(iso);
 		editorDay = iso;
 		editorExisting = !!entry;
-		editorKind = entry?.kind ?? (isWeekend(iso) ? 'relocated_work_day' : 'public_holiday');
+		// A legördülő a nap TÉNYLEGES állapotát mutatja. Bejegyzés nélküli napra
+		// ez a "nincs kivétel" — nem javasolunk típust, mert az úgy nézne ki,
+		// mintha a nap már be lenne állítva.
+		editorKind = entry?.kind ?? 'none';
 		editorNote = entry?.note ?? '';
 		editorOpen = true;
 	}
@@ -171,6 +182,17 @@
 
 	async function saveEditor() {
 		if (!currentOrganization) return;
+
+		// "Nincs kivétel": a meglévő bejegyzést töröljük, ha nem volt, nincs teendő
+		if (editorKind === 'none') {
+			if (editorExisting) {
+				await deleteEditor();
+			} else {
+				closeEditor();
+			}
+			return;
+		}
+
 		editorSaving = true;
 		try {
 			await sdk?.remote?.call('upsertCalendarDay', {
@@ -334,9 +356,13 @@
 			</label>
 
 			<p class="hint">
-				{KIND_IS_WORKING[editorKind]
-					? t('workCalendar.editor.countsAsWorkday')
-					: t('workCalendar.editor.countsAsRestDay')}
+				{editorKind === 'none'
+					? isWeekend(editorDay)
+						? t('workCalendar.editor.defaultWeekend')
+						: t('workCalendar.editor.defaultWeekday')
+					: KIND_IS_WORKING[editorKind]
+						? t('workCalendar.editor.countsAsWorkday')
+						: t('workCalendar.editor.countsAsRestDay')}
 			</p>
 
 			<label class="form-label">

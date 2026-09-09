@@ -469,5 +469,8 @@
 	"leaveRequests.form.daysCalculating": "Calculating working days…",
 	"leaveRequests.form.daysPrefix": "That is",
 	"leaveRequests.form.daysSuffix": "working days per the work calendar.",
-	"leaveRequests.form.daysZero": "There are no working days in the selected range — this request would deduct 0 days."
+	"leaveRequests.form.daysZero": "There are no working days in the selected range — this request would deduct 0 days.",
+	"workCalendar.kind.none": "No exception – default rule",
+	"workCalendar.editor.defaultWeekend": "Weekend: not a working day by default. Pick a type if work is required on this day.",
+	"workCalendar.editor.defaultWeekday": "Weekday: a working day by default. Pick a type if this day is off."
 }
