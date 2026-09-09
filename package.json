@@ -15,7 +15,7 @@
 		"dev:full": "bun run --parallel dev:server dev"
 	},
 	"dependencies": {
-		"@racona/sdk": "file:../../racona-core/packages/sdk",
+		"@racona/sdk": "^0.5.1",
 		"svelte": "^5.0.0",
 		"@lucide/svelte": "^1.14.0"
 	},
