@@ -151,6 +151,34 @@ function buildContext(pool: Pool): RemoteContext {
 	};
 }
 
+/** pg SQLSTATE (pl. 42703), illetve Node rendszerhiba kód (pl. ECONNREFUSED). */
+const SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/;
+const SYSTEM_ERROR_CODE_PATTERN = /^(E[A-Z0-9]+|ERR_[A-Z0-9_]+)$/;
+const RUNTIME_ERROR_NAMES = new Set(['TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'EvalError', 'URIError']);
+
+/** Belső (nem a felhasználónak szánt) hiba-e? */
+function isInternalError(err: unknown): boolean {
+	if (!err || typeof err !== 'object') return false;
+	if (err instanceof Error && RUNTIME_ERROR_NAMES.has(err.name)) return true;
+	const candidate = err as { severity?: unknown; code?: unknown; routine?: unknown };
+	if (typeof candidate.severity === 'string' && typeof candidate.code === 'string') return true;
+	if (typeof candidate.routine === 'string' && typeof candidate.code === 'string') return true;
+	if (typeof candidate.code === 'string') {
+		return SQLSTATE_PATTERN.test(candidate.code) || SYSTEM_ERROR_CODE_PATTERN.test(candidate.code);
+	}
+	return false;
+}
+
+/** A kliensnek visszaadható hibaüzenet — a belső hibák általános szöveget kapnak. */
+function toClientError(err: unknown): { message: string; reference?: string; internal: boolean } {
+	if (isInternalError(err)) {
+		const reference = Math.random().toString(16).slice(2, 10).padStart(8, '0');
+		return { message: `The operation failed due to a server error (ref: ${reference})`, reference, internal: true };
+	}
+	if (err instanceof Error && err.message) return { message: err.message, internal: false };
+	return { message: 'Remote function execution failed', internal: false };
+}
+
 async function handleRemoteRequest(req: Request, functionName: string, pool: Pool): Promise<Response> {
 	const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': '*' };
 	let params: unknown;
@@ -176,8 +204,23 @@ async function handleRemoteRequest(req: Request, functionName: string, pool: Poo
 		const result = await (fn as (params: unknown, context: RemoteContext) => Promise<unknown>)(params, context);
 		return new Response(JSON.stringify({ success: true, result }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		return new Response(JSON.stringify({ success: false, error: message }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
+		// Ugyanaz a szűrés, mint az éles remote endpointon (core:
+		// apps/web/src/lib/server/plugins/utils/remote-error.ts): a váratlan hibák
+		// (adatbázis, programhiba) nem mennek ki a felületre. A teljes hiba a dev
+		// szerver konzoljára kerül.
+		const clientError = toClientError(err);
+		console.error(
+			`[DevServer] ${functionName} hiba` + (clientError.reference ? ` (ref: ${clientError.reference})` : '') + ':',
+			err
+		);
+		return new Response(
+			JSON.stringify({
+				success: false,
+				error: clientError.message,
+				...(clientError.internal ? { errorCode: 'SERVER_ERROR', reference: clientError.reference } : {})
+			}),
+			{ status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+		);
 	}
 }
 
