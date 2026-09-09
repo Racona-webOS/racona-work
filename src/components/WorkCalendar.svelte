@@ -390,9 +390,15 @@
 <style>
 	@import '../styles/shared.css';
 
-	/* A shared.css nem definiálja a modal tartalmi osztályait — a plugin
-	   komponensei sajátban hozzák. A LeaveRequests konvencióját követjük,
-	   hogy a két modal egyformán nézzen ki. */
+	/* A shared.css .modal szabályában nincs padding és nincs gap, a tartalmi
+	   osztályokat (.form-label, .form-input, .modal-description) pedig egyáltalán
+	   nem definiálja — a plugin komponensei sajátban hozzák. A LeaveRequests
+	   konvencióját követjük, hogy a két modal egyformán nézzen ki. */
+
+	.modal {
+		padding: 1.5rem;
+		gap: 0.25rem;
+	}
 
 	.modal h3 {
 		font-size: 1.1rem;
@@ -402,17 +408,24 @@
 
 	.modal-description {
 		font-size: 0.875rem;
+		line-height: 1.45;
 		color: var(--color-muted-foreground, #64748b);
-		margin: 0.25rem 0 1rem;
+		margin: 0.35rem 0 0.5rem;
+	}
+
+	.modal-footer {
+		margin-top: 1.25rem;
+		padding-top: 1rem;
+		gap: 0.5rem;
 	}
 
 	.form-label {
 		display: flex;
 		flex-direction: column;
-		gap: 0.25rem;
+		gap: 0.35rem;
 		font-size: 0.875rem;
 		font-weight: 500;
-		margin-bottom: 0.75rem;
+		margin: 0.5rem 0 0;
 	}
 
 	.form-input {
@@ -428,6 +441,27 @@
 	.form-input:focus {
 		outline: 2px solid var(--color-primary, #3730a3);
 		outline-offset: 1px;
+	}
+
+	/* A natív select megjelenése rendszerenként eltér és kilóg a többi mező
+	   közül — saját nyilat rajzolunk, a doboz a .form-input stílusát követi. */
+	select.form-input {
+		appearance: none;
+		-webkit-appearance: none;
+		padding-right: 2rem;
+		cursor: pointer;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: right 0.6rem center;
+		line-height: 1.4;
+	}
+
+	select.form-input:hover {
+		border-color: var(--color-primary, #3730a3);
+	}
+
+	:global(.dark) select.form-input {
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 	}
 
 	:global(.dark) .modal h3 {
@@ -549,7 +583,8 @@
 
 	.hint {
 		font-size: 0.8rem;
+		line-height: 1.4;
 		color: var(--color-muted-foreground, #64748b);
-		margin: -0.5rem 0 0.75rem;
+		margin: 0.35rem 0 0.25rem;
 	}
 </style>
