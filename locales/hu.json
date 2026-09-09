@@ -302,6 +302,7 @@
 	"filter.from": "-tól",
 	"filter.to": "-ig",
 	"filter.clear": "Szűrő törlése",
+	"work.filter.allEmployees": "Összes dolgozó",
 
 	"report.title": "Projekt riport",
 	"report.noAccess": "Nincs jogosultságod a riport megtekintéséhez",

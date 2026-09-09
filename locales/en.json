@@ -303,6 +303,7 @@
 	"filter.from": "From",
 	"filter.to": "To",
 	"filter.clear": "Clear filter",
+	"work.filter.allEmployees": "All employees",
 
 	"report.title": "Project report",
 	"report.noAccess": "You don't have permission to view this report",
