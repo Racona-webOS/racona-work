@@ -20,7 +20,8 @@
  *   organizations.ts — szervezetek és szervezeti tagság
  *   permissions.ts   — szerepek és képességek
  *   projects.ts      — projektek, projekt tagok, projekt-szintű szerepek
- *   work-entries.ts  — munkabejegyzések és projekt riport
+ *   work-entries.ts  — munkabejegyzések (lista, CRUD, kategóriák)
+ *   project-report.ts — projekt riport (munkabejegyzések aggregálása)
  *
  * A kliens kód a típusokat innen importálja (`../../server/functions.js`),
  * ezért a domain modulok típusai is itt vannak reexportálva.
@@ -155,7 +156,6 @@ export {
 	createWorkEntry,
 	updateWorkEntry,
 	deleteWorkEntry,
-	getProjectReport,
 	getWorkEntryCategories
 } from './work-entries.js';
 
@@ -164,10 +164,17 @@ export type {
 	WorkEntryRow,
 	WorkEntryCategory,
 	WorkEntryListParams,
-	WorkEntryListResult,
+	WorkEntryListResult
+} from './work-entries.js';
+
+// --- Projekt riport ---------------------------------------------------------
+
+export { getProjectReport } from './project-report.js';
+
+export type {
 	ProjectReport,
 	ProjectReportEmployee,
 	ProjectReportEmployeeCategory,
 	ProjectReportCategory,
 	ProjectReportDaily
-} from './work-entries.js';
+} from './project-report.js';
