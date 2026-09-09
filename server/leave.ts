@@ -9,6 +9,7 @@ import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { requireCapability } from './permissions.js';
 import { getEmployeeOrganizationId } from './employees.js';
+import { getWorkCalendarOverrides } from './work-calendar.js';
 import type { PaginatedResult } from './types.js';
 
 export interface LeaveRequestListParams {
@@ -59,10 +60,40 @@ export interface LeaveBalance {
 }
 
 /**
- * Munkanapok számítása két dátum között (hétvégék kizárásával).
- * Tiszta (pure) segédfüggvény — Property 6 validálja.
+ * A pg DATE oszlopot Date-ként is visszaadhatja — egységes ISO napra hozzuk.
+ *
+ * @param value - A nyers dátumérték az adatbázisból.
+ * @returns A nap YYYY-MM-DD formában.
  */
-export function calculateWorkingDays(startDate: string, endDate: string): number {
+function toIsoDay(value: string | Date): string {
+	if (value instanceof Date) {
+		return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()))
+			.toISOString()
+			.slice(0, 10);
+	}
+	return String(value).slice(0, 10);
+}
+
+/**
+ * Munkanapok számítása két dátum között.
+ *
+ * Alapszabály: a hétvége nem munkanap. Az `overrides` ezt felülírja naponként —
+ * innen jönnek a munkaszüneti napok (hétköznap, mégsem munkanap) és az
+ * áthelyezett munkanapok (szombat, mégis munkanap).
+ *
+ * Tiszta (pure) segédfüggvény: a naptárat a hívó tölti be és adja át, hogy a
+ * függvény tesztelhető maradjon — Property 6 validálja.
+ *
+ * @param startDate - Kezdő dátum (YYYY-MM-DD).
+ * @param endDate - Záró dátum (YYYY-MM-DD).
+ * @param overrides - Nap → munkanap-e leképezés; hiányzó napra a hétvége-szabály dönt.
+ * @returns A munkanapok száma.
+ */
+export function calculateWorkingDays(
+	startDate: string,
+	endDate: string,
+	overrides?: Map<string, boolean>
+): number {
 	const dateFormatRegex = /^\d{4}-\d{2}-\d{2}$/;
 	if (!dateFormatRegex.test(startDate) || !dateFormatRegex.test(endDate)) {
 		throw new Error('Érvénytelen dátumformátum. Elvárt formátum: YYYY-MM-DD');
@@ -85,10 +116,19 @@ export function calculateWorkingDays(startDate: string, endDate: string): number
 	const endMs = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
 
 	while (currentMs <= endMs) {
-		const dayOfWeek = new Date(currentMs).getUTCDay();
-		// 0 = vasárnap, 6 = szombat
-		if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-			workingDays++;
+		const current = new Date(currentMs);
+		const isoDay = current.toISOString().slice(0, 10);
+		const override = overrides?.get(isoDay);
+
+		if (override !== undefined) {
+			// A naptári kivétel felülírja a hétvége-szabályt mindkét irányban
+			if (override) workingDays++;
+		} else {
+			const dayOfWeek = current.getUTCDay();
+			// 0 = vasárnap, 6 = szombat
+			if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+				workingDays++;
+			}
 		}
 		currentMs += 24 * 60 * 60 * 1000;
 	}
@@ -252,7 +292,8 @@ export async function createLeaveRequest(
 		throw new Error('A záró dátum nem lehet korábbi a kezdő dátumnál.');
 	}
 
-	const days = calculateWorkingDays(startDate, endDate);
+	const calendar = await getWorkCalendarOverrides(context, organizationId, startDate, endDate);
+	const days = calculateWorkingDays(startDate, endDate, calendar);
 
 	// Szabadságkeret ellenőrzés (csak éves szabadságnál)
 	if (leaveType === 'annual') {
@@ -346,7 +387,7 @@ export async function approveLeaveRequest(
 	context: RemoteContext
 ): Promise<LeaveRequest> {
 	const requestResult = await context.db.query(
-		`SELECT lr.id, lr.employee_id, lr.leave_type, lr.start_date, lr.days, lr.status,
+		`SELECT lr.id, lr.employee_id, lr.leave_type, lr.start_date, lr.end_date, lr.days, lr.status,
 		        e.organization_id
 		 FROM app__racona_work.leave_requests lr
 		 JOIN app__racona_work.employees e ON e.id = lr.employee_id
@@ -366,22 +407,60 @@ export async function approveLeaveRequest(
 		throw new Error(`A kérelem már el lett bírálva (jelenlegi státusz: ${req.status}).`);
 	}
 
+	// A napok újraszámolása a jóváhagyás pillanatában érvényes munkanaptárral.
+	// A kérelem beadása óta változhatott a naptár (pl. bekerült egy áthelyezett
+	// munkanap), és a keretet a tényleges értékkel kell terhelni.
+	const startDay = toIsoDay(req.start_date);
+	const endDay = toIsoDay(req.end_date);
+	const calendar = await getWorkCalendarOverrides(
+		context,
+		req.organization_id,
+		startDay,
+		endDay
+	);
+	const days = calculateWorkingDays(startDay, endDay, calendar);
+
+	// Éves szabadságnál a kerettel is újra egyeztetni kell: ha a naptár változása
+	// miatt több napra jön ki, előfordulhat, hogy már nem fér bele.
+	if (req.leave_type === 'annual') {
+		const year = new Date(startDay).getFullYear();
+		const balanceResult = await context.db.query(
+			`SELECT remaining_days FROM app__racona_work.leave_balances
+			 WHERE employee_id = $1 AND year = $2`,
+			[req.employee_id, year]
+		);
+
+		if (balanceResult.rows.length === 0) {
+			throw new Error(
+				`Nincs szabadságkeret beállítva a(z) ${year}. évre, a kérelem nem hagyható jóvá.`
+			);
+		}
+
+		const remainingDays: number = balanceResult.rows[0].remaining_days;
+		if (days > remainingDays) {
+			throw new Error(
+				`A kérelem a munkanaptár szerint ${days} munkanap, a fennmaradó keret viszont ` +
+					`${remainingDays} nap. A kérelem így nem hagyható jóvá.`
+			);
+		}
+	}
+
 	const updateResult = await context.db.query(
 		`UPDATE app__racona_work.leave_requests
-		 SET status = 'approved', updated_at = NOW()
+		 SET status = 'approved', days = $2, updated_at = NOW()
 		 WHERE id = $1
 		 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by, created_at, updated_at`,
-		[params.id]
+		[params.id, days]
 	);
 
 	// leave_balances.used_days frissítése (csak éves szabadságnál)
 	if (req.leave_type === 'annual') {
-		const year = new Date(req.start_date).getFullYear();
+		const year = new Date(startDay).getFullYear();
 		await context.db.query(
 			`UPDATE app__racona_work.leave_balances
 			 SET used_days = used_days + $1
 			 WHERE employee_id = $2 AND year = $3`,
-			[req.days, req.employee_id, year]
+			[days, req.employee_id, year]
 		);
 	}
 

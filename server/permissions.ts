@@ -37,6 +37,7 @@ export const CAPABILITIES = [
 	'leave.request',
 	'leave.approve',
 	'leave.balance.manage',
+	'leave.calendar.manage',
 
 	'employee.view',
 	'employee.manage'

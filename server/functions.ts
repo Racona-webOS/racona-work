@@ -107,6 +107,18 @@ export {
 
 export type { Organization, OrganizationMember, OrganizationMemberRow } from './organizations.js';
 
+// --- Munkanaptár ------------------------------------------------------------
+
+export {
+	listCalendarDays,
+	upsertCalendarDay,
+	deleteCalendarDay,
+	generateHungarianHolidays,
+	hungarianPublicHolidays
+} from './work-calendar.js';
+
+export type { CalendarDay, CalendarDayKind } from './work-calendar.js';
+
 // --- Jogosultságkezelés (szervezet-szintű szerepek, képességek) -------------
 
 export {
