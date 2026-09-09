@@ -364,6 +364,56 @@
 <style>
 	@import '../styles/shared.css';
 
+	/* A shared.css nem definiálja a modal tartalmi osztályait — a plugin
+	   komponensei sajátban hozzák. A LeaveRequests konvencióját követjük,
+	   hogy a két modal egyformán nézzen ki. */
+
+	.modal h3 {
+		font-size: 1.1rem;
+		font-weight: 700;
+		margin: 0;
+	}
+
+	.modal-description {
+		font-size: 0.875rem;
+		color: var(--color-muted-foreground, #64748b);
+		margin: 0.25rem 0 1rem;
+	}
+
+	.form-label {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		margin-bottom: 0.75rem;
+	}
+
+	.form-input {
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.375rem;
+		padding: 0.4rem 0.75rem;
+		font-size: 0.875rem;
+		font-weight: 400;
+		background: var(--color-background, #fff);
+		color: var(--color-foreground, #0f172a);
+	}
+
+	.form-input:focus {
+		outline: 2px solid var(--color-primary, #3730a3);
+		outline-offset: 1px;
+	}
+
+	:global(.dark) .modal h3 {
+		color: var(--color-foreground, oklch(0.985 0 0));
+	}
+
+	:global(.dark) .form-input {
+		background: var(--color-input, oklch(1 0 0 / 15%));
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
+		color: var(--color-foreground, oklch(0.985 0 0));
+	}
+
 	.toolbar {
 		display: flex;
 		align-items: center;
@@ -473,7 +523,7 @@
 
 	.hint {
 		font-size: 0.8rem;
-		color: var(--muted-foreground, #71717a);
-		margin: 0.25rem 0 0.5rem;
+		color: var(--color-muted-foreground, #64748b);
+		margin: -0.5rem 0 0.75rem;
 	}
 </style>
