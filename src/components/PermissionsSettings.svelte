@@ -43,7 +43,7 @@
 		},
 		{
 			labelKey: 'capabilities.group.leave',
-			items: ['leave.request', 'leave.approve', 'leave.balance.manage']
+			items: ['leave.request', 'leave.approve', 'leave.balance.manage', 'leave.calendar.manage']
 		},
 		{
 			labelKey: 'capabilities.group.employees',

@@ -58,6 +58,13 @@
 				"component": "LeaveRequests"
 			},
 			{
+				"labelKey": "menu.workCalendar",
+				"href": "#work-calendar",
+				"icon": "CalendarCog",
+				"component": "WorkCalendar",
+				"requiredCapability": "leave.calendar.manage"
+			},
+			{
 				"labelKey": "menu.businessTrips",
 				"href": "#business-trips",
 				"icon": "Car",
