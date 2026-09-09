@@ -78,14 +78,60 @@ function easterSundayMs(year: number): number {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// ============================================================================
+// MUNKASZÜNETI NAPOK — KARBANTARTANDÓ LISTA
+// ============================================================================
+//
+// FIGYELEM: az alábbi két konstans a magyar Munka törvénykönyve (2012. évi I.
+// törvény) 102. § (1) bekezdése szerinti munkaszüneti napokat sorolja fel.
+// Ha a jogszabály változik, EZT A KÉT LISTÁT kell módosítani — a kód többi
+// része nem tartalmaz dátumot.
+//
+// Jelenleg ismert nyitott kérdés: december 24. státusza az utóbbi években
+// változott, ezért szándékosan NEM szerepel a listában. Mielőtt felvennéd,
+// ellenőrizd a hatályos jogszabályban.
+//
+// Ami NINCS és nem is lehet ebben a listában: az áthelyezett munkanapok
+// (ledolgozós szombatok) és az áthelyezett pihenőnapok. Azokat évente
+// miniszteri rendelet állapítja meg, semmilyen szabályból nem következnek —
+// a munkanaptár felületén kell kézzel felvinni őket.
+
+/**
+ * Fix dátumú munkaszüneti napok: [hónap (1-12), nap, megnevezés].
+ *
+ * Ezek évről évre ugyanarra a naptári napra esnek.
+ */
+const FIXED_PUBLIC_HOLIDAYS: ReadonlyArray<readonly [number, number, string]> = [
+	[1, 1, 'Újév'],
+	[3, 15, 'Nemzeti ünnep (március 15.)'],
+	[5, 1, 'A munka ünnepe'],
+	[8, 20, 'Az államalapítás ünnepe'],
+	[10, 23, 'Nemzeti ünnep (október 23.)'],
+	[11, 1, 'Mindenszentek'],
+	[12, 25, 'Karácsony'],
+	[12, 26, 'Karácsony másnapja']
+];
+
+/**
+ * Húsvéthoz kötött munkaszüneti napok: [eltolás húsvétvasárnaptól, megnevezés].
+ *
+ * Ezek dátuma évente változik, de az eltolás állandó — a húsvétvasárnapot az
+ * easterSundayMs() számítja ki, nem tárolt adatból jön.
+ */
+const EASTER_RELATIVE_HOLIDAYS: ReadonlyArray<readonly [number, string]> = [
+	[-2, 'Nagypéntek'],
+	[1, 'Húsvéthétfő'],
+	[50, 'Pünkösdhétfő']
+];
+
 /**
  * Magyar munkaszüneti napok egy adott évben.
  *
- * A fix dátumúak a Munka törvénykönyvéből, a mozgók a húsvétvasárnaphoz
- * viszonyítva (nagypéntek -2, húsvéthétfő +1, pünkösdhétfő +50 nap).
+ * Két forrásból áll össze: a FIXED_PUBLIC_HOLIDAYS fix naptári dátumaiból és
+ * az EASTER_RELATIVE_HOLIDAYS húsvéthoz viszonyított eltolásaiból.
  *
- * Nem tartalmazza az áthelyezett munkanapokat és pihenőnapokat: azokat évente
- * miniszteri rendelet állapítja meg, kézzel kell felvinni.
+ * Nem tartalmazza az áthelyezett munkanapokat és pihenőnapokat — lásd a
+ * konstansok fölötti megjegyzést.
  *
  * @param year - A naptári év.
  * @returns A munkaszüneti napok ISO dátummal és megnevezéssel, dátum szerint rendezve.
@@ -94,17 +140,14 @@ export function hungarianPublicHolidays(year: number): Array<{ day: string; name
 	const easter = easterSundayMs(year);
 
 	const days: Array<{ day: string; name: string }> = [
-		{ day: `${year}-01-01`, name: 'Újév' },
-		{ day: `${year}-03-15`, name: 'Nemzeti ünnep (március 15.)' },
-		{ day: toIsoDay(easter - 2 * DAY_MS), name: 'Nagypéntek' },
-		{ day: toIsoDay(easter + DAY_MS), name: 'Húsvéthétfő' },
-		{ day: `${year}-05-01`, name: 'A munka ünnepe' },
-		{ day: toIsoDay(easter + 50 * DAY_MS), name: 'Pünkösdhétfő' },
-		{ day: `${year}-08-20`, name: 'Az államalapítás ünnepe' },
-		{ day: `${year}-10-23`, name: 'Nemzeti ünnep (október 23.)' },
-		{ day: `${year}-11-01`, name: 'Mindenszentek' },
-		{ day: `${year}-12-25`, name: 'Karácsony' },
-		{ day: `${year}-12-26`, name: 'Karácsony másnapja' }
+		...FIXED_PUBLIC_HOLIDAYS.map(([month, day, name]) => ({
+			day: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+			name
+		})),
+		...EASTER_RELATIVE_HOLIDAYS.map(([offset, name]) => ({
+			day: toIsoDay(easter + offset * DAY_MS),
+			name
+		}))
 	];
 
 	return days.sort((a, b) => a.day.localeCompare(b.day));
