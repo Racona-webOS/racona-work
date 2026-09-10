@@ -510,7 +510,7 @@ A határidő lejártával **a szabadság nem vész el**: a munkaviszony fennáll
   - vezetői irányítópult: „Lejáró áthozott napok” lista, a névre kattintva az adatlap;
   - saját irányítópult: emlékeztető, mennyi áthozott napot kell még kivenni és meddig (lejártnál: egyeztessen a HR-rel).
 
-**Nyitott:** egy kereten egy határidő van. Ha az áthozott napok egy része márc. 31-ig, más része (életkori pótszabadság) az év végéig adható ki, a HR a későbbi dátumot adja meg, vagy korrekcióval kezeli. Automatikus emlékeztető (email, időzített értesítés) nincs, mert a pluginnak nincs ütemezője.
+**Nyitott:** egy kereten egy határidő van. Ha az áthozott napok egy része márc. 31-ig, más része (életkori pótszabadság) az év végéig adható ki, a HR a legkorábbi határidőt adja meg, a korrekcióhoz pedig megjegyzést ír: így a rendszer időben szól az első lejáró részről (a később lejáró napokra adott korai „lejárt” jelzés kisebb baj, mint egy elmulasztott határidő). A tételenkénti határidőt szándékosan nem valósítjuk meg, amíg a vegyes áthozatal nem gyakori. Automatikus emlékeztető (email, időzített értesítés) nincs, mert a pluginnak nincs ütemezője.
 
 ## 12. Szakmai ellenőrzést igényel
 
