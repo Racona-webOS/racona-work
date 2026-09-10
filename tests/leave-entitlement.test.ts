@@ -18,6 +18,7 @@ import {
 	type EntitlementInput,
 	type EntitlementItemCode
 } from '../server/leave-entitlement.ts';
+import { detectMimeType, sanitizeFileName } from '../server/leave-data-request-files.ts';
 
 function input(overrides: Partial<EntitlementInput> = {}): EntitlementInput {
 	return {
@@ -400,5 +401,23 @@ describe('áthozott napok határideje (Mt. 123. §)', () => {
 	test('lejárt, de mindent kivett → rendben', () => {
 		const r = carryOverUsage({ ...base, requests: [{ startDate: '2027-03-01', days: 5 }], today: '2027-06-01' });
 		expect(r.status).toBe('done');
+	});
+});
+
+describe('igazolás fájlok ellenőrzése', () => {
+	const bytes = (...b: number[]) => new Uint8Array(b);
+	test('a típus a tartalomból jön', () => {
+		expect(detectMimeType(bytes(0x25, 0x50, 0x44, 0x46, 0x2d, 0x31))).toBe('application/pdf');
+		expect(detectMimeType(bytes(0xff, 0xd8, 0xff, 0xe0))).toBe('image/jpeg');
+		expect(detectMimeType(bytes(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00))).toBe('image/png');
+		expect(detectMimeType(bytes(0x3c, 0x73, 0x76, 0x67))).toBeNull(); // <svg
+		expect(detectMimeType(bytes(0x25, 0x50))).toBeNull();
+	});
+	test('a fájlnévből kimarad az útvonal és a vezérlőkarakter', () => {
+		expect(sanitizeFileName('C:\\Users\\x\\igazolás 2026.pdf')).toBe('igazolás 2026.pdf');
+		expect(sanitizeFileName('../../etc/passwd')).toBe('passwd');
+		expect(sanitizeFileName('a\u0000b\u0007c.png')).toBe('abc.png');
+		expect(sanitizeFileName('')).toBe('igazolas');
+		expect(sanitizeFileName('x'.repeat(300)).length).toBe(255);
 	});
 });

@@ -27,6 +27,8 @@ import {
 	notifyLeaveDataRequestCreated,
 	notifyLeaveDataRequestDecision
 } from './leave-notifications.js';
+import { deleteFilesOfRequest, loadFilesFor } from './leave-data-request-files.js';
+import type { LeaveDataRequestFile } from './leave-data-request-files.js';
 
 const SCHEMA = 'app__racona_work';
 
@@ -69,6 +71,8 @@ export interface LeaveDataRequest {
 	decidedByName: string | null;
 	decidedAt: string | null;
 	createdAt: string;
+	/** A csatolt igazolások adatai (tartalom nélkül). */
+	files: LeaveDataRequestFile[];
 }
 
 const KINDS: ReadonlySet<string> = new Set<LeaveDataRequestKind>([
@@ -107,14 +111,21 @@ function mapRequest(row: any): LeaveDataRequest {
 		decisionNote: row.decision_note ?? null,
 		decidedByName: row.decided_by_name ?? null,
 		decidedAt: row.decided_at ?? null,
-		createdAt: row.created_at
+		createdAt: row.created_at,
+		files: []
 	};
+}
+
+/** A bejelentésekhez hozzáteszi a csatolt igazolások adatait. */
+async function withFiles(context: RemoteContext, requests: LeaveDataRequest[]): Promise<LeaveDataRequest[]> {
+	const files = await loadFilesFor(context, requests.map((r) => r.id));
+	return requests.map((r) => ({ ...r, files: files.get(r.id) ?? [] }));
 }
 
 async function loadRequest(context: RemoteContext, id: number): Promise<LeaveDataRequest> {
 	const r = await context.db.query(`${REQUEST_SELECT} WHERE r.id = $1`, [id]);
 	if (r.rows.length === 0) throw new Error('Nem található az adatbejelentés.');
-	return mapRequest(r.rows[0]);
+	return (await withFiles(context, [mapRequest(r.rows[0])]))[0];
 }
 
 function trimNote(value: unknown): string | null {
@@ -304,6 +315,8 @@ export async function cancelLeaveDataRequest(
 		[params.id]
 	);
 	if (r.rows.length === 0) throw new Error('Csak függő bejelentés vonható vissza.');
+	// A visszavont bejelentés igazolásaira nincs szükség (különleges adat lehet)
+	await deleteFilesOfRequest(context, params.id);
 	return loadRequest(context, params.id);
 }
 
@@ -330,7 +343,7 @@ export async function getLeaveDataRequests(
 			  LIMIT 50`,
 			[params.employeeId, onlyPending]
 		);
-		return r.rows.map(mapRequest);
+		return withFiles(context, r.rows.map(mapRequest));
 	}
 
 	if (!params.organizationId || params.organizationId <= 0) {
@@ -344,7 +357,7 @@ export async function getLeaveDataRequests(
 		  LIMIT 200`,
 		[params.organizationId, onlyPending]
 	);
-	return r.rows.map(mapRequest);
+	return withFiles(context, r.rows.map(mapRequest));
 }
 
 // --- Elbírálás ---------------------------------------------------------------
@@ -418,6 +431,10 @@ export async function decideLeaveDataRequest(
 	if (claimed.rows.length === 0) throw new Error('A bejelentést már elbírálták vagy visszavonták.');
 
 	let recalculated: RecalculatedBalance[] = [];
+	if (status === 'rejected') {
+		// Elutasításkor az igazolások törlődnek; jóváhagyáskor megmaradnak bizonyítéknak
+		await deleteFilesOfRequest(context, params.id);
+	}
 	if (status === 'approved') {
 		try {
 			recalculated = await applyRequest(context, request);

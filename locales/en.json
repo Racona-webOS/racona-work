@@ -705,5 +705,20 @@
 	"leaveEntitlement.children.adoptionHint": "For an adopted child: the day the adoption decision became final. The paternity leave deadline counts from this day.",
 	"leaveEntitlement.children.adoptedBadge": "adopted",
 	"leaveEntitlement.other.adopted": "adopted: {date}",
-	"dataRequest.field.adoptionDate": "Adoption date"
+	"dataRequest.field.adoptionDate": "Adoption date",
+	"files.attach": "Certificate (optional)",
+	"files.choose": "Choose file",
+	"files.hint": "PDF, JPG or PNG, up to 4 MB each, 5 files in total. Only HR can see it. Deleted if rejected or cancelled.",
+	"files.remove": "Remove file",
+	"files.attachLater": "+ Attach certificate",
+	"files.uploaded": "Certificate attached.",
+	"files.none": "No certificate attached.",
+	"files.delete": "Delete",
+	"files.deleted": "Certificate deleted.",
+	"files.kept.title": "Kept certificates",
+	"files.kept.subtitle": "Certificates of approved requests are kept as proof. Delete them when no longer needed.",
+	"files.kept.approvedAt": "approved: {date}",
+	"files.error.tooLarge": "{name}: the file can be at most 4 MB.",
+	"files.error.type": "{name}: only PDF, JPG or PNG can be attached.",
+	"files.error.tooMany": "At most {max} files can be attached."
 }

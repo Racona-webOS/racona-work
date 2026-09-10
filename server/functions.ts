@@ -21,6 +21,7 @@
  *   leave-history.ts — a szabadságkeretek változásnaplója
  *   leave-carry-over.ts — az áthozott napok felhasználása és határideje
  *   leave-data-requests.ts — dolgozói adatbejelentések és azok elbírálása
+ *   leave-data-request-files.ts — igazolások a bejelentésekhez (bytea a plugin sémában)
  *   dates.ts         — dátum-segédek (budapesti nap, YYYY-MM-DD ellenőrzés)
  *   leave-types.ts   — szabadságtípusok (a kliens is importálja)
  *   dashboard.ts     — irányítópult statisztikák
@@ -140,6 +141,13 @@ export type {
 	ChildData,
 	ReportableExtraKind
 } from './leave-data-requests.js';
+
+export {
+	attachLeaveDataRequestFile,
+	getLeaveDataRequestFile,
+	deleteLeaveDataRequestFile
+} from './leave-data-request-files.js';
+export type { LeaveDataRequestFile, CertificateMimeType } from './leave-data-request-files.js';
 
 export { getCarryOverAlerts } from './leave-carry-over.js';
 export type { CarryOverAlert } from './leave-carry-over.js';

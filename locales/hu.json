@@ -704,5 +704,20 @@
 	"leaveEntitlement.children.adoptionHint": "Örökbefogadott gyereknél az örökbefogadást engedélyező határozat véglegessé válásának napja. Az apasági szabadság határideje ettől számít.",
 	"leaveEntitlement.children.adoptedBadge": "örökbefogadott",
 	"leaveEntitlement.other.adopted": "örökbefogadás: {date}",
-	"dataRequest.field.adoptionDate": "Örökbefogadás napja"
+	"dataRequest.field.adoptionDate": "Örökbefogadás napja",
+	"files.attach": "Igazolás (nem kötelező)",
+	"files.choose": "Fájl kiválasztása",
+	"files.hint": "PDF, JPG vagy PNG, fájlonként legfeljebb 4 MB, összesen 5 fájl. Csak a HR látja. Elutasításkor vagy visszavonáskor törlődik.",
+	"files.remove": "Fájl eltávolítása",
+	"files.attachLater": "+ Igazolás csatolása",
+	"files.uploaded": "Igazolás csatolva.",
+	"files.none": "Nincs csatolt igazolás.",
+	"files.delete": "Törlés",
+	"files.deleted": "Igazolás törölve.",
+	"files.kept.title": "Megőrzött igazolások",
+	"files.kept.subtitle": "A jóváhagyott bejelentések igazolásai bizonyítékként megmaradnak. Töröld őket, ha már nincs rájuk szükség.",
+	"files.kept.approvedAt": "jóváhagyva: {date}",
+	"files.error.tooLarge": "{name}: a fájl legfeljebb 4 MB lehet.",
+	"files.error.type": "{name}: csak PDF, JPG vagy PNG csatolható.",
+	"files.error.tooMany": "Legfeljebb {max} fájl csatolható."
 }

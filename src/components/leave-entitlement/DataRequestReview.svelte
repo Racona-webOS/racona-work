@@ -9,6 +9,7 @@
 	import type { LeaveDataRequest, RecalculatedBalance } from '../../../server/functions.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import { describeDataRequest } from './dataRequests.js';
+	import { formatSize, openFile } from './files.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -27,6 +28,8 @@
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	let requests = $state<LeaveDataRequest[]>([]);
+	/** Adatlapon: a jóváhagyott bejelentések megőrzött igazolásai (a HR törölheti őket). */
+	let keptFiles = $state<LeaveDataRequest[]>([]);
 	let decidingId = $state<number | null>(null);
 	let rejectingId = $state<number | null>(null);
 	let rejectNote = $state('');
@@ -37,12 +40,37 @@
 
 	async function load() {
 		try {
-			requests = await sdk.remote.call(
-				'getLeaveDataRequests',
-				employeeId ? { employeeId } : { organizationId }
-			);
+			if (employeeId) {
+				const all: LeaveDataRequest[] = await sdk.remote.call('getLeaveDataRequests', {
+					employeeId,
+					status: 'all'
+				});
+				requests = all.filter((r) => r.status === 'pending');
+				keptFiles = all.filter((r) => r.status === 'approved' && r.files.length > 0);
+			} else {
+				requests = await sdk.remote.call('getLeaveDataRequests', { organizationId });
+			}
 		} catch {
 			requests = [];
+			keptFiles = [];
+		}
+	}
+
+	async function openAttachment(fileId: number) {
+		try {
+			await openFile(sdk, fileId);
+		} catch (err) {
+			sdk?.ui?.toast(errorText(err), 'error');
+		}
+	}
+
+	async function deleteKeptFile(fileId: number) {
+		try {
+			await sdk.remote.call('deleteLeaveDataRequestFile', { fileId });
+			sdk?.ui?.toast(t('files.deleted'), 'success');
+			await load();
+		} catch (err) {
+			sdk?.ui?.toast(errorText(err), 'error');
 		}
 	}
 
@@ -108,6 +136,17 @@
 						{#if request.employeeNote}
 							<span class="note">„{request.employeeNote}”</span>
 						{/if}
+						{#if request.files.length > 0}
+							<span class="files">
+								{#each request.files as file (file.id)}
+									<button class="file-link" onclick={() => openAttachment(file.id)}>
+										📎 {file.fileName} ({formatSize(file.sizeBytes)})
+									</button>
+								{/each}
+							</span>
+						{:else}
+							<span class="meta">{t('files.none')}</span>
+						{/if}
 						<span class="meta">{new Date(request.createdAt).toLocaleDateString()}</span>
 					</div>
 					{#if rejectingId === request.id}
@@ -154,6 +193,31 @@
 						</div>
 					{/if}
 				</li>
+			{/each}
+		</ul>
+	</div>
+{/if}
+
+{#if employeeId && keptFiles.length > 0}
+	<div class="kept">
+		<h4>{t('files.kept.title')}</h4>
+		<p class="meta">{t('files.kept.subtitle')}</p>
+		<ul class="kept-list">
+			{#each keptFiles as request (request.id)}
+				{@const description = describeDataRequest(request, t)}
+				{#each request.files as file (file.id)}
+					<li class="kept-item">
+						<button class="file-link" onclick={() => openAttachment(file.id)}>📎 {file.fileName}</button>
+						<span class="meta">
+							{description.title} · {t('files.kept.approvedAt', {
+								date: request.decidedAt ? new Date(request.decidedAt).toLocaleDateString() : '—'
+							})}
+						</span>
+						<button class="btn-ghost-danger" onclick={() => deleteKeptFile(file.id)}>
+							{t('files.delete')}
+						</button>
+					</li>
+				{/each}
 			{/each}
 		</ul>
 	</div>
@@ -242,6 +306,87 @@
 	.note {
 		font-size: 0.8rem;
 		font-style: italic;
+	}
+
+	.files {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		margin-top: 0.15rem;
+	}
+
+	.file-link {
+		border: none;
+		background: var(--color-card, #ffffff);
+		border-radius: 0.375rem;
+		padding: 0.15rem 0.5rem;
+		font-size: 0.75rem;
+		cursor: pointer;
+		color: var(--color-primary, #3730a3);
+	}
+
+	.file-link:hover {
+		text-decoration: underline;
+	}
+
+	.kept {
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.75rem;
+		padding: 1rem 1.25rem;
+		background: var(--color-card, #ffffff);
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	.kept h4 {
+		margin: 0;
+		font-size: 0.875rem;
+		font-weight: 600;
+	}
+
+	.kept-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+
+	.kept-item {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		flex-wrap: wrap;
+		font-size: 0.8rem;
+	}
+
+	.kept-item .meta {
+		flex: 1;
+	}
+
+	.btn-ghost-danger {
+		border: none;
+		background: transparent;
+		padding: 0.15rem 0.4rem;
+		border-radius: 0.25rem;
+		cursor: pointer;
+		font-size: 0.75rem;
+		color: #dc2626;
+	}
+
+	.btn-ghost-danger:hover {
+		background: #fee2e2;
+	}
+
+	:global(.dark) .kept {
+		background: var(--color-card, oklch(0.205 0 0));
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
+	}
+
+	:global(.dark) .file-link {
+		background: var(--color-card, oklch(0.205 0 0));
 	}
 
 	.actions {

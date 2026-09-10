@@ -467,9 +467,20 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
   - vezetői irányítópult és dolgozó adatlapja: `DataRequestReview.svelte` — mi változik mire („Fogyatékos gyermek: nem → igen”), a dolgozó megjegyzése, jóváhagyás / elutasítás indoklással.
 - [x] A dátum-segédek egy helyre kerültek (`server/dates.ts`).
 
+**Igazolások** ✅ — `migrations/013_leave_data_request_files.sql`, `server/leave-data-request-files.ts`
+
+- A core nem ad fájltárolót a pluginoknak: a kliens base64-ben küldi a fájlt remote hívásban (fájlonként egy hívás), a szerver a plugin sémájában `bytea`-ként tárolja (`leave_data_request_files`). Letöltés base64-ben, a kliens Blob URL-lel nyitja meg új lapon (ha le van tiltva, letöltésként).
+- Csak PDF, JPG, PNG — a típust a fájl tartalmának első bájtjai alapján ellenőrizzük, a kiterjesztésben nem bízunk (egy PDF-nek nevezett SVG nem megy át). Fájlonként legfeljebb 4 MB, bejelentésenként 5 fájl. A fájlnévből kimarad az útvonal és a vezérlőkarakter.
+- **Éles környezet:** a core remote végpontja JSON-t fogad, a méretet az adapter-node `BODY_SIZE_LIMIT` környezeti változója korlátozza. Egy 4 MB-os fájl base64-ben kb. 5,4 MB, ezért ennél nagyobbra kell állítani (a core példa-konfigjában 10 MB). Ha nincs beállítva, az alapérték 512 KB, és a nagyobb feltöltések elbuknak.
+- Hozzáférés: a feltöltő dolgozó és a HR (`leave.balance.manage`). Csatolni csak függő bejelentéshez lehet (utólag is); a dolgozó a sajátját csak függő állapotban törölheti, a HR bármikor.
+- **Megőrzés (D15):** elutasításkor és visszavonáskor a fájlok azonnal törlődnek. Jóváhagyás után megmaradnak (a pótszabadság jogalapjának bizonyítéka, pl. munkaügyi ellenőrzéshez), a dolgozó adatlapján a „Megőrzött igazolások” alatt a HR törölheti őket.
+- A csatolás nem kötelező (D16); ha hiányzik, a HR elutasíthatja és bekérheti.
+- Felület: a bejelentő ablakban fájlválasztó, a saját bejelentéseknél a csatolt fájlok és „+ Igazolás csatolása”; a HR elbíráló listájában a fájlok megnyithatók.
+- 2 új teszt: tartalom szerinti típusfelismerés, fájlnév-tisztítás.
+
 **Hátravan**
 
-- [ ] Igazolás feltöltése a bejelentéshez (most a HR offline kéri be).
+- [ ] A megőrzött igazolások automatikus törlése egy idő után (most kézzel törli a HR; ütemező nincs).
 - [x] Az áthozott napok határideje és a „először az áthozottból fogy” sorrend — lásd lent.
 - [x] Örökbefogadás — `migrations/012_child_adoption_date.sql`:
   - a gyereknél nem kötelező `adoption_date` (az örökbefogadást engedélyező határozat véglegessé válása); a születés és a mai nap közé kell esnie;

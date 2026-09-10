@@ -15,6 +15,7 @@
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import Checkbox from '../ui/Checkbox.svelte';
 	import { describeDataRequest, formatDay } from './dataRequests.js';
+	import { checkFile, FILE_ACCEPT, formatSize, MAX_FILES_PER_REQUEST, openFile, uploadFiles } from './files.js';
 
 	let { pluginId = 'racona-work', employeeId }: { pluginId?: string; employeeId: number } = $props();
 
@@ -61,11 +62,60 @@
 		note: string;
 	};
 	let draft = $state<Draft | null>(null);
+	let draftFiles = $state<File[]>([]);
 	let submitting = $state(false);
+
+	/** A kiválasztott fájlok ellenőrzése; a hibásakat kihagyjuk és jelezzük. */
+	function pickFiles(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const picked = [...(input.files ?? [])];
+		input.value = '';
+		for (const file of picked) {
+			const problem = checkFile(file, t);
+			if (problem) {
+				sdk?.ui?.toast(problem, 'warning');
+			} else if (draftFiles.length >= MAX_FILES_PER_REQUEST) {
+				sdk?.ui?.toast(t('files.error.tooMany', { max: MAX_FILES_PER_REQUEST }), 'warning');
+				break;
+			} else {
+				draftFiles = [...draftFiles, file];
+			}
+		}
+	}
+
+	/** Igazolás utólagos csatolása egy függő bejelentéshez. */
+	async function attachTo(request: LeaveDataRequest, event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const picked = [...(input.files ?? [])];
+		input.value = '';
+		if (picked.length === 0) return;
+		const errors = await uploadFiles(sdk, request.id, picked, t);
+		errors.forEach((e) => sdk?.ui?.toast(e, 'error'));
+		if (errors.length < picked.length) sdk?.ui?.toast(t('files.uploaded'), 'success');
+		await load();
+	}
+
+	async function removeFile(fileId: number) {
+		try {
+			await sdk.remote.call('deleteLeaveDataRequestFile', { fileId });
+			await load();
+		} catch (err) {
+			sdk?.ui?.toast(errorText(err), 'error');
+		}
+	}
+
+	async function openAttachment(fileId: number) {
+		try {
+			await openFile(sdk, fileId);
+		} catch (err) {
+			sdk?.ui?.toast(errorText(err), 'error');
+		}
+	}
 
 	const KINDS: LeaveDataRequestKind[] = ['birth_date', 'child_add', 'child_update', 'child_remove', 'extra_add'];
 
 	function openDraft(kind: LeaveDataRequestKind = 'child_add', child?: EmployeeChild) {
+		draftFiles = [];
 		draft = {
 			kind,
 			childId: child?.id ?? null,
@@ -109,7 +159,7 @@
 				paternityEligible: draft.child.paternityEligible,
 				adoptionDate: draft.child.adoptionDate || null
 			};
-			await sdk.remote.call('submitLeaveDataRequest', {
+			const created: LeaveDataRequest = await sdk.remote.call('submitLeaveDataRequest', {
 				employeeId,
 				kind: draft.kind,
 				childId: draft.childId,
@@ -122,7 +172,11 @@
 				},
 				note: draft.note
 			});
+			// A fájlok egyenként mennek fel; ha valamelyik nem sikerül, a bejelentés akkor is él
+			const errors = await uploadFiles(sdk, created.id, draftFiles, t);
 			draft = null;
+			draftFiles = [];
+			errors.forEach((e) => sdk?.ui?.toast(e, 'error'));
 			sdk?.ui?.toast(t('dataRequest.submitted'), 'success');
 			await load();
 		} catch (err) {
@@ -197,10 +251,32 @@
 							{#if request.status === 'rejected' && request.decisionNote}
 								<span class="decision">{t('dataRequest.my.decisionNote', { note: request.decisionNote })}</span>
 							{/if}
+							{#if request.files.length > 0}
+								<span class="files">
+									{#each request.files as file (file.id)}
+										<span class="file-chip">
+											<button class="link" onclick={() => openAttachment(file.id)}>📎 {file.fileName}</button>
+											{#if request.status === 'pending'}
+												<button
+													class="chip-remove"
+													onclick={() => removeFile(file.id)}
+													aria-label={t('files.remove')}>✕</button
+												>
+											{/if}
+										</span>
+									{/each}
+								</span>
+							{/if}
 						</div>
 						<div class="request-side">
 							<span class="badge badge-{request.status}">{t(`dataRequest.status.${request.status}`)}</span>
 							{#if request.status === 'pending'}
+								{#if request.files.length < MAX_FILES_PER_REQUEST}
+									<label class="link attach">
+										{t('files.attachLater')}
+										<input type="file" accept={FILE_ACCEPT} multiple hidden onchange={(e) => attachTo(request, e)} />
+									</label>
+								{/if}
 								<button class="link" onclick={() => cancel(request)}>{t('dataRequest.my.cancel')}</button>
 							{/if}
 						</div>
@@ -312,6 +388,26 @@
 					<span>{t('dataRequest.form.note')}</span>
 					<textarea class="input textarea" bind:value={draft.note} rows="2"></textarea>
 				</label>
+				<div class="files-field">
+					<span class="field-title">{t('files.attach')}</span>
+					{#if draftFiles.length < MAX_FILES_PER_REQUEST}
+						<label class="btn-secondary btn-sm file-button">
+							{t('files.choose')}
+							<input type="file" accept={FILE_ACCEPT} multiple hidden onchange={pickFiles} />
+						</label>
+					{/if}
+					{#each draftFiles as file, i (i)}
+						<span class="file-chip">
+							📎 {file.name} ({formatSize(file.size)})
+							<button
+								class="chip-remove"
+								onclick={() => (draftFiles = draftFiles.filter((_, j) => j !== i))}
+								aria-label={t('files.remove')}>✕</button
+							>
+						</span>
+					{/each}
+					<small class="hint">{t('files.hint')}</small>
+				</div>
 				<p class="hint">{t('dataRequest.form.hint')}</p>
 			</div>
 			<div class="modal-footer">
@@ -442,6 +538,63 @@
 
 	.link:hover {
 		text-decoration: underline;
+	}
+
+	.files {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.3rem;
+		margin-top: 0.2rem;
+	}
+
+	.file-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3rem;
+		padding: 0.1rem 0.5rem;
+		border-radius: 0.375rem;
+		background: var(--color-accent, #f1f5f9);
+		font-size: 0.75rem;
+	}
+
+	.chip-remove {
+		border: none;
+		background: transparent;
+		padding: 0;
+		cursor: pointer;
+		font-size: 0.7rem;
+		color: var(--color-muted-foreground, #64748b);
+	}
+
+	.chip-remove:hover {
+		color: #dc2626;
+	}
+
+	.link.attach {
+		display: inline;
+		flex-direction: row;
+	}
+
+	.files-field {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.4rem;
+	}
+
+	.field-title {
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	/* A shared.css globális label szabálya oszlopba rendezne */
+	.file-button {
+		flex-direction: row;
+		cursor: pointer;
+	}
+
+	:global(.dark) .file-chip {
+		background: var(--color-accent, oklch(0.269 0 0));
 	}
 
 	.date-pair {
