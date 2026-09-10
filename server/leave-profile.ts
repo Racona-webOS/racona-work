@@ -412,45 +412,6 @@ function publicProfile(profile: ProfileWithOrg): LeaveProfile {
 	return rest;
 }
 
-/**
- * Születési, belépési és kilépési dátum mentése, majd a nyitott keretek
- * újraszámolása. A mentéssel a belépés dátuma ellenőrzöttnek számít.
- */
-export async function saveLeaveProfile(
-	params: {
-		employeeId: number;
-		birthDate?: string | null;
-		hireDate: string;
-		employmentEndDate?: string | null;
-	},
-	context: RemoteContext
-): Promise<{ profile: LeaveProfile; recalculated: RecalculatedBalance[] }> {
-	await requireManageForEmployee(context, params.employeeId);
-
-	const today = todayInBudapest();
-	const birthDate = parseDay(params.birthDate, 'Születési dátum');
-	const hireDate = parseDay(params.hireDate, 'Belépés dátuma', true);
-	const endDate = parseDay(params.employmentEndDate, 'Kilépés dátuma');
-
-	if (birthDate && (birthDate > today || birthDate < '1900-01-01')) {
-		throw new Error('Születési dátum: nem lehet a jövőben.');
-	}
-	if (endDate && hireDate && endDate < hireDate) {
-		throw new Error('A kilépés dátuma nem lehet korábbi a belépésnél.');
-	}
-
-	await context.db.query(
-		`UPDATE ${SCHEMA}.employees
-		    SET birth_date = $2, hire_date = $3, employment_end_date = $4,
-		        hire_date_confirmed = TRUE, updated_at = NOW()
-		  WHERE id = $1`,
-		[params.employeeId, birthDate, hireDate, endDate]
-	);
-
-	const recalculated = await recalculateEmployeeBalances(context, params.employeeId);
-	return { profile: publicProfile(await loadProfile(context, params.employeeId)), recalculated };
-}
-
 /** Gyerek felvétele vagy módosítása (id megadásával), majd újraszámolás. */
 export async function saveEmployeeChild(
 	params: {

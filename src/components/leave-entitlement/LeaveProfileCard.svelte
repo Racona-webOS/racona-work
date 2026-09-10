@@ -87,47 +87,6 @@
 		onChanged?.();
 	}
 
-	// --- Dátumok ---
-	let editingDates = $state(false);
-	let editBirthDate = $state('');
-	let editHireDate = $state('');
-	let editEndDate = $state('');
-	let datesSaving = $state(false);
-
-	function startEditDates() {
-		if (!profile) return;
-		editBirthDate = profile.birthDate ?? '';
-		editHireDate = profile.hireDate ?? '';
-		editEndDate = profile.employmentEndDate ?? '';
-		editingDates = true;
-	}
-
-	async function saveDates() {
-		if (!editHireDate) {
-			sdk?.ui?.toast(t('leaveEntitlement.profile.hireDateRequired'), 'warning');
-			return;
-		}
-		datesSaving = true;
-		try {
-			const r: { profile: LeaveProfile; recalculated: RecalculatedBalance[] } = await sdk.remote.call(
-				'saveLeaveProfile',
-				{
-					employeeId,
-					birthDate: editBirthDate || null,
-					hireDate: editHireDate,
-					employmentEndDate: editEndDate || null
-				}
-			);
-			profile = r.profile;
-			editingDates = false;
-			afterChange(r.recalculated);
-		} catch (err) {
-			sdk?.ui?.toast(errorText(err), 'error');
-		} finally {
-			datesSaving = false;
-		}
-	}
-
 	// --- Gyerekek ---
 	type ChildEdit = {
 		id?: number;
@@ -320,57 +279,20 @@
 			<h3>{t('leaveEntitlement.profile.title')}</h3>
 			<p class="card-subtitle">{t('leaveEntitlement.profile.subtitle')}</p>
 		</div>
-		{#if profile && !editingDates}
-			<button class="btn-ghost" onclick={startEditDates}>{t('employeeDetail.editDetail')}</button>
-		{/if}
 	</div>
 
 	{#if loading && !profile}
 		<div class="loading-state"><div class="spinner"></div></div>
 	{:else if profile}
-		{#if !profile.hireDateConfirmed}
-			<p class="notice">{t('leaveEntitlement.profile.hireDateUnconfirmed')}</p>
-		{/if}
-
-		<!-- Dátumok -->
-		{#if editingDates}
-			<div class="edit-form">
-				<label>
-					<span>{t('leaveEntitlement.profile.birthDate')}</span>
-					<input class="input" type="date" bind:value={editBirthDate} />
-				</label>
-				<label>
-					<span>{t('leaveEntitlement.profile.hireDate')}</span>
-					<input class="input" type="date" bind:value={editHireDate} />
-				</label>
-				<label>
-					<span>{t('leaveEntitlement.profile.endDate')}</span>
-					<input class="input" type="date" bind:value={editEndDate} />
-					<small class="field-hint">{t('leaveEntitlement.profile.endDateHint')}</small>
-				</label>
-				<div class="form-actions">
-					<button class="btn-secondary" onclick={() => (editingDates = false)}>{t('form.cancel')}</button>
-					<button class="btn-primary" onclick={saveDates} disabled={datesSaving}>
-						{datesSaving ? t('loading') : t('form.save')}
-					</button>
-				</div>
-			</div>
-		{:else}
-			<div class="fields">
-				<div class="field-row">
-					<span class="field-label">{t('leaveEntitlement.profile.birthDate')}</span>
-					<span class="field-value">{formatDay(profile.birthDate)}</span>
-				</div>
-				<div class="field-row">
-					<span class="field-label">{t('leaveEntitlement.profile.hireDate')}</span>
-					<span class="field-value">{formatDay(profile.hireDate)}</span>
-				</div>
-				<div class="field-row">
-					<span class="field-label">{t('leaveEntitlement.profile.endDate')}</span>
-					<span class="field-value">{formatDay(profile.employmentEndDate)}</span>
-				</div>
-			</div>
-		{/if}
+		<!-- A számítás bemenő dátumai máshol szerkeszthetők: a születési dátum személyes,
+		     a belépés és a kilépés munkaügyi adat -->
+		<p class="inputs-hint">
+			{t('leaveEntitlement.profile.inputs', {
+				birthDate: formatDay(profile.birthDate),
+				hireDate: formatDay(profile.hireDate),
+				endDate: profile.employmentEndDate ? formatDay(profile.employmentEndDate) : '—'
+			})}
+		</p>
 
 		<!-- Gyerekek -->
 		<div class="section">
@@ -687,30 +609,11 @@
 		line-height: 1.4;
 	}
 
-	.fields {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.field-row {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-		padding: 0.375rem 0;
-		border-bottom: 1px solid var(--color-border, #f1f5f9);
-	}
-
-	.field-row:last-child { border-bottom: none; }
-
-	.field-label {
+	.inputs-hint {
+		margin: 0;
 		font-size: 0.8rem;
+		line-height: 1.45;
 		color: var(--color-muted-foreground, #64748b);
-		min-width: 140px;
-		font-weight: 500;
-	}
-
-	.field-value {
-		font-size: 0.875rem;
 	}
 
 	.field-hint {
@@ -886,8 +789,7 @@
 	}
 
 	:global(.dark) .section,
-	:global(.dark) .edit-form,
-	:global(.dark) .field-row {
+	:global(.dark) .edit-form {
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}
 

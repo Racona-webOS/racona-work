@@ -7,7 +7,10 @@
 
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
-import { requireCapability } from './permissions.js';
+import { hasCapability, requireCapability } from './permissions.js';
+import { parseDay, todayInBudapest } from './dates.js';
+import { recalculateEmployeeBalances } from './leave-profile.js';
+import type { RecalculatedBalance } from './leave-profile.js';
 import type { PaginatedResult } from './types.js';
 
 export interface Employee {
@@ -41,6 +44,34 @@ export interface EmployeeDetail {
 export interface EmployeeDetailView {
 	employee: EmployeeRow;
 	details: EmployeeDetail[];
+	/** A munkaviszony dátumai YYYY-MM-DD formában (a szabadság arányosításához is kellenek). */
+	employment: {
+		hireDate: string | null;
+		employmentEndDate: string | null;
+		/** A HR ellenőrizte-e a belépés dátumát (létrehozáskor az aznapi dátum került be). */
+		hireDateConfirmed: boolean;
+	};
+	/**
+	 * Személyes adatok, amelyeket csak a dolgozó maga és a HR (employee.manage
+	 * vagy leave.balance.manage) láthat; másnak null.
+	 */
+	personal: { birthDate: string | null } | null;
+}
+
+/** A dolgozó személyes adatait láthatja-e a hívó: saját rekord, vagy HR. */
+async function canSeePersonalData(
+	context: RemoteContext,
+	organizationId: number,
+	employeeUserId: number
+): Promise<boolean> {
+	if (await hasCapability(context, organizationId, 'employee.manage')) return true;
+	if (await hasCapability(context, organizationId, 'leave.balance.manage')) return true;
+	return (await resolveUserId(context)) === employeeUserId;
+}
+
+async function requireEmployeeOrLeaveManager(context: RemoteContext, organizationId: number): Promise<void> {
+	if (await hasCapability(context, organizationId, 'employee.manage')) return;
+	await requireCapability(context, organizationId, 'leave.balance.manage');
 }
 
 export interface EmployeeListParams {
@@ -469,6 +500,10 @@ export async function getEmployeeDetails(
 			e.status,
 			e.created_at,
 			e.updated_at,
+			to_char(e.hire_date, 'YYYY-MM-DD') AS hire_day,
+			to_char(e.employment_end_date, 'YYYY-MM-DD') AS employment_end_day,
+			to_char(e.birth_date, 'YYYY-MM-DD') AS birth_day,
+			e.hire_date_confirmed,
 			u.full_name AS user_name,
 			u.email AS user_email,
 			u.image AS user_image
@@ -516,7 +551,43 @@ export async function getEmployeeDetails(
 		updatedAt: row.updated_at
 	}));
 
-	return { employee, details };
+	const personal = (await canSeePersonalData(context, orgId, empRow.user_id))
+		? { birthDate: empRow.birth_day ?? null }
+		: null;
+
+	return {
+		employee,
+		details,
+		employment: {
+			hireDate: empRow.hire_day ?? null,
+			employmentEndDate: empRow.employment_end_day ?? null,
+			hireDateConfirmed: empRow.hire_date_confirmed === true
+		},
+		personal
+	};
+}
+
+/**
+ * A dolgozó születési dátuma (személyes adat). HR menti (employee.manage vagy
+ * leave.balance.manage); a dolgozó adatbejelentésben kérheti a változtatást.
+ * Utána a nyitott szabadságkeretek újraszámolódnak (életkor szerinti pótszabadság).
+ */
+export async function saveEmployeeBirthDate(
+	params: { employeeId: number; birthDate: string | null },
+	context: RemoteContext
+): Promise<{ birthDate: string | null; recalculated: RecalculatedBalance[] }> {
+	const orgId = await getEmployeeOrganizationId(context, params.employeeId);
+	await requireEmployeeOrLeaveManager(context, orgId);
+
+	const birthDate = parseDay(params.birthDate, 'Születési dátum');
+	if (birthDate && (birthDate > todayInBudapest() || birthDate < '1900-01-01')) {
+		throw new Error('Születési dátum: nem lehet a jövőben.');
+	}
+	await context.db.query(
+		`UPDATE app__racona_work.employees SET birth_date = $2, updated_at = NOW() WHERE id = $1`,
+		[params.employeeId, birthDate]
+	);
+	return { birthDate, recalculated: await recalculateEmployeeBalances(context, params.employeeId) };
 }
 
 export async function saveEmployeeDetail(
@@ -571,22 +642,51 @@ export async function deleteEmployeeDetail(
 }
 
 export async function updateEmployee(
-	params: { id: number; position?: string; department?: string; status?: string },
+	params: {
+		id: number;
+		position?: string;
+		department?: string;
+		status?: string;
+		/** A belépés napja. Mentéskor ellenőrzöttnek számít (hire_date_confirmed). */
+		hireDate?: string;
+		/** A kilépés napja; null törli. */
+		employmentEndDate?: string | null;
+	},
 	context: RemoteContext
-): Promise<Employee> {
+): Promise<Employee & { recalculated: RecalculatedBalance[] }> {
 	// Legalább egy mezőt meg kell adni
 	if (
 		params.position === undefined &&
 		params.department === undefined &&
-		params.status === undefined
+		params.status === undefined &&
+		params.hireDate === undefined &&
+		params.employmentEndDate === undefined
 	) {
 		throw new Error(
-			'Legalább egy mezőt meg kell adni a frissítéshez (position, department, status).'
+			'Legalább egy mezőt meg kell adni a frissítéshez (position, department, status, hireDate, employmentEndDate).'
 		);
 	}
 
 	const orgId = await getEmployeeOrganizationId(context, params.id);
 	await requireCapability(context, orgId, 'employee.manage');
+
+	// A munkaviszony dátumai a szabadság arányosításához is kellenek
+	const hireDate = params.hireDate === undefined ? undefined : parseDay(params.hireDate, 'Belépés dátuma', true)!;
+	const endDate =
+		params.employmentEndDate === undefined ? undefined : parseDay(params.employmentEndDate, 'Kilépés dátuma');
+	if (hireDate !== undefined || endDate !== undefined) {
+		const current = await context.db.query(
+			`SELECT to_char(hire_date, 'YYYY-MM-DD') AS hire_date,
+			        to_char(employment_end_date, 'YYYY-MM-DD') AS end_date
+			   FROM app__racona_work.employees WHERE id = $1`,
+			[params.id]
+		);
+		const effectiveHire = hireDate ?? current.rows[0]?.hire_date ?? null;
+		const effectiveEnd = endDate === undefined ? (current.rows[0]?.end_date ?? null) : endDate;
+		if (effectiveHire && effectiveEnd && effectiveEnd < effectiveHire) {
+			throw new Error('A kilépés dátuma nem lehet korábbi a belépésnél.');
+		}
+	}
 
 	// Dinamikus SET záradék összeállítása
 	const setClauses: string[] = [];
@@ -611,6 +711,18 @@ export async function updateEmployee(
 		paramIndex++;
 	}
 
+	if (hireDate !== undefined) {
+		setClauses.push(`hire_date = $${paramIndex}`, `hire_date_confirmed = TRUE`);
+		queryParams.push(hireDate);
+		paramIndex++;
+	}
+
+	if (endDate !== undefined) {
+		setClauses.push(`employment_end_date = $${paramIndex}`);
+		queryParams.push(endDate);
+		paramIndex++;
+	}
+
 	// updated_at mindig frissül
 	setClauses.push(`updated_at = NOW()`);
 
@@ -630,6 +742,7 @@ export async function updateEmployee(
 	}
 
 	const row = result.rows[0];
+	const datesChanged = hireDate !== undefined || endDate !== undefined;
 	return {
 		id: row.id,
 		userId: row.user_id,
@@ -638,7 +751,8 @@ export async function updateEmployee(
 		hireDate: row.hire_date ?? null,
 		status: row.status,
 		createdAt: row.created_at,
-		updatedAt: row.updated_at
+		updatedAt: row.updated_at,
+		recalculated: datesChanged ? await recalculateEmployeeBalances(context, params.id) : []
 	};
 }
 

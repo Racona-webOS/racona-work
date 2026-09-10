@@ -78,7 +78,7 @@
 	"employeeDetail.basicInfo": "Basic Information",
 	"employeeDetail.position": "Position",
 	"employeeDetail.department": "Department",
-	"employeeDetail.hireDate": "Hire Date",
+	"employeeDetail.hireDate": "Hire date",
 	"employeeDetail.status": "Status",
 	"employeeDetail.categories.personal": "Personal Data",
 	"employeeDetail.categories.work": "Work Data",
@@ -527,10 +527,6 @@
 	"leaveEntitlement.profile.title": "Leave data",
 	"leaveEntitlement.profile.subtitle": "The annual allowance is calculated from these.",
 	"leaveEntitlement.profile.birthDate": "Birth date",
-	"leaveEntitlement.profile.hireDate": "Hire date",
-	"leaveEntitlement.profile.endDate": "End date",
-	"leaveEntitlement.profile.endDateHint": "Only if the employment ends or has ended.",
-	"leaveEntitlement.profile.hireDateRequired": "The hire date is required.",
 	"leaveEntitlement.profile.hireDateUnconfirmed": "The hire date has not been checked: the system used the day the record was created. Check and save it, because pro rata depends on it.",
 	"leaveEntitlement.children.title": "Children",
 	"leaveEntitlement.children.empty": "No children recorded.",
@@ -720,5 +716,10 @@
 	"files.kept.approvedAt": "approved: {date}",
 	"files.error.tooLarge": "{name}: the file can be at most 4 MB.",
 	"files.error.type": "{name}: only PDF, JPG or PNG can be attached.",
-	"files.error.tooMany": "At most {max} files can be attached."
+	"files.error.tooMany": "At most {max} files can be attached.",
+	"employeeDetail.employmentEndDate": "End date",
+	"employeeDetail.birthDate": "Birth date",
+	"employeeDetail.confirmHireDate": "Date is correct",
+	"employeeDetail.datesHint": "Pro rata leave is calculated from the hire and end dates; allowances are recalculated when they change.",
+	"leaveEntitlement.profile.inputs": "The calculation also uses: birth date {birthDate} (Personal data), hire date {hireDate}, end date {endDate} (Basic info)."
 }

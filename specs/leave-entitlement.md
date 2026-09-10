@@ -272,7 +272,7 @@ A teszt a gyökérben lévő `tests/` mappába kerül, nem a `server/` alá, mer
 
 **Mikor fut.**
 
-- K1 bármely mentésekor, azaz ezeknél a függvényeknél: `saveLeaveProfile`, `saveEmployeeChild`, `deleteEmployeeChild`, `saveExtraLeave`, `deleteExtraLeave`.
+- K1 bármely mentésekor, azaz ezeknél a függvényeknél: `saveEmployeeBirthDate`, `updateEmployee` (ha a belépés vagy a kilépés dátuma változik), `saveEmployeeChild`, `deleteEmployeeChild`, `saveExtraLeave`, `deleteExtraLeave`, `saveAbsencePeriod`, `deleteAbsencePeriod`.
 - A céges szabály mentésekor, ekkor a cég összes dolgozójára.
 
 **Mely kereteket érinti.** A dolgozó azon meglévő kereteit, amelyekre mind igaz:
@@ -299,7 +299,8 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
 | Függvény | Jogosultság | Leírás |
 |---|---|---|
 | `getLeaveProfile({ employeeId })` | saját vagy `leave.balance.manage` | Születési, belépési és kilépési dátum, gyerekek, egyéb pótszabadságok, `hireDateConfirmed` (K9). |
-| `saveLeaveProfile({ employeeId, birthDate, hireDate, employmentEndDate })` | `leave.balance.manage` | Mentés + újraszámolás. |
+| `saveEmployeeBirthDate({ employeeId, birthDate })` (`employees.ts`) | `employee.manage` vagy `leave.balance.manage` | A születési dátum személyes adat: az adatlap „Személyes adatok” kártyáján szerkeszthető. Mentés + újraszámolás. |
+| `updateEmployee({ id, …, hireDate?, employmentEndDate? })` (`employees.ts`) | `employee.manage` | A belépés és a kilépés dátuma munkaügyi adat: az „Alapadatok” kártyán szerkeszthető. A belépés mentése ellenőrzöttnek jelöli (K9); dátumváltozáskor újraszámolás. |
 | `saveEmployeeChild({ employeeId, id?, label?, birthDate, isDisabled })` | `leave.balance.manage` | Létrehozás vagy módosítás + újraszámolás. |
 | `deleteEmployeeChild({ id })` | `leave.balance.manage` | Törlés + újraszámolás. |
 | `saveExtraLeave({ employeeId, id?, kind, days, validFrom?, validTo?, note? })` | `leave.balance.manage` | Létrehozás vagy módosítás + újraszámolás. |
@@ -322,9 +323,11 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
 
 **Dolgozó adatlapja – `EmployeeDetail.svelte`**
 
-- **Új „Szabadság-adatok” kártya**, csak `leave.balance.manage` joggal látszik.
-  - Mezők: születési dátum, belépés és kilépés dátuma. Natív dátummező, mert a születési dátumot a naptárban lapozva kényelmetlen kiválasztani, begépelni viszont gyors.
-  - K9 figyelmeztetés, amíg a belépés dátuma nincs ellenőrizve.
+- **A számítás bemenő dátumai a helyükön** (a számítás adatai, de nem szabadságadatok):
+  - a **születési dátum** a „Személyes adatok” kártya tetején, rögzített mezőként. Az `getEmployeeDetails` csak a dolgozónak magának és a HR-nek (`employee.manage` / `leave.balance.manage`) adja vissza (`personal`), másnak null — a kártya szabad sorait bárki láthatja, akinek `employee.view` joga van;
+  - a **belépés és a kilépés dátuma** az „Alapadatok” kártyán (`employment`), itt látszik a K9 figyelmeztetés is, „A dátum helyes” gombbal.
+  - Natív dátummező, mert a születési dátumot a naptárban lapozva kényelmetlen kiválasztani, begépelni viszont gyors.
+- **„Szabadság-adatok” kártya**, csak `leave.balance.manage` joggal látszik: gyerekek, egyéb pótszabadság, nem munkában töltött időszakok. Egy sor mutatja, milyen dátumokat használ még a számítás, és hol szerkeszthetők.
   - **Gyerekek** lista, soronként:
     - megnevezés, születési dátum, fogyatékos jelölő;
     - állapot az idei évre: „Idén beszámít” vagy „Idén már nem számít”.

@@ -55,6 +55,7 @@ export {
 	saveEmployeeDetail,
 	deleteEmployeeDetail,
 	updateEmployee,
+	saveEmployeeBirthDate,
 	getMyEmployee
 } from './employees.js';
 
@@ -94,7 +95,6 @@ export type {
 
 export {
 	getLeaveProfile,
-	saveLeaveProfile,
 	saveEmployeeChild,
 	deleteEmployeeChild,
 	saveExtraLeave,

@@ -28,8 +28,12 @@
 		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
 	);
 
-	function t(key: string): string {
-		return sdk?.i18n?.t(key) ?? key;
+	function t(key: string, vars?: Record<string, string | number>): string {
+		let str = sdk?.i18n?.t(key) ?? key;
+		if (vars) {
+			for (const [k, v] of Object.entries(vars)) str = str.replace(`{${k}}`, String(v));
+		}
+		return str;
 	}
 
 	// --- Állapot ---
@@ -40,10 +44,14 @@
 	// A szabadságkeret és a számítás adatai csak leave.balance.manage joggal
 	// látszanak (a bontásból kiderül a gyerekek száma, az egészségkárosodás).
 	let canManageBalance = $state(false);
+	let canManageEmployee = $state(false);
+	/** A születési dátumot a HR menti: employee.manage vagy leave.balance.manage. */
+	const canEditPersonal = $derived(canManageEmployee || canManageBalance);
 
 	function syncCapabilities() {
 		const store = (window as any).__racona_work_org_store__;
 		canManageBalance = store?.can?.('leave.balance.manage') ?? false;
+		canManageEmployee = store?.can?.('employee.manage') ?? false;
 	}
 
 	$effect(() => {
@@ -74,7 +82,30 @@
 	let editPosition = $state('');
 	let editDepartment = $state('');
 	let editStatus = $state('');
+	let editHireDate = $state('');
+	let editEndDate = $state('');
 	let basicSaving = $state(false);
+
+	// Születési dátum (Személyes adatok)
+	let editingBirth = $state(false);
+	let editBirthDate = $state('');
+	let birthSaving = $state(false);
+
+	/** YYYY-MM-DD → helyi dátum, időzóna-csúszás nélkül. */
+	function formatDay(day: string | null | undefined): string {
+		if (!day) return '—';
+		const [y, m, d] = day.split('-').map(Number);
+		return new Date(y, m - 1, d).toLocaleDateString();
+	}
+
+	/** A dátumváltozás utáni újraszámolás jelzése, és a keret kártyák frissítése. */
+	function afterDatesChanged(recalculated: { year: number; from: number; to: number }[] | undefined) {
+		const changes = (recalculated ?? [])
+			.map((r) => t('leaveEntitlement.recalculated', { year: r.year, from: r.from, to: r.to }))
+			.join(' ');
+		sdk?.ui?.toast(changes || t('employeeDetail.saveSuccess'), changes ? 'info' : 'success');
+		balanceRefreshKey++;
+	}
 
 	// Adatlap részlet szerkesztése
 	type DetailEditState = { mode: 'add' | 'edit'; category: string; fieldKey: string; fieldValue: string; id?: number };
@@ -103,11 +134,6 @@
 		return map[s] ?? s;
 	}
 
-	function formatDate(d: string | null): string {
-		if (!d) return '—';
-		return new Date(d).toLocaleDateString();
-	}
-
 	// --- Adatok betöltése ---
 	async function loadDetail() {
 		if (!employeeId) return;
@@ -134,6 +160,8 @@
 		editPosition = view.employee.position ?? '';
 		editDepartment = view.employee.department ?? '';
 		editStatus = view.employee.status;
+		editHireDate = view.employment.hireDate ?? '';
+		editEndDate = view.employment.employmentEndDate ?? '';
 		editingBasic = true;
 	}
 
@@ -143,24 +171,60 @@
 
 	async function saveBasic() {
 		if (!view) return;
+		// A dátumokat csak változáskor küldjük: a belépés mentése ellenőrzöttnek jelöli a dátumot
+		const hireChanged = !!editHireDate && editHireDate !== view.employment.hireDate;
+		const endChanged = (editEndDate || null) !== view.employment.employmentEndDate;
 		basicSaving = true;
 		try {
 			const updated = await sdk?.remote?.call('updateEmployee', {
 				id: view.employee.id,
 				position: editPosition || undefined,
 				department: editDepartment || undefined,
-				status: editStatus
+				status: editStatus,
+				hireDate: hireChanged ? editHireDate : undefined,
+				employmentEndDate: endChanged ? editEndDate || null : undefined
 			});
-			view = {
-				...view,
-				employee: { ...view.employee, ...updated }
-			};
 			editingBasic = false;
-			sdk?.ui?.toast(t('employeeDetail.saveSuccess'), 'success');
+			if (hireChanged || endChanged) afterDatesChanged(updated?.recalculated);
+			else sdk?.ui?.toast(t('employeeDetail.saveSuccess'), 'success');
+			await loadDetail();
 		} catch (err: any) {
-			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
+			sdk?.ui?.toast(err?.message?.replace(/^[A-Z_]+:\s*/, '') ?? t('error.saveFailed'), 'error');
 		} finally {
 			basicSaving = false;
+		}
+	}
+
+	/** A létrehozáskor beírt belépési dátum jóváhagyása változtatás nélkül. */
+	async function confirmHireDate() {
+		if (!view?.employment.hireDate) return;
+		try {
+			const updated = await sdk?.remote?.call('updateEmployee', {
+				id: view.employee.id,
+				hireDate: view.employment.hireDate
+			});
+			afterDatesChanged(updated?.recalculated);
+			await loadDetail();
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message?.replace(/^[A-Z_]+:\s*/, '') ?? t('error.saveFailed'), 'error');
+		}
+	}
+
+	async function saveBirthDate() {
+		if (!view) return;
+		birthSaving = true;
+		try {
+			const result = await sdk?.remote?.call('saveEmployeeBirthDate', {
+				employeeId: view.employee.id,
+				birthDate: editBirthDate || null
+			});
+			editingBirth = false;
+			afterDatesChanged(result?.recalculated);
+			await loadDetail();
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message?.replace(/^[A-Z_]+:\s*/, '') ?? t('error.saveFailed'), 'error');
+		} finally {
+			birthSaving = false;
 		}
 	}
 
@@ -308,6 +372,17 @@
 							<option value="onLeave">{t('employees.status.onLeave')}</option>
 						</select>
 					</label>
+					<div class="date-pair">
+						<label class="form-label">
+							{t('employeeDetail.hireDate')}
+							<input class="form-input" type="date" bind:value={editHireDate} />
+						</label>
+						<label class="form-label">
+							{t('employeeDetail.employmentEndDate')}
+							<input class="form-input" type="date" bind:value={editEndDate} />
+						</label>
+					</div>
+					<p class="field-hint">{t('employeeDetail.datesHint')}</p>
 					<div class="form-actions">
 						<button class="btn-secondary" onclick={cancelEditBasic}>{t('form.cancel')}</button>
 						<button class="btn-primary" onclick={saveBasic} disabled={basicSaving}>
@@ -327,7 +402,11 @@
 					</div>
 					<div class="field-row">
 						<span class="field-label">{t('employeeDetail.hireDate')}</span>
-						<span class="field-value">{formatDate(view.employee.hireDate)}</span>
+						<span class="field-value">{formatDay(view.employment.hireDate)}</span>
+					</div>
+					<div class="field-row">
+						<span class="field-label">{t('employeeDetail.employmentEndDate')}</span>
+						<span class="field-value">{formatDay(view.employment.employmentEndDate)}</span>
 					</div>
 					<div class="field-row">
 						<span class="field-label">{t('employeeDetail.status')}</span>
@@ -336,6 +415,16 @@
 						</span>
 					</div>
 				</div>
+				{#if !view.employment.hireDateConfirmed}
+					<div class="notice">
+						<span>{t('leaveEntitlement.profile.hireDateUnconfirmed')}</span>
+						{#if canManageEmployee && view.employment.hireDate}
+							<button class="btn-secondary btn-sm" onclick={confirmHireDate}>
+								{t('employeeDetail.confirmHireDate')}
+							</button>
+						{/if}
+					</div>
+				{/if}
 			{/if}
 		</div>
 
@@ -349,8 +438,44 @@
 					</button>
 				</div>
 
+				<!-- A születési dátum rögzített mező: csak a HR és maga a dolgozó látja -->
+				{#if cat === 'personal' && view.personal}
+					{#if editingBirth}
+						<div class="birth-edit">
+							<label class="form-label">
+								{t('employeeDetail.birthDate')}
+								<input class="form-input" type="date" bind:value={editBirthDate} />
+							</label>
+							<div class="form-actions">
+								<button class="btn-secondary" onclick={() => (editingBirth = false)}>{t('form.cancel')}</button>
+								<button class="btn-primary" onclick={saveBirthDate} disabled={birthSaving}>
+									{birthSaving ? t('loading') : t('form.save')}
+								</button>
+							</div>
+						</div>
+					{:else}
+						<div class="field-row fixed-row">
+							<span class="field-label">{t('employeeDetail.birthDate')}</span>
+							<span class="field-value">{formatDay(view.personal.birthDate)}</span>
+							{#if canEditPersonal}
+								<button
+									class="btn-ghost-sm"
+									onclick={() => {
+										editBirthDate = view?.personal?.birthDate ?? '';
+										editingBirth = true;
+									}}
+								>
+									{t('employeeDetail.editDetail')}
+								</button>
+							{/if}
+						</div>
+					{/if}
+				{/if}
+
 				{#if detailsByCategory[cat].length === 0}
-					<p class="empty-state">{t('employeeDetail.noDetails')}</p>
+					{#if !(cat === 'personal' && view.personal)}
+						<p class="empty-state">{t('employeeDetail.noDetails')}</p>
+					{/if}
 				{:else}
 					<div class="details-list">
 						{#each detailsByCategory[cat] as detail (detail.id)}
@@ -568,6 +693,46 @@
 	.field-value {
 		font-size: 0.875rem;
 		color: var(--color-foreground, #0f172a);
+	}
+
+	.notice {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.375rem;
+		background: #fef3c7;
+		color: #92400e;
+		font-size: 0.8rem;
+		line-height: 1.4;
+	}
+
+	.date-pair {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+	}
+
+	.field-hint {
+		margin: 0;
+		font-size: 0.75rem;
+		color: var(--color-muted-foreground, #94a3b8);
+	}
+
+	.fixed-row .field-value {
+		flex: 1;
+	}
+
+	.birth-edit {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	:global(.dark) .notice {
+		background: oklch(0.3 0.05 60);
+		color: #fde68a;
 	}
 
 	/* Adatlap részletek */
