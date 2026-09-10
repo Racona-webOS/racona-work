@@ -11,6 +11,7 @@
 
 import type { RemoteContext } from './context.js';
 import { requireSelfOrCapability } from './permissions.js';
+import { todayInBudapest } from './dates.js';
 import {
 	calculateSickLeave,
 	PARENTAL_DAYS,
@@ -57,10 +58,6 @@ export interface LeaveAllowances {
 	sick: SickLeaveStatus;
 	paternity: ChildLeaveStatus[];
 	parental: ChildLeaveStatus[];
-}
-
-function todayInBudapest(): string {
-	return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Budapest' }).format(new Date());
 }
 
 async function loadEmployee(context: RemoteContext, employeeId: number) {

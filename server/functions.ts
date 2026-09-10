@@ -19,6 +19,8 @@
  *   leave-profile.ts — a számítás adatai (születési dátum, gyerekek, távollétek) és a számított keretek
  *   leave-allowances.ts — betegszabadság, apasági és szülői szabadság kerete
  *   leave-history.ts — a szabadságkeretek változásnaplója
+ *   leave-data-requests.ts — dolgozói adatbejelentések és azok elbírálása
+ *   dates.ts         — dátum-segédek (budapesti nap, YYYY-MM-DD ellenőrzés)
  *   leave-types.ts   — szabadságtípusok (a kliens is importálja)
  *   dashboard.ts     — irányítópult statisztikák
  *   settings.ts      — kv_store alapú beállítások
@@ -122,6 +124,21 @@ export type {
 
 export { getLeaveAllowances } from './leave-allowances.js';
 export type { LeaveAllowances, SickLeaveStatus, ChildLeaveStatus } from './leave-allowances.js';
+
+export {
+	submitLeaveDataRequest,
+	cancelLeaveDataRequest,
+	getLeaveDataRequests,
+	decideLeaveDataRequest
+} from './leave-data-requests.js';
+export type {
+	LeaveDataRequest,
+	LeaveDataRequestKind,
+	LeaveDataRequestStatus,
+	LeaveDataRequestPayload,
+	ChildData,
+	ReportableExtraKind
+} from './leave-data-requests.js';
 
 export { getLeaveBalanceHistory } from './leave-history.js';
 export type { BalanceHistoryEntry, BalanceHistoryAction, BalanceSnapshot } from './leave-history.js';

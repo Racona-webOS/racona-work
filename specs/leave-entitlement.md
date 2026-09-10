@@ -1,6 +1,6 @@
 # Szabadságkeret-számítás
 
-> Státusz: 1–3. fázis kész (a dolgozói adatbejelentés hátravan) · Utolsó módosítás: 2026-09-10
+> Státusz: 1–3. fázis és a dolgozói adatbejelentés kész · Utolsó módosítás: 2026-09-10
 
 A HR-es ma dolgozónként és évente kézzel írja be a szabadságkeretet (`leave_balances.total_days`). A cél, hogy a rendszer a dolgozó adataiból (születési dátum, gyerekek, belépés/kilépés, egyéb jogosultságok) a Munka törvénykönyve szerint **kiszámolja a javasolt keretet**, amit a HR-es indoklással korrigálhat.
 
@@ -443,9 +443,33 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
 - [x] **Változásnapló** (`leave_balance_history`, `server/leave-history.ts`): létrehozás, tömeges létrehozás, újraszámolás (ha változott), korrekció, számítás alkalmazása, kézi beállítás — előtte és utána állapottal, a végrehajtóval. A keret-kártyán „Előzmények” ablak; csak `leave.balance.manage` joggal.
 - [x] 55 teszt (új: távollétek, 6 hónapos szabály, betegszabadság, határidők).
 
+### Dolgozói adatbejelentés ✅
+
+**Döntések**
+
+| # | Kérdés | Döntés |
+|---|---|---|
+| D11 | Mit jelenthet be a dolgozó? | Születési dátum; gyerek felvétele, módosítása, törlése; egyéb pótszabadság (csak a törvényi jogcímek: egészségkárosodás, föld alatti / ionizáló sugárzásos munka). |
+| D12 | Hol bírálja el a HR? | A vezetői irányítópulton („Függő adatbejelentések”) és a dolgozó adatlapján. |
+| D13 | Ki kap értesítést? | Új bejelentésről mindenki, akinek `leave.balance.manage` joga van; a döntésről a dolgozó. |
+| D14 | Email is? | Nem, csak rendszeren belüli értesítés. |
+
+**Megvalósítás** — `migrations/010_leave_data_requests.sql`, `server/leave-data-requests.ts`
+
+- [x] `leave_data_requests` tábla: típus, gyerek, javasolt adatok és a beadáskori állapot (`payload.previous`), a dolgozó megjegyzése, állapot (`pending | approved | rejected | cancelled`), döntés, döntéshozó.
+- [x] `submitLeaveDataRequest`: saját adatra (vagy `leave.balance.manage` joggal), ugyanazzal a validációval, mint a HR mentése. Egy gyerekre egyszerre egy függő bejelentés; legfeljebb 20 függő bejelentés dolgozónként.
+- [x] `decideLeaveDataRequest`: jóváhagyáskor a HR mentőfüggvényei futnak (`saveEmployeeChild`, `deleteEmployeeChild`, `saveExtraLeave`, születési dátumnál közvetlen mentés), így a keretek ugyanúgy újraszámolódnak. A döntést előbb lefoglalja, hogy két HR-es ne bírálja el kétszer; ha az alkalmazás hibára fut, a bejelentés visszakerül függőbe. Elutasításhoz kötelező az indoklás.
+- [x] `cancelLeaveDataRequest`: a dolgozó visszavonhatja a függő bejelentését.
+- [x] `getLeaveDataRequests`: egy dolgozóé (saját, vagy HR), illetve a szervezet függő bejelentései (HR).
+- [x] Értesítések (`leave-notifications.ts`): új bejelentés a HR-jogosultaknak, döntés a dolgozónak.
+- [x] Felület:
+  - saját irányítópult: „Adataim a szabadságkerethez” kártya (`MyLeaveData.svelte`) — az adatok, a bejelentések állapota és a HR indoklása, „Változás bejelentése” ablak; módosításnál a kiválasztott gyerek adataival töltődik ki;
+  - vezetői irányítópult és dolgozó adatlapja: `DataRequestReview.svelte` — mi változik mire („Fogyatékos gyermek: nem → igen”), a dolgozó megjegyzése, jóváhagyás / elutasítás indoklással.
+- [x] A dátum-segédek egy helyre kerültek (`server/dates.ts`).
+
 **Hátravan**
 
-- [ ] A dolgozó bejelentheti az adatait (pl. új gyerek), a HR jóváhagyja.
+- [ ] Igazolás feltöltése a bejelentéshez (most a HR offline kéri be).
 - [ ] Az áthozott napok március 31-i határideje és a „először az áthozottból fogy” sorrend (2. fázisból).
 - [ ] Örökbefogadásnál az apasági határidő az örökbefogadást engedélyező határozattól számít; most a születési dátumtól számolunk.
 

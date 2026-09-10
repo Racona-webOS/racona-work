@@ -22,10 +22,13 @@
 	let {
 		pluginId = 'racona-work',
 		employeeId,
+		refreshKey = 0,
 		onChanged
 	}: {
 		pluginId?: string;
 		employeeId: number;
+		/** A szülő növeli, ha az adatok máshol változtak (pl. elbírált adatbejelentés). */
+		refreshKey?: number;
 		onChanged?: () => void;
 	} = $props();
 
@@ -67,6 +70,7 @@
 	}
 
 	$effect(() => {
+		refreshKey;
 		if (sdk?.remote && employeeId) load();
 	});
 

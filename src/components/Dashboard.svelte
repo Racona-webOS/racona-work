@@ -28,6 +28,8 @@
   import AccessDenied from "./AccessDenied.svelte";
   import EntitlementBreakdown from "./leave-entitlement/EntitlementBreakdown.svelte";
   import OtherAllowances from "./leave-entitlement/OtherAllowances.svelte";
+  import MyLeaveData from "./leave-entitlement/MyLeaveData.svelte";
+  import DataRequestReview from "./leave-entitlement/DataRequestReview.svelte";
   import { LEAVE_TYPES } from "../../server/leave-types.js";
 
   let { pluginId = "racona-work" }: { pluginId?: string } = $props();
@@ -59,6 +61,8 @@
   let canManagerView = $state(false);
   // A vezetői nézetet employee.manage joggal is látni lehet, elbírálni csak leave.approve-val
   let canApprove = $state(false);
+  // A dolgozói adatbejelentéseket a HR bírálja el
+  let canManageBalance = $state(false);
   let decidingId = $state<number | null>(null);
   let orgLoading = $derived(orgStore?.isLoading ?? false);
 
@@ -178,7 +182,9 @@
   function syncCapabilities() {
     if (!orgStore) return;
     canApprove = orgStore.can("leave.approve");
-    canManagerView = canApprove || orgStore.can("employee.manage");
+    canManageBalance = orgStore.can("leave.balance.manage");
+    canManagerView =
+      canApprove || canManageBalance || orgStore.can("employee.manage");
   }
 
   // --- Elbírálás ----------------------------------------------------------
@@ -368,6 +374,13 @@
           </div>
         </div>
 
+        {#if canManageBalance && currentOrganization}
+          <DataRequestReview
+            {pluginId}
+            organizationId={currentOrganization.id}
+          />
+        {/if}
+
         <div class="recent-section">
           <h3>{t("dashboard.recentRequests")}</h3>
           {#if stats.recentPendingRequests.length === 0}
@@ -496,6 +509,8 @@
           year={thisYear}
           accent={false}
         />
+
+        <MyLeaveData {pluginId} employeeId={myEmployee.id} />
 
         <div class="recent-section">
           <h3>{t("dashboard.self.myRequests")}</h3>

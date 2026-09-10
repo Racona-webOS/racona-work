@@ -360,3 +360,84 @@ function reasonBlockHtml(reason: string): string {
 		`${escapeHtml(reason).replace(/\n/g, '<br>')}</p>`
 	);
 }
+
+// --- Dolgozói adatbejelentések ------------------------------------------------
+// Csak rendszeren belüli értesítés (email nincs): az adatbejelentés ritka és nem sürgős.
+
+export interface LeaveDataRequestNotice {
+	id: number;
+	employeeId: number;
+	organizationId: number;
+	/** Rövid leírás, pl. „Új gyerek: 2026. 07. 01.” */
+	summary: LocalizedText;
+}
+
+/**
+ * Új adatbejelentés értesítés mindenkinek, akinek a szervezetben
+ * leave.balance.manage joga van (a bejelentőt kivéve).
+ */
+export async function notifyLeaveDataRequestCreated(
+	context: RemoteContext,
+	request: LeaveDataRequestNotice
+): Promise<void> {
+	try {
+		const actorUserId = await resolveActorUserId(context);
+		const result = await context.db.query(
+			`SELECT DISTINCT mr.user_id
+			   FROM ${SCHEMA}.wp_member_roles mr
+			   JOIN ${SCHEMA}.wp_role_capabilities rc ON rc.role_id = mr.role_id
+			  WHERE mr.organization_id = $1 AND rc.capability = 'leave.balance.manage'`,
+			[request.organizationId]
+		);
+		const userIds = result.rows
+			.map((row: { user_id: number }) => Number(row.user_id))
+			.filter((id: number) => id !== actorUserId);
+		if (userIds.length === 0) return;
+
+		const employee = await loadEmployee(context, request.employeeId);
+		const name = employee?.name ?? '—';
+		await sendInApp(context, {
+			userIds,
+			title: { hu: 'Új adatbejelentés', en: 'New data change request' },
+			message: { hu: `${name}: ${request.summary.hu}`, en: `${name}: ${request.summary.en}` },
+			type: 'info',
+			data: {
+				leaveDataRequestId: request.id,
+				employeeId: request.employeeId,
+				organizationId: request.organizationId
+			}
+		});
+	} catch (err) {
+		console.error('[Work] Adatbejelentés értesítés sikertelen:', err);
+	}
+}
+
+/** Döntés az adatbejelentésről: értesítés a bejelentő dolgozónak. */
+export async function notifyLeaveDataRequestDecision(
+	context: RemoteContext,
+	request: LeaveDataRequestNotice,
+	decision: 'approved' | 'rejected',
+	decisionNote: string | null
+): Promise<void> {
+	try {
+		const employee = await loadEmployee(context, request.employeeId);
+		if (!employee || employee.userId === (await resolveActorUserId(context))) return;
+
+		const approved = decision === 'approved';
+		const note = decisionNote?.trim();
+		await sendInApp(context, {
+			userIds: [employee.userId],
+			title: approved
+				? { hu: 'Adatbejelentés jóváhagyva', en: 'Data change approved' }
+				: { hu: 'Adatbejelentés elutasítva', en: 'Data change rejected' },
+			message: {
+				hu: note ? `${request.summary.hu} — ${note}` : request.summary.hu,
+				en: note ? `${request.summary.en} — ${note}` : request.summary.en
+			},
+			type: approved ? 'success' : 'warning',
+			data: { leaveDataRequestId: request.id, organizationId: request.organizationId }
+		});
+	} catch (err) {
+		console.error('[Work] Adatbejelentés döntés értesítés sikertelen:', err);
+	}
+}

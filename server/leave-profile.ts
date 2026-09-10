@@ -14,6 +14,7 @@
 
 import type { RemoteContext } from './context.js';
 import { resolveUserId } from './context.js';
+import { currentYear, parseDay, todayInBudapest } from './dates.js';
 import { requireCapability, requireSelfOrCapability } from './permissions.js';
 import { getEmployeeOrganizationId } from './employees.js';
 import { BALANCE_COLUMNS, mapBalanceRow } from './leave.js';
@@ -105,34 +106,6 @@ const MAX_POLICY_EXTRA_DAYS = 30;
 const MAX_CARRY_OVER_DAYS = 60;
 
 // --- Segédek ----------------------------------------------------------------
-
-/** A mai nap Budapesten, YYYY-MM-DD. Az évforduló így nem a szerver időzónáján múlik. */
-function todayInBudapest(): string {
-	return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Budapest' }).format(new Date());
-}
-
-function currentYear(): number {
-	return Number(todayInBudapest().slice(0, 4));
-}
-
-/**
- * Dátum paraméter ellenőrzése. Az üres értéket null-ra fordítja.
- *
- * @throws Ha a formátum nem YYYY-MM-DD, vagy nem létező nap (pl. 02-30).
- */
-function parseDay(value: unknown, fieldLabel: string, required = false): string | null {
-	if (value === null || value === undefined || value === '') {
-		if (required) throw new Error(`${fieldLabel}: kötelező megadni.`);
-		return null;
-	}
-	if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-		throw new Error(`${fieldLabel}: érvénytelen dátum.`);
-	}
-	const [y, m, d] = value.split('-').map(Number);
-	const roundTrip = new Date(Date.UTC(y, m - 1, d)).toISOString().slice(0, 10);
-	if (roundTrip !== value) throw new Error(`${fieldLabel}: érvénytelen dátum.`);
-	return value;
-}
 
 function parseYear(value: unknown): number {
 	const year = Number(value);
