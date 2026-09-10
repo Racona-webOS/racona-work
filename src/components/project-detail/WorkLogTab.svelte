@@ -243,7 +243,7 @@
 <div class="date-filter-bar">
 	<div class="date-filter-picker">
 		{#if DatePickerComponent}
-			<svelte:component this={DatePickerComponent} bind:value={workFrom} locale="hu-HU" placeholder="éééé. hh. nn." />
+			<DatePickerComponent bind:value={workFrom} locale="hu-HU" placeholder="éééé. hh. nn." />
 		{:else}
 			<input class="input input-sm" type="date" bind:value={workFrom} />
 		{/if}
@@ -251,7 +251,7 @@
 	<span class="date-filter-label">{t('filter.from')}</span>
 	<div class="date-filter-picker">
 		{#if DatePickerComponent}
-			<svelte:component this={DatePickerComponent} bind:value={workTo} locale="hu-HU" placeholder="éééé. hh. nn." />
+			<DatePickerComponent bind:value={workTo} locale="hu-HU" placeholder="éééé. hh. nn." />
 		{:else}
 			<input class="input input-sm" type="date" bind:value={workTo} />
 		{/if}

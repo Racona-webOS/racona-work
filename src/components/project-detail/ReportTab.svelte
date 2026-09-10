@@ -180,13 +180,13 @@
 <!-- Intervallum szűrő -->
 <div class="date-filter-bar">
 	{#if DatePickerComponent}
-		<svelte:component this={DatePickerComponent} bind:value={reportFrom} locale="hu-HU" placeholder="éééé. hh. nn." />
+		<DatePickerComponent bind:value={reportFrom} locale="hu-HU" placeholder="éééé. hh. nn." />
 	{:else}
 		<input class="input input-sm" type="date" bind:value={reportFrom} />
 	{/if}
 	<span class="date-filter-label">{t('filter.from')}</span>
 	{#if DatePickerComponent}
-		<svelte:component this={DatePickerComponent} bind:value={reportTo} locale="hu-HU" placeholder="éééé. hh. nn." />
+		<DatePickerComponent bind:value={reportTo} locale="hu-HU" placeholder="éééé. hh. nn." />
 	{:else}
 		<input class="input input-sm" type="date" bind:value={reportTo} />
 	{/if}

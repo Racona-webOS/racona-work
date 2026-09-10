@@ -689,7 +689,7 @@
 				<label class="form-label">
 					{t('leaveRequests.form.startDate')} *
 					{#if DatePickerComponent}
-						<svelte:component this={DatePickerComponent} bind:value={newReqStartDate} locale="hu-HU" placeholder="Kezdő dátum..." />
+						<DatePickerComponent bind:value={newReqStartDate} locale="hu-HU" placeholder="Kezdő dátum..." />
 					{:else}
 						<input class="form-input" type="date" bind:value={newReqStartDate} />
 					{/if}
@@ -697,7 +697,7 @@
 				<label class="form-label">
 					{t('leaveRequests.form.endDate')} *
 					{#if DatePickerComponent}
-						<svelte:component this={DatePickerComponent} bind:value={newReqEndDate} locale="hu-HU" placeholder="Záró dátum..." />
+						<DatePickerComponent bind:value={newReqEndDate} locale="hu-HU" placeholder="Záró dátum..." />
 					{:else}
 						<input class="form-input" type="date" bind:value={newReqEndDate} />
 					{/if}
