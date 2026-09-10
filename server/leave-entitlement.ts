@@ -422,9 +422,21 @@ function isoFromMs(ms: number): string {
 	return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** Az apasági szabadság utolsó napja: a születést követő negyedik hónap vége. */
-export function paternityDeadline(birthDate: string): string {
-	const [y, m] = birthDate.slice(0, 10).split('-').map(Number);
+/**
+ * Ettől a naptól vehető ki az apasági szabadság, és ehhez képest számít a
+ * határidő: a születés napja, örökbefogadásnál az örökbefogadást engedélyező
+ * határozat véglegessé válásának napja (Mt. 118. § (4)).
+ */
+export function paternityStartDate(birthDate: string, adoptionDate?: string | null): string {
+	return adoptionDate ?? birthDate;
+}
+
+/**
+ * Az apasági szabadság utolsó napja: a születést — örökbefogadásnál a
+ * határozat véglegessé válását — követő negyedik hónap vége.
+ */
+export function paternityDeadline(birthDate: string, adoptionDate?: string | null): string {
+	const [y, m] = paternityStartDate(birthDate, adoptionDate).slice(0, 10).split('-').map(Number);
 	return isoFromMs(Date.UTC(y, m - 1 + 5, 0));
 }
 

@@ -41,6 +41,11 @@ export interface EmployeeChild {
 	isDisabled: boolean;
 	/** A HR jelöli: a dolgozónak apasági szabadság jár ennek a gyereknek a születése után. */
 	paternityEligible: boolean;
+	/**
+	 * Örökbefogadásnál az örökbefogadást engedélyező határozat véglegessé
+	 * válásának napja — az apasági szabadság határideje ettől számít.
+	 */
+	adoptionDate: string | null;
 }
 
 /** A HR által rögzített kézi távollét-típusok (a jóváhagyott kérelmeket a szerver hozza). */
@@ -155,7 +160,8 @@ function mapChild(row: any): EmployeeChild {
 		label: row.label ?? null,
 		birthDate: row.birth_date,
 		isDisabled: row.is_disabled === true,
-		paternityEligible: row.paternity_eligible === true
+		paternityEligible: row.paternity_eligible === true,
+		adoptionDate: row.adoption_date ?? null
 	};
 }
 
@@ -185,7 +191,7 @@ function mapExtra(row: any): ExtraLeave {
 // A DATE oszlopokat szövegként kérjük le, hogy a pg Date-konverziója ne tolja el
 // időzóna miatt a napot.
 const CHILD_COLUMNS = `id, employee_id, label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
-	is_disabled, paternity_eligible`;
+	is_disabled, paternity_eligible, to_char(adoption_date, 'YYYY-MM-DD') AS adoption_date`;
 const ABSENCE_COLUMNS = `id, employee_id, kind,
 	to_char(start_date, 'YYYY-MM-DD') AS start_date,
 	to_char(end_date, 'YYYY-MM-DD') AS end_date, note`;
@@ -454,6 +460,7 @@ export async function saveEmployeeChild(
 		birthDate: string;
 		isDisabled?: boolean;
 		paternityEligible?: boolean;
+		adoptionDate?: string | null;
 	},
 	context: RemoteContext
 ): Promise<{ child: EmployeeChild; recalculated: RecalculatedBalance[] }> {
@@ -466,25 +473,29 @@ export async function saveEmployeeChild(
 	const label = typeof params.label === 'string' && params.label.trim() ? params.label.trim().slice(0, 255) : null;
 	const isDisabled = params.isDisabled === true;
 	const paternityEligible = params.paternityEligible === true;
+	const adoptionDate = parseDay(params.adoptionDate, 'Az örökbefogadás napja');
+	if (adoptionDate && (adoptionDate < birthDate || adoptionDate > todayInBudapest())) {
+		throw new Error('Az örökbefogadás napja a születés és a mai nap közé essen.');
+	}
 
 	let result;
 	if (params.id) {
 		result = await context.db.query(
 			`UPDATE ${SCHEMA}.employee_children
 			    SET label = $3, birth_date = $4, is_disabled = $5, paternity_eligible = $6,
-			        updated_at = NOW()
+			        adoption_date = $7, updated_at = NOW()
 			  WHERE id = $1 AND employee_id = $2
 			  RETURNING ${CHILD_COLUMNS}`,
-			[params.id, params.employeeId, label, birthDate, isDisabled, paternityEligible]
+			[params.id, params.employeeId, label, birthDate, isDisabled, paternityEligible, adoptionDate]
 		);
 		if (result.rows.length === 0) throw new Error('Nem található a gyerek.');
 	} else {
 		result = await context.db.query(
 			`INSERT INTO ${SCHEMA}.employee_children
-				(employee_id, label, birth_date, is_disabled, paternity_eligible)
-			 VALUES ($1, $2, $3, $4, $5)
+				(employee_id, label, birth_date, is_disabled, paternity_eligible, adoption_date)
+			 VALUES ($1, $2, $3, $4, $5, $6)
 			 RETURNING ${CHILD_COLUMNS}`,
-			[params.employeeId, label, birthDate, isDisabled, paternityEligible]
+			[params.employeeId, label, birthDate, isDisabled, paternityEligible, adoptionDate]
 		);
 	}
 

@@ -135,6 +135,7 @@
 		birthDate: string;
 		isDisabled: boolean;
 		paternityEligible: boolean;
+		adoptionDate: string;
 	};
 	let childEdit = $state<ChildEdit | null>(null);
 	let childSaving = $state(false);
@@ -153,7 +154,7 @@
 		try {
 			const r: { child: EmployeeChild; recalculated: RecalculatedBalance[] } = await sdk.remote.call(
 				'saveEmployeeChild',
-				{ employeeId, ...childEdit }
+				{ employeeId, ...childEdit, adoptionDate: childEdit.adoptionDate || null }
 			);
 			childEdit = null;
 			await load();
@@ -379,7 +380,13 @@
 					<button
 						class="btn-ghost"
 						onclick={() =>
-							(childEdit = { label: '', birthDate: '', isDisabled: false, paternityEligible: false })}
+							(childEdit = {
+								label: '',
+								birthDate: '',
+								isDisabled: false,
+								paternityEligible: false,
+								adoptionDate: ''
+							})}
 					>
 						+ {t('leaveEntitlement.children.add')}
 					</button>
@@ -404,6 +411,11 @@
 								{#if child.paternityEligible}
 									<span class="badge badge-info">{t('leaveEntitlement.children.paternityBadge')}</span>
 								{/if}
+								{#if child.adoptionDate}
+									<span class="badge badge-info" title={formatDay(child.adoptionDate)}>
+										{t('leaveEntitlement.children.adoptedBadge')}
+									</span>
+								{/if}
 								<span class="badge {status === 'counts' ? 'badge-ok' : 'badge-muted'}">
 									{t(`leaveEntitlement.children.${status}`)}
 								</span>
@@ -417,7 +429,8 @@
 											label: child.label ?? '',
 											birthDate: child.birthDate,
 											isDisabled: child.isDisabled,
-											paternityEligible: child.paternityEligible
+											paternityEligible: child.paternityEligible,
+											adoptionDate: child.adoptionDate ?? ''
 										})}
 								>
 									{t('employeeDetail.editDetail')}
@@ -454,6 +467,11 @@
 							onCheckedChange={(v) => childEdit && (childEdit.paternityEligible = v)}
 						/>
 						<span>{t('leaveEntitlement.children.paternityEligible')}</span>
+					</label>
+					<label>
+						<span>{t('leaveEntitlement.children.adoptionDate')}</span>
+						<input class="input" type="date" bind:value={childEdit.adoptionDate} />
+						<small class="field-hint">{t('leaveEntitlement.children.adoptionHint')}</small>
 					</label>
 					<div class="form-actions">
 						<button class="btn-secondary" onclick={() => (childEdit = null)}>{t('form.cancel')}</button>

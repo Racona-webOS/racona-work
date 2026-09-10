@@ -19,6 +19,9 @@ function childText(child: ChildData | undefined, t: Translate): string {
 	const parts = [child.label || t('leaveEntitlement.children.unnamed'), formatDay(child.birthDate)];
 	if (child.isDisabled) parts.push(t('leaveEntitlement.children.disabledBadge'));
 	if (child.paternityEligible) parts.push(t('leaveEntitlement.children.paternityBadge'));
+	if (child.adoptionDate) {
+		parts.push(`${t('leaveEntitlement.children.adoptedBadge')}: ${formatDay(child.adoptionDate)}`);
+	}
 	return parts.join(', ');
 }
 
@@ -56,6 +59,11 @@ export function describeDataRequest(
 				if (before.isDisabled !== after.isDisabled) {
 					details.push(
 						`${t('leaveEntitlement.children.isDisabled')}: ${t(before.isDisabled ? 'dataRequest.yes' : 'dataRequest.no')} → ${t(after.isDisabled ? 'dataRequest.yes' : 'dataRequest.no')}`
+					);
+				}
+				if ((before.adoptionDate ?? null) !== (after.adoptionDate ?? null)) {
+					details.push(
+						`${t('dataRequest.field.adoptionDate')}: ${formatDay(before.adoptionDate)} → ${formatDay(after.adoptionDate)}`
 					);
 				}
 				if (before.paternityEligible !== after.paternityEligible) {

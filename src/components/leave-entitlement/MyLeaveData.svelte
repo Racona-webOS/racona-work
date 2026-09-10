@@ -50,7 +50,13 @@
 		kind: LeaveDataRequestKind;
 		childId: number | null;
 		birthDate: string;
-		child: { label: string; birthDate: string; isDisabled: boolean; paternityEligible: boolean };
+		child: {
+			label: string;
+			birthDate: string;
+			isDisabled: boolean;
+			paternityEligible: boolean;
+			adoptionDate: string;
+		};
 		extra: { kind: ReportableExtraKind; validFrom: string; validTo: string };
 		note: string;
 	};
@@ -68,7 +74,8 @@
 				label: child?.label ?? '',
 				birthDate: child?.birthDate ?? '',
 				isDisabled: child?.isDisabled ?? false,
-				paternityEligible: child?.paternityEligible ?? false
+				paternityEligible: child?.paternityEligible ?? false,
+				adoptionDate: child?.adoptionDate ?? ''
 			},
 			extra: { kind: 'health_impaired', validFrom: '', validTo: '' },
 			note: ''
@@ -85,7 +92,8 @@
 				label: child.label ?? '',
 				birthDate: child.birthDate,
 				isDisabled: child.isDisabled,
-				paternityEligible: child.paternityEligible
+				paternityEligible: child.paternityEligible,
+				adoptionDate: child.adoptionDate ?? ''
 			};
 		}
 	}
@@ -98,7 +106,8 @@
 				label: draft.child.label || null,
 				birthDate: draft.child.birthDate,
 				isDisabled: draft.child.isDisabled,
-				paternityEligible: draft.child.paternityEligible
+				paternityEligible: draft.child.paternityEligible,
+				adoptionDate: draft.child.adoptionDate || null
 			};
 			await sdk.remote.call('submitLeaveDataRequest', {
 				employeeId,
@@ -268,6 +277,11 @@
 							onCheckedChange={(v) => draft && (draft.child.paternityEligible = v)}
 						/>
 						<span>{t('leaveEntitlement.children.paternityEligible')}</span>
+					</label>
+					<label>
+						<span>{t('leaveEntitlement.children.adoptionDate')}</span>
+						<input class="input" type="date" bind:value={draft.child.adoptionDate} />
+						<small class="hint">{t('leaveEntitlement.children.adoptionHint')}</small>
 					</label>
 				{/if}
 

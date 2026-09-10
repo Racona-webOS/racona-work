@@ -700,5 +700,10 @@
 	"carryOver.self.reminder": "You still have {days} carried-over days to take, deadline: {deadline}.",
 	"carryOver.self.expired": "The deadline for your {days} carried-over days has passed. Agree with HR when to take them.",
 	"leaveEntitlement.history.field.carryOverDeadline": "Carry-over deadline",
-	"leaveEntitlement.bulk.col.deadline": "Deadline"
+	"leaveEntitlement.bulk.col.deadline": "Deadline",
+	"leaveEntitlement.children.adoptionDate": "Adoption date (optional)",
+	"leaveEntitlement.children.adoptionHint": "For an adopted child: the day the adoption decision became final. The paternity leave deadline counts from this day.",
+	"leaveEntitlement.children.adoptedBadge": "adopted",
+	"leaveEntitlement.other.adopted": "adopted: {date}",
+	"dataRequest.field.adoptionDate": "Adoption date"
 }

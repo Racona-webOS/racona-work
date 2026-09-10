@@ -19,7 +19,8 @@ import {
 	parentalEligibleFrom,
 	PATERNITY_DAYS,
 	PATERNITY_MAX_PARTS,
-	paternityDeadline
+	paternityDeadline,
+	paternityStartDate
 } from './leave-entitlement.js';
 import type { LeaveType } from './leave-types.js';
 
@@ -38,6 +39,8 @@ export interface ChildLeaveStatus {
 	childId: number;
 	label: string | null;
 	birthDate: string;
+	/** Örökbefogadott gyereknél a határozat véglegessé válásának napja. */
+	adoptionDate: string | null;
 	/** Az utolsó nap, ameddig kivehető. */
 	deadline: string;
 	totalDays: number;
@@ -118,7 +121,8 @@ export async function getLeaveAllowances(
 			[params.employeeId, year]
 		),
 		context.db.query(
-			`SELECT id, label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, paternity_eligible
+			`SELECT id, label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, paternity_eligible,
+			        to_char(adoption_date, 'YYYY-MM-DD') AS adoption_date
 			   FROM ${SCHEMA}.employee_children
 			  WHERE employee_id = $1
 			  ORDER BY birth_date DESC, id`,
@@ -141,11 +145,12 @@ export async function getLeaveAllowances(
 	for (const child of childrenResult.rows) {
 		if (child.paternity_eligible) {
 			const usage = usageOf(child.id, 'paternity');
-			const deadline = paternityDeadline(child.birth_date);
+			const deadline = paternityDeadline(child.birth_date, child.adoption_date);
 			paternity.push({
 				childId: child.id,
 				label: child.label ?? null,
 				birthDate: child.birth_date,
+				adoptionDate: child.adoption_date ?? null,
 				deadline,
 				totalDays: PATERNITY_DAYS,
 				usedDays: usage.used,
@@ -162,6 +167,7 @@ export async function getLeaveAllowances(
 				childId: child.id,
 				label: child.label ?? null,
 				birthDate: child.birth_date,
+				adoptionDate: child.adoption_date ?? null,
 				deadline,
 				totalDays: PARENTAL_DAYS,
 				usedDays: usage.used,
@@ -203,22 +209,33 @@ export async function validateChildLeave(
 		throw new Error('Válaszd ki, melyik gyerek után kéred a szabadságot.');
 	}
 	const childResult = await context.db.query(
-		`SELECT to_char(birth_date, 'YYYY-MM-DD') AS birth_date, paternity_eligible
+		`SELECT to_char(birth_date, 'YYYY-MM-DD') AS birth_date, paternity_eligible,
+		        to_char(adoption_date, 'YYYY-MM-DD') AS adoption_date
 		   FROM ${SCHEMA}.employee_children WHERE id = $1 AND employee_id = $2`,
 		[request.childId, request.employeeId]
 	);
 	if (childResult.rows.length === 0) {
 		throw new Error('A gyerek nem található a dolgozó adatai között.');
 	}
-	const child = childResult.rows[0] as { birth_date: string; paternity_eligible: boolean };
+	const child = childResult.rows[0] as {
+		birth_date: string;
+		paternity_eligible: boolean;
+		adoption_date: string | null;
+	};
 	const usage = (await loadChildUsage(context, request.employeeId, request.excludeRequestId))(
 		request.childId,
 		request.leaveType
 	);
 	const taken = usage.used + (request.countPending ? usage.pending : 0);
 
-	if (request.startDate < child.birth_date) {
-		throw new Error('A szabadság nem kezdődhet a gyerek születése előtt.');
+	// Örökbefogadott gyereknél a szabadság az örökbefogadás előtt nem kezdődhet
+	const earliest = paternityStartDate(child.birth_date, child.adoption_date);
+	if (request.startDate < earliest) {
+		throw new Error(
+			child.adoption_date
+				? 'A szabadság nem kezdődhet az örökbefogadás előtt.'
+				: 'A szabadság nem kezdődhet a gyerek születése előtt.'
+		);
 	}
 
 	if (request.leaveType === 'paternity') {
@@ -227,7 +244,7 @@ export async function validateChildLeave(
 				'Ennél a gyereknél nincs jelölve, hogy apasági szabadság jár. A HR a dolgozó adatlapján állíthatja be.'
 			);
 		}
-		const deadline = paternityDeadline(child.birth_date);
+		const deadline = paternityDeadline(child.birth_date, child.adoption_date);
 		if (request.endDate > deadline) {
 			throw new Error(`Az apasági szabadságot ${deadline}-ig lehet kivenni (Mt. 118. §).`);
 		}

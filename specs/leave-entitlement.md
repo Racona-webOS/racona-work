@@ -40,7 +40,7 @@ Az életkor és a gyerek kora **az adott naptári évben betöltött kor** szeri
 
 **Eseti szabadságok.** Ezek nem az éves keret részei, csak a 3. fázisban foglalkozunk velük:
 
-- apasági szabadság: 10 munkanap, ikreknél sem több; a születést követő negyedik hónap végéig, legfeljebb két részletben, nem arányosítjuk (Mt. 118. § (4));
+- apasági szabadság: 10 munkanap, ikreknél sem több; a születést — örökbefogadásnál az örökbefogadást engedélyező határozat véglegessé válását — követő negyedik hónap végéig, legfeljebb két részletben, nem arányosítjuk (Mt. 118. § (4));
 - szülői szabadság: 44 munkanap, a gyerek 3 éves koráig;
 - betegszabadság: évi 15 munkanap (126. §).
 
@@ -471,7 +471,12 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
 
 - [ ] Igazolás feltöltése a bejelentéshez (most a HR offline kéri be).
 - [x] Az áthozott napok határideje és a „először az áthozottból fogy” sorrend — lásd lent.
-- [ ] Örökbefogadásnál az apasági határidő az örökbefogadást engedélyező határozattól számít; most a születési dátumtól számolunk.
+- [x] Örökbefogadás — `migrations/012_child_adoption_date.sql`:
+  - a gyereknél nem kötelező `adoption_date` (az örökbefogadást engedélyező határozat véglegessé válása); a születés és a mai nap közé kell esnie;
+  - ha ki van töltve, az apasági szabadság határideje ettől számított negyedik hónap vége (`paternityDeadline(birthDate, adoptionDate)`), és sem apasági, sem szülői szabadság nem kezdődhet előtte;
+  - a szülői szabadság határideje továbbra is a gyerek harmadik születésnapja előtti nap;
+  - a gyerek utáni pótszabadság (Mt. 118. § (1)) nem változik: a gyereket a születése évétől számoljuk, a HR az örökbefogadáskor veszi fel;
+  - a mező a HR gyerek-űrlapján és a dolgozói adatbejelentésben is megadható; a gyereknél „örökbefogadott” címke, az egyéb kereteknél az örökbefogadás napja látszik.
 
 ### Az áthozott napok határideje ✅
 

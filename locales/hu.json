@@ -699,5 +699,10 @@
 	"carryOver.self.reminder": "Az előző évből áthozott napjaidból még {days} napot kell kivenned, határidő: {deadline}.",
 	"carryOver.self.expired": "Az előző évből áthozott {days} napod határideje lejárt. Egyeztesd a HR-rel, mikor veszed ki.",
 	"leaveEntitlement.history.field.carryOverDeadline": "Áthozatal határideje",
-	"leaveEntitlement.bulk.col.deadline": "Határidő"
+	"leaveEntitlement.bulk.col.deadline": "Határidő",
+	"leaveEntitlement.children.adoptionDate": "Örökbefogadás napja (nem kötelező)",
+	"leaveEntitlement.children.adoptionHint": "Örökbefogadott gyereknél az örökbefogadást engedélyező határozat véglegessé válásának napja. Az apasági szabadság határideje ettől számít.",
+	"leaveEntitlement.children.adoptedBadge": "örökbefogadott",
+	"leaveEntitlement.other.adopted": "örökbefogadás: {date}",
+	"dataRequest.field.adoptionDate": "Örökbefogadás napja"
 }

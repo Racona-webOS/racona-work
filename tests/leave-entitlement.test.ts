@@ -14,6 +14,7 @@ import {
 	parentalDeadline,
 	parentalEligibleFrom,
 	paternityDeadline,
+	paternityStartDate,
 	type EntitlementInput,
 	type EntitlementItemCode
 } from '../server/leave-entitlement.ts';
@@ -345,6 +346,11 @@ describe('apasági és szülői szabadság határidői', () => {
 		expect(paternityDeadline('2026-05-15')).toBe('2026-09-30');
 		expect(paternityDeadline('2026-10-01')).toBe('2027-02-28');
 		expect(paternityDeadline('2027-10-31')).toBe('2028-02-29');
+	});
+	test('apasági örökbefogadásnál: a határozat véglegessé válását követő negyedik hónap vége', () => {
+		expect(paternityDeadline('2024-11-02', '2026-06-20')).toBe('2026-10-31');
+		expect(paternityStartDate('2024-11-02', '2026-06-20')).toBe('2026-06-20');
+		expect(paternityStartDate('2024-11-02', null)).toBe('2024-11-02');
 	});
 	test('szülői: a harmadik születésnap előtti nap', () => {
 		expect(parentalDeadline('2025-06-10')).toBe('2028-06-09');

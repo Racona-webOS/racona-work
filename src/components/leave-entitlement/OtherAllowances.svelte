@@ -92,6 +92,9 @@
 								{t('leaveRequests.type.paternity')} — {childName(child)}
 							</span>
 							<span class="allowance-meta">
+								{#if child.adoptionDate}
+									{t('leaveEntitlement.other.adopted', { date: formatDay(child.adoptionDate) })} ·
+								{/if}
 								{t('leaveEntitlement.other.deadline', { date: formatDay(child.deadline) })}
 								· {t('leaveEntitlement.other.parts', { parts: child.parts ?? 0 })}
 							</span>

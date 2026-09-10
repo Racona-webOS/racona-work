@@ -40,6 +40,8 @@ export interface ChildData {
 	birthDate: string;
 	isDisabled: boolean;
 	paternityEligible: boolean;
+	/** Örökbefogadásnál a határozat véglegessé válásának napja (a régebbi bejelentésekben nincs). */
+	adoptionDate?: string | null;
 }
 
 export interface LeaveDataRequestPayload {
@@ -125,11 +127,16 @@ function parseChild(value: unknown): ChildData {
 	if (birthDate > todayInBudapest()) {
 		throw new Error('A gyerek születési dátuma nem lehet a jövőben.');
 	}
+	const adoptionDate = parseDay(child.adoptionDate, 'Az örökbefogadás napja');
+	if (adoptionDate && (adoptionDate < birthDate || adoptionDate > todayInBudapest())) {
+		throw new Error('Az örökbefogadás napja a születés és a mai nap közé essen.');
+	}
 	return {
 		label: typeof child.label === 'string' && child.label.trim() ? child.label.trim().slice(0, 255) : null,
 		birthDate,
 		isDisabled: child.isDisabled === true,
-		paternityEligible: child.paternityEligible === true
+		paternityEligible: child.paternityEligible === true,
+		adoptionDate
 	};
 }
 
@@ -137,7 +144,8 @@ async function loadChild(context: RemoteContext, employeeId: number, childId: un
 	const id = Number(childId);
 	if (!Number.isInteger(id) || id <= 0) throw new Error('Válaszd ki a gyereket.');
 	const r = await context.db.query(
-		`SELECT label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, is_disabled, paternity_eligible
+		`SELECT label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, is_disabled, paternity_eligible,
+		        to_char(adoption_date, 'YYYY-MM-DD') AS adoption_date
 		   FROM ${SCHEMA}.employee_children WHERE id = $1 AND employee_id = $2`,
 		[id, employeeId]
 	);
@@ -147,7 +155,8 @@ async function loadChild(context: RemoteContext, employeeId: number, childId: un
 		label: row.label ?? null,
 		birthDate: row.birth_date,
 		isDisabled: row.is_disabled === true,
-		paternityEligible: row.paternity_eligible === true
+		paternityEligible: row.paternity_eligible === true,
+		adoptionDate: row.adoption_date ?? null
 	};
 }
 
