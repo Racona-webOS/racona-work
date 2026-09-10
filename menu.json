@@ -47,6 +47,12 @@
 		]
 	},
 	{
+		"labelKey": "menu.businessTrips",
+		"href": "#business-trips",
+		"icon": "Car",
+		"component": "BusinessTrips"
+	},
+	{
 		"labelKey": "menu.timeAndLeave",
 		"href": "#",
 		"icon": "Clock",
@@ -70,12 +76,6 @@
 				"icon": "CalendarCog",
 				"component": "WorkCalendar",
 				"requiredCapability": "leave.calendar.manage"
-			},
-			{
-				"labelKey": "menu.businessTrips",
-				"href": "#business-trips",
-				"icon": "Car",
-				"component": "BusinessTrips"
 			},
 			{
 				"labelKey": "menu.timeTracking",

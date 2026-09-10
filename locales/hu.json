@@ -8,7 +8,7 @@
 	"menu.dashboard": "Irányítópult",
 	"menu.employees": "Dolgozók",
 	"menu.leaveRequests": "Szabadság nyilvántartó",
-	"menu.businessTrips": "Kiküldetési rendelvény",
+	"menu.businessTrips": "Kiküldetések",
 	"menu.timeTracking": "Munkaidő nyilvántartó",
 	"menu.organizations": "Szervezetek",
 	"menu.projects": "Projektek",
@@ -128,9 +128,9 @@
 	"leaveRequests.approveSuccess": "Kérelem jóváhagyva",
 	"leaveRequests.rejectSuccess": "Kérelem elutasítva",
 
-	"businessTrips.title": "Kiküldetési rendelvény",
+	"businessTrips.title": "Kiküldetések",
 	"businessTrips.comingSoon": "Ez a funkció fejlesztés alatt áll",
-	"businessTrips.description": "A kiküldetési rendelvény modul lehetővé teszi majd a céges kiküldetések, utazási költségek és elszámolások kezelését.",
+	"businessTrips.description": "A kiküldetések modul lehetővé teszi majd a céges utak és a kiküldetési rendelvények, az utazási költségek és az elszámolások kezelését.",
 
 	"timeTracking.title": "Munkaidő nyilvántartó",
 	"timeTracking.comingSoon": "Ez a funkció fejlesztés alatt áll",
