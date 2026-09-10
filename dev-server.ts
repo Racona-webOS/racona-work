@@ -147,6 +147,12 @@ function buildContext(pool: Pool): RemoteContext {
 				return { success: true };
 			}
 		},
+		notifications: {
+			send: async (params) => {
+				console.log('[DevServer] [notifications.send stub]', params);
+				return { success: true };
+			}
+		},
 		devMode: true
 	};
 }

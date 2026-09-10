@@ -183,18 +183,9 @@
 	// --- Jóváhagyás ---
 	async function approveRequest(row: LeaveRequestRow) {
 		try {
-			const result: any = await sdk?.remote?.call('approveLeaveRequest', { id: row.id });
+			// Az érintett dolgozó értesítését a szerver küldi (8.7)
+			await sdk?.remote?.call('approveLeaveRequest', { id: row.id });
 			sdk?.ui?.toast(t('leaveRequests.approveSuccess'), 'success');
-
-			// Értesítés küldése az érintett dolgozónak (8.7)
-			if (result?._notifyEmployeeId) {
-				sdk?.notifications?.send({
-					userId: result._notifyEmployeeId,
-					title: 'Szabadság igény elfogadva',
-					message: `${row.employeeName}: ${formatDate(row.startDate)} – ${formatDate(row.endDate)}`
-				});
-			}
-
 			loadData();
 		} catch (err: any) {
 			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
@@ -204,18 +195,9 @@
 	// --- Elutasítás ---
 	async function rejectRequest(row: LeaveRequestRow) {
 		try {
-			const result: any = await sdk?.remote?.call('rejectLeaveRequest', { id: row.id });
+			// Az érintett dolgozó értesítését a szerver küldi (8.7)
+			await sdk?.remote?.call('rejectLeaveRequest', { id: row.id });
 			sdk?.ui?.toast(t('leaveRequests.rejectSuccess'), 'success');
-
-			// Értesítés küldése az érintett dolgozónak (8.7)
-			if (result?._notifyEmployeeId) {
-				sdk?.notifications?.send({
-					userId: result._notifyEmployeeId,
-					title: 'Szabadság igény elutasítva',
-					message: `${row.employeeName}: ${formatDate(row.startDate)} – ${formatDate(row.endDate)}`
-				});
-			}
-
 			loadData();
 		} catch (err: any) {
 			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
@@ -314,7 +296,8 @@
 		newReqLoading = true;
 		newReqError = null;
 		try {
-			const result: any = await sdk?.remote?.call('createLeaveRequest', {
+			// Az értesítendőknek (8.8) a szerver küld értesítést és emailt
+			await sdk?.remote?.call('createLeaveRequest', {
 				employeeId: newReqEmployeeId,
 				organizationId: currentOrganization.id,
 				leaveType: newReqType,
@@ -322,18 +305,6 @@
 				endDate: newReqEndDate,
 				reason: newReqReason || undefined
 			});
-
-			// Értesítés küldése az értesítendőknek (8.8)
-			if (result?._notifiers?.length > 0 && result?._notifierMessage) {
-				const msg = result._notifierMessage;
-				for (const userId of result._notifiers) {
-					sdk?.notifications?.send({
-						userId,
-						title: t('leaveRequests.newRequest'),
-						message: `${msg.employeeName}: ${formatDate(msg.startDate)} – ${formatDate(msg.endDate)} (${msg.days} nap)`
-					});
-				}
-			}
 
 			sdk?.ui?.toast(t('leaveRequests.newRequest') + ' ✓', 'success');
 			showNewRequestModal = false;
@@ -369,17 +340,9 @@
 		if (confirmed?.action !== 'confirm') return;
 
 		try {
-			const result: any = await sdk?.remote?.call('deleteLeaveRequest', { id: row.id });
+			// Az érintett dolgozó értesítését a szerver küldi
+			await sdk?.remote?.call('deleteLeaveRequest', { id: row.id });
 			sdk?.ui?.toast('Szabadság törölve', 'success');
-
-			if (result?._notifyUserId) {
-				sdk?.notifications?.send({
-					userId: result._notifyUserId,
-					title: 'Szabadság igény törölve',
-					message: `${result.employeeName}: ${formatDate(result.startDate)} – ${formatDate(result.endDate)}`
-				});
-			}
-
 			loadData();
 		} catch (err: any) {
 			sdk?.ui?.toast(err?.message?.replace(/^[A-Z_]+:\s*/, '') ?? t('error.saveFailed'), 'error');

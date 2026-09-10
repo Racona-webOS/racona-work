@@ -29,7 +29,7 @@
 
 // --- Kontextus --------------------------------------------------------------
 
-export type { RemoteContext, PluginEmailService } from './context.js';
+export type { RemoteContext, PluginEmailService, PluginNotificationService } from './context.js';
 
 // --- Megosztott típusok -----------------------------------------------------
 

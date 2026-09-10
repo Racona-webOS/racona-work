@@ -2,7 +2,7 @@
  * Remote hívás kontextus — közös típusok és segédfüggvények.
  *
  * A Racona core minden szerver függvénynek átad egy `context` objektumot
- * (pluginId, userId, db, permissions, email). A dev-server (`dev-server.ts`)
+ * (pluginId, userId, db, permissions, email, notifications). A dev-server (`dev-server.ts`)
  * ugyanezt a formát építi fel, kiegészítve a `devMode: true` jelzővel.
  *
  * Itt él minden olyan segéd, amit több szerver modul is használ
@@ -19,6 +19,28 @@ export interface PluginEmailService {
 	}): Promise<{ success: boolean; messageId?: string; error?: string }>;
 }
 
+/** Lokalizált szöveg a core értesítési rendszer számára. */
+export interface LocalizedText {
+	hu: string;
+	en: string;
+}
+
+/**
+ * Rendszeren belüli értesítés a core notification rendszerén keresztül
+ * (adatbázisba írás + valós idejű push). A core csak a 'notifications'
+ * jogosultságú pluginnak adja át.
+ */
+export interface PluginNotificationService {
+	send(params: {
+		userId?: number;
+		userIds?: number[];
+		title: string | LocalizedText;
+		message: string | LocalizedText;
+		type?: 'info' | 'success' | 'warning' | 'error' | 'critical';
+		data?: Record<string, unknown>;
+	}): Promise<{ success: boolean; error?: string }>;
+}
+
 export interface RemoteContext {
 	pluginId: string;
 	/** A hívó user azonosítója. A core stringként küldi (pl. "12"). */
@@ -33,6 +55,7 @@ export interface RemoteContext {
 	/** A hívó user core jogosultságai (jelenleg csak 'admin' vagy üres). */
 	permissions: string[];
 	email?: PluginEmailService;
+	notifications?: PluginNotificationService;
 	/**
 	 * Csak a lokális dev-server állítja be. Dev módban a jogosultság-ellenőrzések
 	 * lazábbak, és nem numerikus userId esetén az első auth.users rekordot használjuk.

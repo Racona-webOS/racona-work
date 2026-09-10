@@ -10,6 +10,7 @@ import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { requireCapability } from './permissions.js';
 import { getEmployeeOrganizationId } from './employees.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
+import { notifyLeaveRequestCreated, notifyLeaveRequestDecision } from './leave-notifications.js';
 import type { PaginatedResult } from './types.js';
 
 export interface LeaveRequestListParams {
@@ -369,39 +370,17 @@ export async function createLeaveRequest(
 		updatedAt: row.updated_at
 	};
 
-	// Értesítés küldése a beállításokban megjelölt személyeknek (8.8)
-	try {
-		const settingsResult = await context.db.query(
-			`SELECT value FROM app__racona_work.kv_store WHERE key = $1`,
-			['settings:leave_request_notifiers']
-		);
-
-		if (settingsResult.rows.length > 0) {
-			const notifierIds: number[] = settingsResult.rows[0].value ?? [];
-
-			if (notifierIds.length > 0) {
-				const empResult = await context.db.query(
-					`SELECT u.full_name FROM app__racona_work.employees e
-					 JOIN auth.users u ON e.user_id = u.id
-					 WHERE e.id = $1`,
-					[employeeId]
-				);
-				const employeeName = empResult.rows[0]?.name ?? 'Ismeretlen dolgozó';
-
-				const notifierResult = await context.db.query(
-					`SELECT e.id, e.user_id FROM app__racona_work.employees e
-					 WHERE e.id = ANY($1::int[])`,
-					[notifierIds]
-				);
-
-				// Értesítési adatok visszaadása a kliensnek (kliens oldali webOS.notifications.send() híváshoz)
-				(leaveRequest as any)._notifiers = notifierResult.rows.map((r: any) => r.user_id);
-				(leaveRequest as any)._notifierMessage = { employeeName, startDate, endDate, days };
-			}
-		}
-	} catch {
-		// Értesítési hiba nem akadályozza a kérelem létrehozását
-	}
+	// Értesítés a beállításokban megjelölt dolgozóknak (8.8)
+	await notifyLeaveRequestCreated(context, {
+		id: leaveRequest.id,
+		employeeId,
+		organizationId,
+		leaveType,
+		startDate: toIsoDay(startDate),
+		endDate: toIsoDay(endDate),
+		days,
+		reason: reason ?? null
+	});
 
 	return leaveRequest;
 }
@@ -507,9 +486,20 @@ export async function approveLeaveRequest(
 		updatedAt: row.updated_at
 	};
 
-	// Értesítési adatok visszaadása a kliensnek (8.9)
-	(leaveRequest as any)._notifyEmployeeId = req.employee_id;
-	(leaveRequest as any)._notifyAction = 'approved';
+	// Értesítés az érintett dolgozónak (8.9)
+	await notifyLeaveRequestDecision(
+		context,
+		{
+			id: row.id,
+			employeeId: req.employee_id,
+			organizationId: req.organization_id,
+			leaveType: req.leave_type,
+			startDate: startDay,
+			endDate: endDay,
+			days
+		},
+		'approved'
+	);
 
 	return leaveRequest;
 }
@@ -565,33 +555,38 @@ export async function rejectLeaveRequest(
 		updatedAt: row.updated_at
 	};
 
-	// Értesítési adatok visszaadása a kliensnek (8.9)
-	(leaveRequest as any)._notifyEmployeeId = req.employee_id;
-	(leaveRequest as any)._notifyAction = 'rejected';
+	// Értesítés az érintett dolgozónak (8.9)
+	await notifyLeaveRequestDecision(
+		context,
+		{
+			id: row.id,
+			employeeId: row.employee_id,
+			organizationId: req.organization_id,
+			leaveType: row.leave_type,
+			startDate: toIsoDay(row.start_date),
+			endDate: toIsoDay(row.end_date),
+			days: row.days
+		},
+		'rejected'
+	);
 
 	return leaveRequest;
 }
 
 /**
  * Jóváhagyott szabadságkérelem törlése.
- * Visszaállítja a leave_balances.used_days értékét (éves szabadságnál).
- * Visszaadja az érintett dolgozó user_id-ját értesítéshez.
+ * Visszaállítja a leave_balances.used_days értékét (éves szabadságnál),
+ * és értesíti az érintett dolgozót.
  */
 export async function deleteLeaveRequest(
 	params: { id: number },
 	context: RemoteContext
-): Promise<{
-	_notifyUserId: number | null;
-	employeeName: string;
-	startDate: string;
-	endDate: string;
-}> {
+): Promise<void> {
 	const requestResult = await context.db.query(
 		`SELECT lr.id, lr.employee_id, lr.leave_type, lr.start_date, lr.end_date, lr.days, lr.status,
-		        u.full_name AS employee_name, e.user_id, e.organization_id
+		        e.organization_id
 		 FROM app__racona_work.leave_requests lr
 		 JOIN app__racona_work.employees e ON e.id = lr.employee_id
-		 JOIN auth.users u ON u.id = e.user_id
 		 WHERE lr.id = $1`,
 		[params.id]
 	);
@@ -617,12 +612,19 @@ export async function deleteLeaveRequest(
 
 	await context.db.query(`DELETE FROM app__racona_work.leave_requests WHERE id = $1`, [params.id]);
 
-	return {
-		_notifyUserId: req.user_id ?? null,
-		employeeName: req.employee_name,
-		startDate: req.start_date,
-		endDate: req.end_date
-	};
+	await notifyLeaveRequestDecision(
+		context,
+		{
+			id: req.id,
+			employeeId: req.employee_id,
+			organizationId: req.organization_id,
+			leaveType: req.leave_type,
+			startDate: toIsoDay(req.start_date),
+			endDate: toIsoDay(req.end_date),
+			days: req.days
+		},
+		'deleted'
+	);
 }
 
 /**
