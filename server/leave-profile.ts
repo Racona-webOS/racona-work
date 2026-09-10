@@ -358,7 +358,7 @@ export async function recalculateEmployeeBalances(
 		const updated = await context.db.query(
 			`UPDATE ${SCHEMA}.leave_balances
 			    SET calculated_days = $2,
-			        total_days = $2::int + adjustment_days + carried_over_days,
+			        total_days = GREATEST(0, $2::int + adjustment_days + carried_over_days),
 			        calculation = $3::jsonb,
 			        calculated_at = NOW(),
 			        updated_by = $4,
@@ -710,7 +710,7 @@ async function insertCalculatedBalance(
 			(employee_id, organization_id, year, total_days, used_days,
 			 calculated_days, adjustment_days, adjustment_note, carried_over_days, carry_over_deadline,
 			 calculation, calculated_at, updated_by, updated_at)
-		 VALUES ($1, $2, $3, $4::int + $5::int + $7::int, 0, $4::int, $5::int, $6, $7::int, $10::date,
+		 VALUES ($1, $2, $3, GREATEST(0, $4::int + $5::int + $7::int), 0, $4::int, $5::int, $6, $7::int, $10::date,
 		         $8::jsonb, NOW(), $9, NOW())
 		 ON CONFLICT (employee_id, year) DO NOTHING
 		 RETURNING ${BALANCE_COLUMNS}`,
@@ -848,9 +848,7 @@ export async function setLeaveBalanceAdjustment(
 		calculated = calculation.result.totalDays;
 		calculationJson = JSON.stringify(calculation);
 	}
-	if (calculated + adjustment.days + carriedOverDays < 0) {
-		throw new Error('A korrekcióval a keret nem lehet negatív.');
-	}
+	// Ha a számított érték lecsökkent (pl. kilépés), a keret 0 lesz, nem negatív
 	const userId = await resolveUserId(context);
 
 	const result = await context.db.query(
@@ -861,7 +859,7 @@ export async function setLeaveBalanceAdjustment(
 		        calculated_days = $5,
 		        carried_over_days = $8,
 		        carry_over_deadline = $9::date,
-		        total_days = $5::int + $2::int + $8::int,
+		        total_days = GREATEST(0, $5::int + $2::int + $8::int),
 		        calculation = COALESCE($6::jsonb, calculation),
 		        calculated_at = CASE WHEN $6::jsonb IS NULL THEN calculated_at ELSE NOW() END,
 		        updated_by = $7,
@@ -910,9 +908,7 @@ export async function applyCalculationToBalance(
 		adjustmentNote =
 			adjustmentDays !== 0 ? 'A korábbi kézi keret összege megtartva az átálláskor.' : null;
 	}
-	if (calculated + adjustmentDays + carriedOverDays < 0) {
-		throw new Error('A korrekcióval a keret nem lehet negatív.');
-	}
+	// Ha a számított érték lecsökkent (pl. kilépés), a keret 0 lesz, nem negatív
 	const userId = await resolveUserId(context);
 
 	const result = await context.db.query(
@@ -920,7 +916,7 @@ export async function applyCalculationToBalance(
 		    SET calculated_days = $2,
 		        adjustment_days = $3,
 		        adjustment_note = $4,
-		        total_days = $2::int + $3::int + carried_over_days,
+		        total_days = GREATEST(0, $2::int + $3::int + carried_over_days),
 		        calculation = $5::jsonb,
 		        calculated_at = NOW(),
 		        updated_by = $6,

@@ -721,5 +721,6 @@
 	"employeeDetail.birthDate": "Birth date",
 	"employeeDetail.confirmHireDate": "Date is correct",
 	"employeeDetail.datesHint": "Pro rata leave is calculated from the hire and end dates; allowances are recalculated when they change.",
-	"leaveEntitlement.profile.inputs": "The calculation also uses: birth date {birthDate} (Personal data), hire date {hireDate}, end date {endDate} (Basic info)."
+	"leaveEntitlement.profile.inputs": "The calculation also uses: birth date {birthDate} (Personal data), hire date {hireDate}, end date {endDate} (Basic info).",
+	"leaveEntitlement.breakdown.floored": "an allowance cannot be negative, so it is 0"
 }

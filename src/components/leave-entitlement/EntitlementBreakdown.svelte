@@ -6,6 +6,7 @@
 <script lang="ts">
 	import type { EntitlementItem, EntitlementResult } from '../../../server/functions.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
+	import { balanceTotal } from '../../../server/leave-entitlement.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -32,6 +33,9 @@
 	const proration = $derived(result.totalDays - result.fullYearDays);
 	/** A régebbi (hu-mt@1) pillanatképekben nincs ilyen mező. */
 	const nonCounting = $derived(result.nonCountingDays ?? 0);
+	const total = $derived(balanceTotal(result.totalDays, adjustmentDays, carriedOverDays));
+	/** A korrekció többet vonna le, mint amennyi jár: a keret 0, nem negatív. */
+	const floored = $derived(result.totalDays + adjustmentDays + carriedOverDays < 0);
 
 	function itemLabel(item: EntitlementItem): string {
 		if (item.code === 'custom') {
@@ -115,8 +119,11 @@
 	{/if}
 	{#if adjustmentDays !== 0 || carriedOverDays !== 0}
 		<div class="row total">
-			<dt>{t('leaveEntitlement.breakdown.total')}</dt>
-			<dd>{result.totalDays + adjustmentDays + carriedOverDays}</dd>
+			<dt>
+				{t('leaveEntitlement.breakdown.total')}
+				{#if floored}<span class="note">{t('leaveEntitlement.breakdown.floored')}</span>{/if}
+			</dt>
+			<dd>{total}</dd>
 		</div>
 	{/if}
 </dl>

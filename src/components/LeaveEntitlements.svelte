@@ -31,6 +31,7 @@
 	import AccessDenied from './AccessDenied.svelte';
 	import Checkbox from './ui/Checkbox.svelte';
 	import EntitlementBreakdown from './leave-entitlement/EntitlementBreakdown.svelte';
+	import { balanceTotal } from '../../server/leave-entitlement.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
@@ -151,7 +152,7 @@
 
 	function rowTotal(row: BulkEntitlementRow): number {
 		const e = edits[row.employeeId];
-		return row.calculation.totalDays + (e?.adjustment || 0) + (e?.carryOver || 0);
+		return balanceTotal(row.calculation.totalDays, e?.adjustment || 0, e?.carryOver || 0);
 	}
 
 	async function save() {

@@ -720,5 +720,6 @@
 	"employeeDetail.birthDate": "Születési dátum",
 	"employeeDetail.confirmHireDate": "A dátum helyes",
 	"employeeDetail.datesHint": "A belépés és a kilépés dátumából számolja a rendszer az arányos szabadságot; módosításkor a keretek újraszámolódnak.",
-	"leaveEntitlement.profile.inputs": "A számítás ezeket is használja: születési dátum {birthDate} (Személyes adatok), belépés {hireDate}, kilépés {endDate} (Alapadatok)."
+	"leaveEntitlement.profile.inputs": "A számítás ezeket is használja: születési dátum {birthDate} (Személyes adatok), belépés {hireDate}, kilépés {endDate} (Alapadatok).",
+	"leaveEntitlement.breakdown.floored": "a keret nem lehet negatív, ezért 0"
 }

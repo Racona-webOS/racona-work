@@ -9,6 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import {
 	calculateAnnualLeave,
 	calculateSickLeave,
+	balanceTotal,
 	carryOverUsage,
 	defaultCarryOverDeadline,
 	parentalDeadline,
@@ -419,5 +420,15 @@ describe('igazolás fájlok ellenőrzése', () => {
 		expect(sanitizeFileName('a\u0000b\u0007c.png')).toBe('abc.png');
 		expect(sanitizeFileName('')).toBe('igazolas');
 		expect(sanitizeFileName('x'.repeat(300)).length).toBe(255);
+	});
+});
+
+describe('a keret összege', () => {
+	test('számított + korrekció + áthozott', () => {
+		expect(balanceTotal(24, 1, 3)).toBe(28);
+	});
+	test('negatív korrekcióval sem lehet negatív (pl. kilépés után)', () => {
+		expect(balanceTotal(0, -2, 0)).toBe(0);
+		expect(balanceTotal(3, -5, 1)).toBe(0);
 	});
 });

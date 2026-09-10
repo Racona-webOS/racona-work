@@ -175,6 +175,8 @@ A két `ADD CONSTRAINT` nem idempotens. `DO $$ ... IF NOT EXISTS (SELECT 1 FROM 
 
 **Negatív maradék.** Előfordulhat, például kilépés miatti arányosításnál, hogy a keret a már felhasznált napok alá csökken. Ezt engedjük, a felület jelzi („túlvett szabadság”). Új kérelmet a mostani ellenőrzés úgysem enged.
 
+**A keret összege viszont nem lehet negatív** (`migrations/014_non_negative_balance_total.sql`): számított módban `total_days = GREATEST(0, számított + korrekció + áthozott)` (`balanceTotal`). Ha a számított érték lecsökken (pl. kilépés után a jövő évi keret 0), egy negatív korrekció nem visz negatív keretet; a korrekció megmarad, a bontásban látszik („a keret nem lehet negatív, ezért 0”). Az automatikus újraszámolás, a korrekció és a számítás alkalmazása nullára vág; keret létrehozásakor a túl nagy negatív korrekció továbbra is hiba, mert ott a HR tudatosan adja meg.
+
 ## 6. Számítómotor – `server/leave-entitlement.ts`
 
 Egyetlen függvény, mellékhatás és adatbázis-hozzáférés nélkül. A dátumok `YYYY-MM-DD` formájúak, UTC-ben számolunk, ahogy a `calculateWorkingDays` is.

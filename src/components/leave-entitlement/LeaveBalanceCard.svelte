@@ -17,6 +17,7 @@
 	import Checkbox from '../ui/Checkbox.svelte';
 	import EntitlementBreakdown from './EntitlementBreakdown.svelte';
 	import CarryOverDeadlineField from './CarryOverDeadlineField.svelte';
+	import { balanceTotal } from '../../../server/leave-entitlement.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -520,9 +521,12 @@
 						calculated,
 						adjustment: signed(adjustDays || 0),
 						carriedOver: signed(adjustCarryOver || 0),
-						total: calculated + (adjustDays || 0) + (adjustCarryOver || 0)
+						total: balanceTotal(calculated, adjustDays || 0, adjustCarryOver || 0)
 					})}
 				</p>
+				{#if calculated + (adjustDays || 0) + (adjustCarryOver || 0) < 0}
+					<p class="modal-text hint">{t('leaveEntitlement.breakdown.floored')}</p>
+				{/if}
 			</div>
 			<div class="modal-footer">
 				<button class="btn-secondary" onclick={() => (adjustTarget = null)}>{t('form.cancel')}</button>

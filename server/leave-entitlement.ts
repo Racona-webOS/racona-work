@@ -512,3 +512,15 @@ export function carryOverUsage(input: {
 		status
 	};
 }
+
+// --- A keret összege ---------------------------------------------------------
+
+/**
+ * A számított keret összege: számított + korrekció + áthozott, de legfeljebb 0.
+ * Egy negatív korrekció (pl. előre kiadott napok) így nem visz negatív keretet,
+ * ha a számított érték lecsökken (pl. kilépés után). Az adatbázis ugyanezt
+ * kényszeríti ki (leave_balances_total_consistent).
+ */
+export function balanceTotal(calculatedDays: number, adjustmentDays: number, carriedOverDays: number): number {
+	return Math.max(0, calculatedDays + adjustmentDays + carriedOverDays);
+}
