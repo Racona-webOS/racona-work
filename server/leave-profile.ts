@@ -20,7 +20,8 @@ import { getEmployeeOrganizationId } from './employees.js';
 import { BALANCE_COLUMNS, mapBalanceRow } from './leave.js';
 import type { LeaveBalance, LeaveBalanceCalculation } from './leave.js';
 import { logBalanceChange } from './leave-history.js';
-import { calculateAnnualLeave, STATUTORY_EXTRA_DAYS } from './leave-entitlement.js';
+import { enrichCarryOver } from './leave-carry-over.js';
+import { calculateAnnualLeave, defaultCarryOverDeadline, STATUTORY_EXTRA_DAYS } from './leave-entitlement.js';
 import type {
 	AbsenceKind,
 	EntitlementAbsence,
@@ -667,6 +668,19 @@ function parseCarryOver(value: unknown): number {
 }
 
 /**
+ * Az áthozott napok határideje. Áthozatal nélkül nincs határidő; ha nincs
+ * megadva, az alapeset: az év március 31. (Mt. 123. §).
+ */
+function parseCarryOverDeadline(value: unknown, year: number, carriedOverDays: number): string | null {
+	if (carriedOverDays === 0) return null;
+	const deadline = parseDay(value, 'Az áthozott napok határideje') ?? defaultCarryOverDeadline(year);
+	if (deadline < `${year}-01-01`) {
+		throw new Error('Az áthozott napok határideje nem lehet a keret éve előtt.');
+	}
+	return deadline;
+}
+
+/**
  * Áthozatal-javaslat: az előző év maradéka. Hogy ebből mennyi hozható át
  * (Mt. 123. §: pl. október 1. utáni belépés, a felek megállapodása), az az
  * adatokból nem következik — a HR dönt, a javaslat csak kiindulópont.
@@ -713,6 +727,7 @@ async function insertCalculatedBalance(
 		adjustmentDays: number;
 		adjustmentNote: string | null;
 		carriedOverDays: number;
+		carryOverDeadline: string | null;
 		userId: number;
 		action: 'created' | 'bulk_created';
 	}
@@ -721,9 +736,9 @@ async function insertCalculatedBalance(
 	const result = await db.query(
 		`INSERT INTO ${SCHEMA}.leave_balances
 			(employee_id, organization_id, year, total_days, used_days,
-			 calculated_days, adjustment_days, adjustment_note, carried_over_days,
+			 calculated_days, adjustment_days, adjustment_note, carried_over_days, carry_over_deadline,
 			 calculation, calculated_at, updated_by, updated_at)
-		 VALUES ($1, $2, $3, $4::int + $5::int + $7::int, 0, $4::int, $5::int, $6, $7::int,
+		 VALUES ($1, $2, $3, $4::int + $5::int + $7::int, 0, $4::int, $5::int, $6, $7::int, $10::date,
 		         $8::jsonb, NOW(), $9, NOW())
 		 ON CONFLICT (employee_id, year) DO NOTHING
 		 RETURNING ${BALANCE_COLUMNS}`,
@@ -736,7 +751,8 @@ async function insertCalculatedBalance(
 			values.adjustmentNote,
 			values.carriedOverDays,
 			JSON.stringify(values.calculation),
-			values.userId
+			values.userId,
+			values.carryOverDeadline
 		]
 	);
 	if (result.rows.length === 0) return null;
@@ -787,6 +803,7 @@ export async function createLeaveBalanceFromCalculation(
 		adjustmentDays?: number;
 		adjustmentNote?: string | null;
 		carriedOverDays?: number;
+		carryOverDeadline?: string | null;
 	},
 	context: RemoteContext
 ): Promise<LeaveBalance> {
@@ -794,6 +811,7 @@ export async function createLeaveBalanceFromCalculation(
 	const year = parseYear(params.year);
 	const adjustment = parseAdjustment(params.adjustmentDays, params.adjustmentNote);
 	const carriedOverDays = parseCarryOver(params.carriedOverDays);
+	const carryOverDeadline = parseCarryOverDeadline(params.carryOverDeadline, year, carriedOverDays);
 
 	const { base } = await loadEntitlementBase(context, params.employeeId);
 	const calculation = calculate(base, year);
@@ -809,13 +827,14 @@ export async function createLeaveBalanceFromCalculation(
 		adjustmentDays: adjustment.days,
 		adjustmentNote: adjustment.note,
 		carriedOverDays,
+		carryOverDeadline,
 		userId: await resolveUserId(context),
 		action: 'created'
 	});
 	if (!balance) {
 		throw new Error(`A(z) ${year}. évre már van szabadságkeret.`);
 	}
-	return balance;
+	return (await enrichCarryOver(context, [balance]))[0];
 }
 
 /**
@@ -829,6 +848,8 @@ export async function setLeaveBalanceAdjustment(
 		adjustmentDays: number;
 		adjustmentNote?: string | null;
 		carriedOverDays?: number;
+		/** Ha nincs megadva, a meglévő marad (áthozatal nélkül törlődik). */
+		carryOverDeadline?: string | null;
 		isLocked: boolean;
 	},
 	context: RemoteContext
@@ -840,6 +861,11 @@ export async function setLeaveBalanceAdjustment(
 	const adjustment = parseAdjustment(params.adjustmentDays, params.adjustmentNote);
 	const carriedOverDays =
 		params.carriedOverDays === undefined ? row.carried_over_days : parseCarryOver(params.carriedOverDays);
+	const carryOverDeadline = parseCarryOverDeadline(
+		params.carryOverDeadline === undefined ? row.carry_over_deadline : params.carryOverDeadline,
+		row.year,
+		carriedOverDays
+	);
 	const isLocked = params.isLocked === true;
 
 	let calculated: number = row.calculated_days;
@@ -862,6 +888,7 @@ export async function setLeaveBalanceAdjustment(
 		        is_locked = $4,
 		        calculated_days = $5,
 		        carried_over_days = $8,
+		        carry_over_deadline = $9::date,
 		        total_days = $5::int + $2::int + $8::int,
 		        calculation = COALESCE($6::jsonb, calculation),
 		        calculated_at = CASE WHEN $6::jsonb IS NULL THEN calculated_at ELSE NOW() END,
@@ -877,12 +904,13 @@ export async function setLeaveBalanceAdjustment(
 			calculated,
 			calculationJson,
 			userId,
-			carriedOverDays
+			carriedOverDays,
+			carryOverDeadline
 		]
 	);
 	const after = mapBalanceRow(result.rows[0]);
 	await logBalanceChange(context.db, { action: 'adjusted', before: mapBalanceRow(row), after, actorUserId: userId });
-	return after;
+	return (await enrichCarryOver(context, [after]))[0];
 }
 
 /**
@@ -936,7 +964,7 @@ export async function applyCalculationToBalance(
 		after,
 		actorUserId: userId
 	});
-	return after;
+	return (await enrichCarryOver(context, [after]))[0];
 }
 
 // --- Éves keretgenerálás (tömeges) -------------------------------------------
@@ -966,6 +994,8 @@ export interface BulkEntitlementDecision {
 	adjustmentDays?: number;
 	adjustmentNote?: string | null;
 	carriedOverDays?: number;
+	/** Ha nincs megadva: az év március 31. */
+	carryOverDeadline?: string | null;
 }
 
 const MAX_BULK_ROWS = 1000;
@@ -1065,11 +1095,13 @@ export async function applyLeaveEntitlements(
 		if (seen.has(employee.id)) throw new Error(`${employee.full_name}: kétszer szerepel.`);
 		seen.add(employee.id);
 		try {
+			const carriedOverDays = parseCarryOver(d.carriedOverDays);
 			return {
 				employeeId: employee.id,
 				name: employee.full_name,
 				adjustment: parseAdjustment(d.adjustmentDays, d.adjustmentNote),
-				carriedOverDays: parseCarryOver(d.carriedOverDays)
+				carriedOverDays,
+				carryOverDeadline: parseCarryOverDeadline(d.carryOverDeadline, year, carriedOverDays)
 			};
 		} catch (err) {
 			throw new Error(`${employee.full_name}: ${(err as Error).message}`);
@@ -1103,6 +1135,7 @@ export async function applyLeaveEntitlements(
 				adjustmentDays: row.adjustment.days,
 				adjustmentNote: row.adjustment.note,
 				carriedOverDays: row.carriedOverDays,
+				carryOverDeadline: row.carryOverDeadline,
 				userId,
 				action: 'bulk_created'
 			});

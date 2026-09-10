@@ -9,6 +9,8 @@ import { describe, expect, test } from 'bun:test';
 import {
 	calculateAnnualLeave,
 	calculateSickLeave,
+	carryOverUsage,
+	defaultCarryOverDeadline,
 	parentalDeadline,
 	parentalEligibleFrom,
 	paternityDeadline,
@@ -351,5 +353,46 @@ describe('apasági és szülői szabadság határidői', () => {
 	test('szülői: egy év munkaviszony után jár', () => {
 		expect(parentalEligibleFrom('2025-03-01')).toBe('2026-03-01');
 		expect(parentalEligibleFrom('2024-02-29')).toBe('2025-02-28');
+	});
+});
+
+describe('áthozott napok határideje (Mt. 123. §)', () => {
+	const base = { carriedDays: 5, deadline: '2027-03-31' };
+	test('alapból március 31.', () => {
+		expect(defaultCarryOverDeadline(2027)).toBe('2027-03-31');
+	});
+	test('a határidőig kezdődő kérelmek először az áthozottból fogynak', () => {
+		const r = carryOverUsage({
+			...base,
+			requests: [
+				{ startDate: '2027-02-10', days: 2 },
+				{ startDate: '2027-03-31', days: 1 },
+				{ startDate: '2027-04-01', days: 3 }
+			],
+			today: '2027-03-01'
+		});
+		expect(r.usedDays).toBe(3);
+		expect(r.remainingDays).toBe(2);
+		expect(r.status).toBe('due_soon');
+		expect(r.daysLeft).toBe(30);
+	});
+	test('több kivett nap sem visz az áthozott fölé', () => {
+		const r = carryOverUsage({ ...base, requests: [{ startDate: '2027-01-05', days: 10 }], today: '2027-01-10' });
+		expect(r.usedDays).toBe(5);
+		expect(r.remainingDays).toBe(0);
+		expect(r.status).toBe('done');
+	});
+	test('van még idő', () => {
+		expect(carryOverUsage({ ...base, requests: [], today: '2027-01-15' }).status).toBe('open');
+	});
+	test('lejárt, és maradt kiadatlan nap', () => {
+		const r = carryOverUsage({ ...base, requests: [{ startDate: '2027-03-01', days: 1 }], today: '2027-04-02' });
+		expect(r.status).toBe('expired');
+		expect(r.remainingDays).toBe(4);
+		expect(r.daysLeft).toBe(-2);
+	});
+	test('lejárt, de mindent kivett → rendben', () => {
+		const r = carryOverUsage({ ...base, requests: [{ startDate: '2027-03-01', days: 5 }], today: '2027-06-01' });
+		expect(r.status).toBe('done');
 	});
 });

@@ -14,7 +14,8 @@ import { validateChildLeave } from './leave-allowances.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
 import { logBalanceChange } from './leave-history.js';
 import { CHILD_LEAVE_TYPES, isLeaveType } from './leave-types.js';
-import type { EntitlementInput, EntitlementResult } from './leave-entitlement.js';
+import type { CarryOverUsage, EntitlementInput, EntitlementResult } from './leave-entitlement.js';
+import { enrichCarryOver } from './leave-carry-over.js';
 import type { PaginatedResult } from './types.js';
 
 export interface LeaveRequestListParams {
@@ -78,6 +79,10 @@ export interface LeaveBalance {
 	adjustmentNote: string | null;
 	/** Az előző évből áthozott napok (csak számított keretnél). */
 	carriedOverDays: number;
+	/** Eddig kell kiadni az áthozott napokat (Mt. 123. §); áthozatal nélkül null. */
+	carryOverDeadline: string | null;
+	/** Az áthozott napok felhasználása és állapota — a getLeaveBalances tölti ki. */
+	carryOver: CarryOverUsage | null;
 	isLocked: boolean;
 	calculation: LeaveBalanceCalculation | null;
 	calculatedAt: string | null;
@@ -85,7 +90,9 @@ export interface LeaveBalance {
 
 /** A leave_balances oszlopai a LeaveBalance leképezéshez (mapBalanceRow). */
 export const BALANCE_COLUMNS = `id, employee_id, year, total_days, used_days, remaining_days,
-	calculated_days, adjustment_days, adjustment_note, carried_over_days, is_locked, calculation, calculated_at`;
+	calculated_days, adjustment_days, adjustment_note, carried_over_days,
+	to_char(carry_over_deadline, 'YYYY-MM-DD') AS carry_over_deadline,
+	is_locked, calculation, calculated_at`;
 
 /** Belső segéd (a functions.ts NEM reexportálja) — a leave-profile.ts is használja. */
 export function mapBalanceRow(row: any): LeaveBalance {
@@ -100,6 +107,8 @@ export function mapBalanceRow(row: any): LeaveBalance {
 		adjustmentDays: row.adjustment_days ?? 0,
 		adjustmentNote: row.adjustment_note ?? null,
 		carriedOverDays: row.carried_over_days ?? 0,
+		carryOverDeadline: row.carry_over_deadline ?? null,
+		carryOver: null,
 		isLocked: row.is_locked === true,
 		calculation: row.calculation ?? null,
 		calculatedAt: row.calculated_at ?? null
@@ -742,7 +751,7 @@ export async function getLeaveBalances(
 		[params.employeeId]
 	);
 
-	return result.rows.map(mapBalanceRow);
+	return enrichCarryOver(context, result.rows.map(mapBalanceRow));
 }
 
 /**
@@ -779,6 +788,7 @@ export async function setLeaveBalance(
 		               adjustment_days = 0,
 		               adjustment_note = NULL,
 		               carried_over_days = 0,
+		               carry_over_deadline = NULL,
 		               calculation = NULL,
 		               calculated_at = NULL,
 		               updated_by = EXCLUDED.updated_by,

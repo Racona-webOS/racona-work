@@ -62,7 +62,19 @@
 	let filter = $state<'all' | 'warnings'>('all');
 	let expandedId = $state<number | null>(null);
 
-	type RowEdit = { selected: boolean; carryOver: number; adjustment: number; note: string };
+	/** Az áthozott napok határideje: március 31. vagy az év vége (egyedi dátum az adatlapon adható meg). */
+	type DeadlineMode = 'march' | 'year_end';
+	type RowEdit = {
+		selected: boolean;
+		carryOver: number;
+		deadline: DeadlineMode;
+		adjustment: number;
+		note: string;
+	};
+
+	function deadlineOf(mode: DeadlineMode): string {
+		return mode === 'year_end' ? `${year}-12-31` : `${year}-03-31`;
+	}
 	let edits = $state<Record<number, RowEdit>>({});
 
 	/** Év vége felé már a jövő évi kereteket készíti elő a HR. */
@@ -104,6 +116,7 @@
 					{
 						selected: selectedByDefault(row),
 						carryOver: row.suggestedCarryOver,
+						deadline: 'march' as DeadlineMode,
 						adjustment: 0,
 						note: ''
 					}
@@ -155,6 +168,7 @@
 						return {
 							employeeId: row.employeeId,
 							carriedOverDays: e.carryOver || 0,
+							carryOverDeadline: (e.carryOver || 0) > 0 ? deadlineOf(e.deadline) : null,
 							adjustmentDays: e.adjustment || 0,
 							adjustmentNote: e.note
 						};
@@ -286,6 +300,7 @@
 									<th class="num">{t('leaveEntitlement.bulk.col.previous', { year: year - 1 })}</th>
 									<th class="num">{t('leaveEntitlement.bulk.col.calculated')}</th>
 									<th class="num">{t('leaveEntitlement.bulk.col.carryOver')}</th>
+									<th>{t('leaveEntitlement.bulk.col.deadline')}</th>
 									<th class="num">{t('leaveEntitlement.bulk.col.adjustment')}</th>
 									<th>{t('leaveEntitlement.bulk.col.note')}</th>
 									<th class="num">{t('leaveEntitlement.bulk.col.total')}</th>
@@ -345,6 +360,20 @@
 												aria-label={t('leaveEntitlement.bulk.col.carryOver')}
 											/>
 										</td>
+										<td>
+											{#if (edit.carryOver || 0) > 0}
+												<select
+													class="input deadline-input"
+													bind:value={edit.deadline}
+													aria-label={t('carryOver.deadline.label')}
+												>
+													<option value="march">{t('carryOver.deadline.marchShort')}</option>
+													<option value="year_end">{t('carryOver.deadline.yearEndShort')}</option>
+												</select>
+											{:else}
+												<span class="muted">—</span>
+											{/if}
+										</td>
 										<td class="num">
 											<input
 												class="input num-input"
@@ -371,7 +400,7 @@
 									{#if expandedId === row.employeeId}
 										<tr class="breakdown-row">
 											<td></td>
-											<td colspan="7">
+											<td colspan="8">
 												<div class="breakdown-box">
 													<EntitlementBreakdown
 														{pluginId}
@@ -379,6 +408,7 @@
 														adjustmentDays={edit.adjustment || 0}
 														adjustmentNote={edit.note || null}
 														carriedOverDays={edit.carryOver || 0}
+														carryOverDeadline={(edit.carryOver || 0) > 0 ? deadlineOf(edit.deadline) : null}
 														showWarnings={false}
 													/>
 												</div>
@@ -550,6 +580,11 @@
 		width: 4.5rem;
 		text-align: right;
 		padding: 0.3rem 0.5rem;
+	}
+
+	.deadline-input {
+		padding: 0.3rem 0.5rem;
+		min-width: 8rem;
 	}
 
 	.note-input {

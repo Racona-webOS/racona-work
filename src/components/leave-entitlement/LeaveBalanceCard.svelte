@@ -16,6 +16,7 @@
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import Checkbox from '../ui/Checkbox.svelte';
 	import EntitlementBreakdown from './EntitlementBreakdown.svelte';
+	import CarryOverDeadlineField from './CarryOverDeadlineField.svelte';
 
 	let {
 		pluginId = 'racona-work',
@@ -101,6 +102,12 @@
 		return balances.find((x) => x.year === b.year + 1)?.carriedOverDays ?? 0;
 	}
 
+	/** YYYY-MM-DD → helyi dátum, időzóna-csúszás nélkül. */
+	function formatDay(day: string): string {
+		const [y, m, d] = day.split('-').map(Number);
+		return new Date(y, m - 1, d).toLocaleDateString();
+	}
+
 	function signed(n: number): string {
 		return n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0';
 	}
@@ -113,6 +120,7 @@
 	let createAdjustment = $state(0);
 	let createNote = $state('');
 	let createCarryOver = $state(0);
+	let createDeadline = $state<string | null>(null);
 	let createPrevious = $state<PreviousYearBalance | null>(null);
 	let createSaving = $state(false);
 
@@ -162,7 +170,8 @@
 				year: createYear,
 				adjustmentDays: createAdjustment || 0,
 				adjustmentNote: createNote,
-				carriedOverDays: createCarryOver || 0
+				carriedOverDays: createCarryOver || 0,
+				carryOverDeadline: (createCarryOver || 0) > 0 ? createDeadline : null
 			});
 			replaceBalance(saved);
 			expandedYear = saved.year;
@@ -181,6 +190,7 @@
 	let adjustNote = $state('');
 	let adjustLocked = $state(false);
 	let adjustCarryOver = $state(0);
+	let adjustDeadline = $state<string | null>(null);
 	let adjustSaving = $state(false);
 
 	function openAdjust(b: LeaveBalance) {
@@ -189,6 +199,7 @@
 		adjustNote = b.adjustmentNote ?? '';
 		adjustLocked = b.isLocked;
 		adjustCarryOver = b.carriedOverDays;
+		adjustDeadline = b.carryOverDeadline;
 	}
 
 	async function submitAdjust() {
@@ -204,6 +215,7 @@
 				adjustmentDays: adjustDays || 0,
 				adjustmentNote: adjustNote,
 				carriedOverDays: adjustCarryOver || 0,
+				carryOverDeadline: (adjustCarryOver || 0) > 0 ? adjustDeadline : null,
 				isLocked: adjustLocked
 			});
 			replaceBalance(saved);
@@ -249,6 +261,11 @@
 		field('calculated', before?.calculatedDays ?? null, after.calculatedDays);
 		field('adjustment', before ? signed(before.adjustmentDays) : null, signed(after.adjustmentDays));
 		field('carriedOver', before?.carriedOverDays ?? null, after.carriedOverDays);
+		field(
+			'carryOverDeadline',
+			before?.carryOverDeadline ? formatDay(before.carryOverDeadline) : null,
+			after.carryOverDeadline ? formatDay(after.carryOverDeadline) : null
+		);
 		if (after.adjustmentNote && after.adjustmentNote !== (before?.adjustmentNote ?? null)) {
 			changes.push(`${t('leaveEntitlement.history.field.note')}: ${after.adjustmentNote}`);
 		}
@@ -333,6 +350,20 @@
 					{#if b.remainingDays < 0}
 						<p class="hint warn">{t('leaveEntitlement.balance.overdrawn')}</p>
 					{/if}
+					{#if b.carryOver}
+						<p class="hint carry carry-{b.carryOver.status}">
+							{t('carryOver.status.line', {
+								carried: b.carryOver.carriedDays,
+								remaining: b.carryOver.remainingDays,
+								deadline: formatDay(b.carryOver.deadline)
+							})}
+							{#if b.carryOver.status === 'expired' || b.carryOver.status === 'due_soon'}
+								<span class="badge badge-carry-{b.carryOver.status}">
+									{t(`carryOver.status.${b.carryOver.status}`, { days: b.carryOver.daysLeft })}
+								</span>
+							{/if}
+						</p>
+					{/if}
 					{#if carriedToNextYear(b) > 0}
 						<p class="hint">
 							{t('leaveEntitlement.balance.carriedToNext', { days: carriedToNextYear(b) })}
@@ -372,6 +403,7 @@
 								adjustmentDays={b.adjustmentDays}
 								adjustmentNote={b.adjustmentNote}
 								carriedOverDays={b.carriedOverDays}
+								carryOverDeadline={b.carryOverDeadline}
 							/>
 						</div>
 					{/if}
@@ -405,6 +437,7 @@
 							adjustmentDays={createAdjustment || 0}
 							adjustmentNote={createNote || null}
 							carriedOverDays={createCarryOver || 0}
+							carryOverDeadline={(createCarryOver || 0) > 0 ? createDeadline : null}
 						/>
 					</div>
 
@@ -420,6 +453,9 @@
 								: t('leaveEntitlement.carryOver.noPrevious')}
 						</small>
 					</label>
+					{#if (createCarryOver || 0) > 0}
+						<CarryOverDeadlineField {pluginId} year={createYear} bind:value={createDeadline} />
+					{/if}
 
 					<label>
 						<span>{t('leaveEntitlement.adjust.days')}</span>
@@ -472,6 +508,9 @@
 					<span>{t('leaveEntitlement.carryOver.label')}</span>
 					<input class="input" type="number" bind:value={adjustCarryOver} min="0" max="60" />
 				</label>
+				{#if (adjustCarryOver || 0) > 0}
+					<CarryOverDeadlineField {pluginId} year={adjustTarget.year} bind:value={adjustDeadline} />
+				{/if}
 				<label class="checkbox-row">
 					<Checkbox checked={adjustLocked} onCheckedChange={(v) => (adjustLocked = v)} />
 					<span>{t('leaveEntitlement.adjust.lock')}</span>
@@ -677,6 +716,24 @@
 	.hint.warn {
 		color: #b45309;
 	}
+
+	.hint.carry {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.4rem;
+		color: var(--color-muted-foreground, #64748b);
+	}
+
+	.hint.carry-expired {
+		color: #b91c1c;
+	}
+
+	.badge-carry-due_soon { background: #fef3c7; color: #92400e; }
+	.badge-carry-expired { background: #fee2e2; color: #991b1b; }
+
+	:global(.dark) .badge-carry-due_soon { background: oklch(0.3 0.05 60); color: #fde68a; }
+	:global(.dark) .badge-carry-expired { background: oklch(0.25 0.05 20); color: #fca5a5; }
 
 	.empty-hint {
 		color: var(--color-muted-foreground, #94a3b8);

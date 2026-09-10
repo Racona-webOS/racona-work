@@ -1,6 +1,6 @@
 # Szabadságkeret-számítás
 
-> Státusz: 1–3. fázis és a dolgozói adatbejelentés kész · Utolsó módosítás: 2026-09-10
+> Státusz: 1–3. fázis, dolgozói adatbejelentés és áthozatali határidő kész · Utolsó módosítás: 2026-09-10
 
 A HR-es ma dolgozónként és évente kézzel írja be a szabadságkeretet (`leave_balances.total_days`). A cél, hogy a rendszer a dolgozó adataiból (születési dátum, gyerekek, belépés/kilépés, egyéb jogosultságok) a Munka törvénykönyve szerint **kiszámolja a javasolt keretet**, amit a HR-es indoklással korrigálhat.
 
@@ -413,7 +413,7 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
   - A mentés gomb tiltott, amíg egy kijelölt korrekcióhoz hiányzik az indoklás.
 - [x] Dolgozó adatlapja: áthozatal a keret létrehozásánál (javaslattal) és a korrekciónál, a bontásban „Áthozott az előző évből” sor, az előző évi kereten „Ebből n napot a következő évbe hoztunk át”.
 
-**Nyitott (későbbre):** az áthozott napokat a törvény szerint jellemzően a következő év március 31-ig kell kiadni. Ezt a határidőt és a „először az áthozottból fogy” sorrendet a rendszer most nem követi.
+**Határidő:** lásd „Az áthozott napok határideje” szakaszt (a 3. fázis után).
 
 ### 3. fázis – bővítések ✅ (a dolgozói adatbejelentés kivételével)
 
@@ -470,8 +470,31 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
 **Hátravan**
 
 - [ ] Igazolás feltöltése a bejelentéshez (most a HR offline kéri be).
-- [ ] Az áthozott napok március 31-i határideje és a „először az áthozottból fogy” sorrend (2. fázisból).
+- [x] Az áthozott napok határideje és a „először az áthozottból fogy” sorrend — lásd lent.
 - [ ] Örökbefogadásnál az apasági határidő az örökbefogadást engedélyező határozattól számít; most a születési dátumtól számolunk.
+
+### Az áthozott napok határideje ✅
+
+**Jogi háttér (Mt. 123. §):** a szabadságot az esedékesség évében kell kiadni. Kivételek:
+- október 1-jén vagy később kezdődött munkaviszony, illetve a munkáltató gazdasági érdeke (kollektív szerződés alapján, a szabadság egynegyede): a következő év **március 31-ig**;
+- az életkor szerinti pótszabadság a felek megállapodásával: a következő év **végéig**;
+- a munkavállaló érdekkörében felmerült ok (pl. betegség): az akadály megszűnésétől **60 napon belül**.
+
+A határidő lejártával **a szabadság nem vész el**: a munkaviszony fennállása alatt ki kell adni, pénzbeli megváltás csak a munkaviszony megszűnésekor jár. Ezért a rendszer nem vonja le a napokat, csak figyelmeztet.
+
+**Megvalósítás** — `migrations/011_carry_over_deadline.sql`, `server/leave-carry-over.ts`
+
+- [x] `leave_balances.carry_over_deadline`: áthozatal esetén kötelező (CHECK); a 2. fázisban rögzített áthozatalok március 31-et kaptak. Ha nincs megadva: az év március 31.; a határidő nem lehet a keret éve előtt. Kézi keretnél nincs.
+- [x] Felhasználási sorrend (`carryOverUsage`, tiszta függvény, 6 teszt): a határidőig kezdődő jóváhagyott éves szabadságkérelmek napjai először az áthozott napokból fogynak. Állapot: `done` (mind kiadva), `open`, `due_soon` (30 napon belül lejár), `expired` (lejárt, maradt kiadatlan nap).
+- [x] A `getLeaveBalances` és a keretet módosító függvények a felhasználást is visszaadják (`carryOver`).
+- [x] `getCarryOverAlerts({ organizationId })`: a lejáró és lejárt, kiadatlan áthozott napok (idei és tavalyi keretek), határidő szerint — `leave.balance.manage`.
+- [x] Felület:
+  - keret-kártya: „Áthozott 5 napból 3 még kiadandó · határidő: …”, Lejárt / „n nap múlva lejár” címkével; a létrehozó és a korrekciós ablakban határidő-választó (március 31. / az év vége / egyedi dátum, a jogcímek magyarázatával); a bontásban a határidő; az előzményekben a változása;
+  - Éves szabadságkeretek oldal: „Határidő” oszlop (márc. 31. / dec. 31.; egyedi dátum az adatlapon);
+  - vezetői irányítópult: „Lejáró áthozott napok” lista, a névre kattintva az adatlap;
+  - saját irányítópult: emlékeztető, mennyi áthozott napot kell még kivenni és meddig (lejártnál: egyeztessen a HR-rel).
+
+**Nyitott:** egy kereten egy határidő van. Ha az áthozott napok egy része márc. 31-ig, más része (életkori pótszabadság) az év végéig adható ki, a HR a későbbi dátumot adja meg, vagy korrekcióval kezeli. Automatikus emlékeztető (email, időzített értesítés) nincs, mert a pluginnak nincs ütemezője.
 
 ## 12. Szakmai ellenőrzést igényel
 

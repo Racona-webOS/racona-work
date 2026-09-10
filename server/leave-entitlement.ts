@@ -437,3 +437,66 @@ export function parentalDeadline(birthDate: string): string {
 export function parentalEligibleFrom(hireDate: string): string {
 	return isoFromMs(addMonths(hireDate, 12));
 }
+
+// --- Áthozott napok határideje (Mt. 123. §) ------------------------------------
+
+/** Ennyi nappal a határidő előtt jelezzük, hogy hamarosan lejár. */
+export const CARRY_OVER_DUE_SOON_DAYS = 30;
+
+/**
+ * done: minden áthozott napot kivett; open: van még idő;
+ * due_soon: 30 napon belül lejár; expired: lejárt, és maradt kiadatlan nap.
+ */
+export type CarryOverStatus = 'done' | 'open' | 'due_soon' | 'expired';
+
+export interface CarryOverUsage {
+	carriedDays: number;
+	usedDays: number;
+	remainingDays: number;
+	deadline: string;
+	/** Hány nap van hátra a határidőig (lejárt határidőnél negatív). */
+	daysLeft: number;
+	status: CarryOverStatus;
+}
+
+/** Az alapeset: a következő év március 31. (október 1. utáni belépés, a munkáltató gazdasági érdeke). */
+export function defaultCarryOverDeadline(year: number): string {
+	return `${year}-03-31`;
+}
+
+/**
+ * Az áthozott napok felhasználása. Az áthozott napok fogynak először: a
+ * határidőig kezdődő jóváhagyott éves szabadságkérelmek napjai ezekből
+ * vonódnak le. A határidő lejárta után a kiadatlan napok nem vesznek el
+ * (a munkáltatónak ki kell adnia őket) — ezért itt csak az állapotot jelezzük.
+ *
+ * @param input.requests - A keret évének jóváhagyott éves szabadságkérelmei.
+ * @param input.today - A mai nap (YYYY-MM-DD), a teszthez megadható.
+ */
+export function carryOverUsage(input: {
+	carriedDays: number;
+	deadline: string;
+	requests: { startDate: string; days: number }[];
+	today: string;
+}): CarryOverUsage {
+	const takenBeforeDeadline = input.requests
+		.filter((r) => r.startDate.slice(0, 10) <= input.deadline)
+		.reduce((sum, r) => sum + r.days, 0);
+	const usedDays = Math.min(input.carriedDays, takenBeforeDeadline);
+	const remainingDays = input.carriedDays - usedDays;
+	const daysLeft = (dayMs(input.deadline) - dayMs(input.today)) / DAY_MS;
+
+	let status: CarryOverStatus = 'open';
+	if (remainingDays === 0) status = 'done';
+	else if (daysLeft < 0) status = 'expired';
+	else if (daysLeft <= CARRY_OVER_DUE_SOON_DAYS) status = 'due_soon';
+
+	return {
+		carriedDays: input.carriedDays,
+		usedDays,
+		remainingDays,
+		deadline: input.deadline,
+		daysLeft,
+		status
+	};
+}

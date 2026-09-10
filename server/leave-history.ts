@@ -28,6 +28,8 @@ export interface BalanceSnapshot {
 	adjustmentDays: number;
 	adjustmentNote: string | null;
 	carriedOverDays: number;
+	/** A régebbi naplósorokban nincs. */
+	carryOverDeadline?: string | null;
 	isLocked: boolean;
 }
 
@@ -49,6 +51,7 @@ function snapshot(balance: LeaveBalance): BalanceSnapshot {
 		adjustmentDays: balance.adjustmentDays,
 		adjustmentNote: balance.adjustmentNote,
 		carriedOverDays: balance.carriedOverDays,
+		carryOverDeadline: balance.carryOverDeadline,
 		isLocked: balance.isLocked
 	};
 }

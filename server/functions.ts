@@ -19,6 +19,7 @@
  *   leave-profile.ts — a számítás adatai (születési dátum, gyerekek, távollétek) és a számított keretek
  *   leave-allowances.ts — betegszabadság, apasági és szülői szabadság kerete
  *   leave-history.ts — a szabadságkeretek változásnaplója
+ *   leave-carry-over.ts — az áthozott napok felhasználása és határideje
  *   leave-data-requests.ts — dolgozói adatbejelentések és azok elbírálása
  *   dates.ts         — dátum-segédek (budapesti nap, YYYY-MM-DD ellenőrzés)
  *   leave-types.ts   — szabadságtípusok (a kliens is importálja)
@@ -140,6 +141,9 @@ export type {
 	ReportableExtraKind
 } from './leave-data-requests.js';
 
+export { getCarryOverAlerts } from './leave-carry-over.js';
+export type { CarryOverAlert } from './leave-carry-over.js';
+
 export { getLeaveBalanceHistory } from './leave-history.js';
 export type { BalanceHistoryEntry, BalanceHistoryAction, BalanceSnapshot } from './leave-history.js';
 
@@ -152,7 +156,9 @@ export type {
 	EntitlementWarning,
 	EntitlementWarningCode,
 	ExtraLeaveKind,
-	LeavePolicy
+	LeavePolicy,
+	CarryOverUsage,
+	CarryOverStatus
 } from './leave-entitlement.js';
 
 // --- Irányítópult -----------------------------------------------------------

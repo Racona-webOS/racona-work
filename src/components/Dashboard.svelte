@@ -30,6 +30,7 @@
   import OtherAllowances from "./leave-entitlement/OtherAllowances.svelte";
   import MyLeaveData from "./leave-entitlement/MyLeaveData.svelte";
   import DataRequestReview from "./leave-entitlement/DataRequestReview.svelte";
+  import CarryOverAlerts from "./leave-entitlement/CarryOverAlerts.svelte";
   import { LEAVE_TYPES } from "../../server/leave-types.js";
 
   let { pluginId = "racona-work" }: { pluginId?: string } = $props();
@@ -379,6 +380,7 @@
             {pluginId}
             organizationId={currentOrganization.id}
           />
+          <CarryOverAlerts {pluginId} organizationId={currentOrganization.id} />
         {/if}
 
         <div class="recent-section">
@@ -486,6 +488,22 @@
                   : 0}%"
               ></div>
             </div>
+            {#if myBalance.carryOver && myBalance.carryOver.remainingDays > 0}
+              <p
+                class="carry-notice"
+                class:expired={myBalance.carryOver.status === "expired"}
+              >
+                {t(
+                  myBalance.carryOver.status === "expired"
+                    ? "carryOver.self.expired"
+                    : "carryOver.self.reminder",
+                  {
+                    days: myBalance.carryOver.remainingDays,
+                    deadline: formatDate(myBalance.carryOver.deadline),
+                  },
+                )}
+              </p>
+            {/if}
             {#if showBreakdown && myBalance.calculation}
               <div class="breakdown-box">
                 <EntitlementBreakdown
@@ -494,6 +512,7 @@
                   adjustmentDays={myBalance.adjustmentDays}
                   adjustmentNote={myBalance.adjustmentNote}
                   carriedOverDays={myBalance.carriedOverDays}
+                  carryOverDeadline={myBalance.carryOverDeadline}
                   showWarnings={false}
                 />
               </div>
@@ -652,6 +671,30 @@
 
   .btn-link:hover {
     text-decoration: underline;
+  }
+
+  .carry-notice {
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.85rem;
+  }
+
+  .carry-notice.expired {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  :global(.dark) .carry-notice {
+    background: oklch(0.3 0.05 60);
+    color: #fde68a;
+  }
+
+  :global(.dark) .carry-notice.expired {
+    background: oklch(0.25 0.05 20);
+    color: #fca5a5;
   }
 
   .breakdown-box {

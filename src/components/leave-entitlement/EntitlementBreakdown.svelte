@@ -13,6 +13,7 @@
 		adjustmentDays = 0,
 		adjustmentNote = null,
 		carriedOverDays = 0,
+		carryOverDeadline = null,
 		showWarnings = true
 	}: {
 		pluginId?: string;
@@ -20,6 +21,8 @@
 		adjustmentDays?: number;
 		adjustmentNote?: string | null;
 		carriedOverDays?: number;
+		/** Az áthozott napok határideje (Mt. 123. §). */
+		carryOverDeadline?: string | null;
 		showWarnings?: boolean;
 	} = $props();
 
@@ -38,6 +41,12 @@
 			return String(item.params?.label || t('leaveEntitlement.item.policyDefault'));
 		}
 		return t(`leaveEntitlement.item.${item.code}`, item.params);
+	}
+
+	/** YYYY-MM-DD → helyi dátum, időzóna-csúszás nélkül. */
+	function formatDay(day: string): string {
+		const [y, m, d] = day.split('-').map(Number);
+		return new Date(y, m - 1, d).toLocaleDateString();
 	}
 
 	/** Előjeles szám, valódi mínuszjellel. */
@@ -96,6 +105,9 @@
 		<div class="row">
 			<dt>
 				{t('leaveEntitlement.breakdown.carriedOver')}
+				{#if carryOverDeadline}
+					<span class="note">{t('carryOver.deadline.until', { date: formatDay(carryOverDeadline) })}</span>
+				{/if}
 				<span class="ref">Mt. 123. §</span>
 			</dt>
 			<dd>{signed(carriedOverDays)}</dd>
