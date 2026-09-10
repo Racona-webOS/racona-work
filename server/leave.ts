@@ -61,7 +61,7 @@ export interface LeaveBalance {
 	id: number;
 	employeeId: number;
 	year: number;
-	/** A ténylegesen érvényes keret. Számított módban: calculatedDays + adjustmentDays. */
+	/** A ténylegesen érvényes keret. Számított módban: calculatedDays + adjustmentDays + carriedOverDays. */
 	totalDays: number;
 	usedDays: number;
 	remainingDays: number;
@@ -69,6 +69,8 @@ export interface LeaveBalance {
 	calculatedDays: number | null;
 	adjustmentDays: number;
 	adjustmentNote: string | null;
+	/** Az előző évből áthozott napok (csak számított keretnél). */
+	carriedOverDays: number;
 	isLocked: boolean;
 	calculation: LeaveBalanceCalculation | null;
 	calculatedAt: string | null;
@@ -76,7 +78,7 @@ export interface LeaveBalance {
 
 /** A leave_balances oszlopai a LeaveBalance leképezéshez (mapBalanceRow). */
 export const BALANCE_COLUMNS = `id, employee_id, year, total_days, used_days, remaining_days,
-	calculated_days, adjustment_days, adjustment_note, is_locked, calculation, calculated_at`;
+	calculated_days, adjustment_days, adjustment_note, carried_over_days, is_locked, calculation, calculated_at`;
 
 /** Belső segéd (a functions.ts NEM reexportálja) — a leave-profile.ts is használja. */
 export function mapBalanceRow(row: any): LeaveBalance {
@@ -90,6 +92,7 @@ export function mapBalanceRow(row: any): LeaveBalance {
 		calculatedDays: row.calculated_days ?? null,
 		adjustmentDays: row.adjustment_days ?? 0,
 		adjustmentNote: row.adjustment_note ?? null,
+		carriedOverDays: row.carried_over_days ?? 0,
 		isLocked: row.is_locked === true,
 		calculation: row.calculation ?? null,
 		calculatedAt: row.calculated_at ?? null
@@ -690,7 +693,7 @@ export async function getLeaveBalances(
 /**
  * Éves szabadságkeret kézi beállítása (UPSERT).
  *
- * A keretet kézi módba teszi: a számított értéket és a korrekciót törli, így a
+ * A keretet kézi módba teszi: a számított értéket, a korrekciót és az áthozatalt törli, így a
  * rögzített összeg nem íródik felül automatikusan. A számított keretekhez a
  * leave-profile.ts függvényei tartoznak.
  * Követelmény: 8.11
@@ -715,6 +718,7 @@ export async function setLeaveBalance(
 		               calculated_days = NULL,
 		               adjustment_days = 0,
 		               adjustment_note = NULL,
+		               carried_over_days = 0,
 		               calculation = NULL,
 		               calculated_at = NULL,
 		               updated_by = EXCLUDED.updated_by,

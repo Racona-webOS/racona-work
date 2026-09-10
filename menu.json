@@ -58,6 +58,13 @@
 				"component": "LeaveRequests"
 			},
 			{
+				"labelKey": "menu.leaveEntitlements",
+				"href": "#leave-entitlements",
+				"icon": "CalendarCheck",
+				"component": "LeaveEntitlements",
+				"requiredCapability": "leave.balance.manage"
+			},
+			{
 				"labelKey": "menu.workCalendar",
 				"href": "#work-calendar",
 				"icon": "CalendarCog",

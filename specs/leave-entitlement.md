@@ -1,6 +1,6 @@
 # Szabadságkeret-számítás
 
-> Státusz: 1. fázis kész · Utolsó módosítás: 2026-09-10
+> Státusz: 1–2. fázis kész · Utolsó módosítás: 2026-09-10
 
 A HR-es ma dolgozónként és évente kézzel írja be a szabadságkeretet (`leave_balances.total_days`). A cél, hogy a rendszer a dolgozó adataiból (születési dátum, gyerekek, belépés/kilépés, egyéb jogosultságok) a Munka törvénykönyve szerint **kiszámolja a javasolt keretet**, amit a HR-es indoklással korrigálhat.
 
@@ -68,7 +68,7 @@ Számítás:
 | D1 | Hogyan korrigál a HR? | **± nap a számított értékhez képest**, kötelező indoklással. Nem teljes felülírás. |
 | D2 | Mikor számolunk újra? | **Automatikusan**, amikor változik egy bemenő adat. A korrekció megmarad. A keret zárolható, zárolt keretet nem számolunk újra. |
 | D3 | Ki viszi fel az adatokat? | Az 1. fázisban **csak a HR** (`leave.balance.manage`). A dolgozói bejelentés a 3. fázisba kerül. |
-| D4 | Áthozatal az előző évből | **2. fázis.** |
+| D4 | Áthozatal az előző évből | **2. fázis.** Külön mező (`carried_over_days`), csak számított keretnél. Javaslat: az előző év maradéka; a HR írja át. Az előző évi keretet nem módosítjuk, csak jelezzük rajta, mennyit vittünk át. |
 | D5 | Ki hozza létre az új év kereteit? | **A HR generálja.** A rendszer magától nem hoz létre keretet. Az újraszámolás csak már létező kereteket érint. |
 | D6 | Mit tárolunk a gyerekekről? | Gyerekenként a születési dátumot és a fogyatékos jelölőt, **darabszámot nem**. Így minden évre magától kijön, hány gyerek számít. |
 | D7 | Arányosítás alapja | Naptári napok (365/366). A teljes éves összeget arányosítjuk, nem tételenként. Kerekítés: a fél nap felfelé. |
@@ -388,14 +388,32 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
 - [x] `locales/hu.json` és `en.json`: új kulcsok.
 - [x] Verzióemelés (`manifest.json`).
 
-### 2. fázis – éves keretgenerálás és áthozatal
+### 2. fázis – éves keretgenerálás és áthozatal ✅
 
-- [ ] `leave_balances.carried_over_days` oszlop (alapértéke 0). A CHECK constraint módosul: `total_days = calculated_days + adjustment_days + carried_over_days`.
-- [ ] `previewBulkEntitlements({ organizationId, year })` és `applyLeaveEntitlements({ organizationId, year, rows })` függvények.
-- [ ] Áthozatal:
-  - javaslatnak az előző év maradéka;
+- [x] `migrations/008_leave_carry_over.sql`: `leave_balances.carried_over_days` (alapértéke 0).
+  - A CHECK constraint: `total_days = calculated_days + adjustment_days + carried_over_days`.
+  - Új szabály: az áthozatal nem negatív, és kézi keretnél 0 (a kézi összeg már mindent tartalmaz; a `setLeaveBalance` nullázza).
+- [x] Az áthozatal minden keretműveletben megmarad: újraszámolás, korrekció (`setLeaveBalanceAdjustment` új `carriedOverDays` paramétere; ha nincs megadva, a meglévő marad), számítás alkalmazása.
+- [x] `previewLeaveEntitlement` visszaadja az előző évi keretet és az áthozatal-javaslatot; a `createLeaveBalanceFromCalculation` fogad áthozatalt.
+- [x] `previewBulkEntitlements({ organizationId, year })`:
+  - a szervezet nem kilépett (`status <> 'inactive'`) dolgozói, akiknek még nincs keretük az évre;
+  - soronként a számítás, az előző évi keret, az áthozatal-javaslat és hogy ellenőrzött-e a belépés;
+  - a dolgozók adatait kötegelten tölti (három lekérdezés, nem dolgozónként).
+- [x] `applyLeaveEntitlements({ organizationId, year, rows })`:
+  - soronként a HR döntései (korrekció + indoklás, áthozatal); a számítást a szerver újra elvégzi;
+  - előbb minden sort ellenőriz, hiba esetén semmit nem ír (a hibaüzenet a dolgozó nevével kezdődik);
+  - egy tranzakcióban ír; az időközben már létrehozott kereteket nem írja felül, ezeket `skippedEmployeeIds`-ként adja vissza.
+- [x] Áthozatal:
+  - javaslatnak az előző év maradéka (legfeljebb 60 nap — ez csak a hibás bevitelt fogja meg);
   - a HR szerkeszti, mert a 123. § szerinti feltételek (pl. október 1. utáni belépés, a munkáltató gazdasági érdeke, a felek megállapodása az életkori pótszabadságról) nem következnek az adatokból.
-- [ ] `LeaveEntitlements.svelte` és a menüpont (`menu.json`).
+- [x] `LeaveEntitlements.svelte` és a menüpont (`menu.json`, Idő és szabadság alatt, `leave.balance.manage`).
+  - Évválasztó (tavaly, idén, jövőre; novembertől alapból a jövő év).
+  - A táblázat soronként: kijelölés, dolgozó (a nevére kattintva az adatlap) és figyelmeztetései, előző évi keret és maradék, számított keret (kattintásra bontás), áthozott, korrekció, indoklás, összesen.
+  - Szűrő: mind / figyelmeztetéssel. Akinek az évben nincs munkaviszonya, az alapból nincs kijelölve.
+  - A mentés gomb tiltott, amíg egy kijelölt korrekcióhoz hiányzik az indoklás.
+- [x] Dolgozó adatlapja: áthozatal a keret létrehozásánál (javaslattal) és a korrekciónál, a bontásban „Áthozott az előző évből” sor, az előző évi kereten „Ebből n napot a következő évbe hoztunk át”.
+
+**Nyitott (későbbre):** az áthozott napokat a törvény szerint jellemzően a következő év március 31-ig kell kiadni. Ezt a határidőt és a „először az áthozottból fogy” sorrendet a rendszer most nem követi.
 
 ### 3. fázis – bővítések
 

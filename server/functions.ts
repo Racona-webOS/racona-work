@@ -96,6 +96,8 @@ export {
 	createLeaveBalanceFromCalculation,
 	setLeaveBalanceAdjustment,
 	applyCalculationToBalance,
+	previewBulkEntitlements,
+	applyLeaveEntitlements,
 	getLeavePolicy,
 	saveLeavePolicy
 } from './leave-profile.js';
@@ -104,7 +106,11 @@ export type {
 	LeaveProfile,
 	EmployeeChild,
 	ExtraLeave,
-	RecalculatedBalance
+	RecalculatedBalance,
+	PreviousYearBalance,
+	BulkEntitlementRow,
+	BulkEntitlementPreview,
+	BulkEntitlementDecision
 } from './leave-profile.js';
 
 export type {

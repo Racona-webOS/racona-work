@@ -12,12 +12,14 @@
 		result,
 		adjustmentDays = 0,
 		adjustmentNote = null,
+		carriedOverDays = 0,
 		showWarnings = true
 	}: {
 		pluginId?: string;
 		result: EntitlementResult;
 		adjustmentDays?: number;
 		adjustmentNote?: string | null;
+		carriedOverDays?: number;
 		showWarnings?: boolean;
 	} = $props();
 
@@ -81,9 +83,20 @@
 			</dt>
 			<dd>{signed(adjustmentDays)}</dd>
 		</div>
+	{/if}
+	{#if carriedOverDays !== 0}
+		<div class="row">
+			<dt>
+				{t('leaveEntitlement.breakdown.carriedOver')}
+				<span class="ref">Mt. 123. §</span>
+			</dt>
+			<dd>{signed(carriedOverDays)}</dd>
+		</div>
+	{/if}
+	{#if adjustmentDays !== 0 || carriedOverDays !== 0}
 		<div class="row total">
 			<dt>{t('leaveEntitlement.breakdown.total')}</dt>
-			<dd>{result.totalDays + adjustmentDays}</dd>
+			<dd>{result.totalDays + adjustmentDays + carriedOverDays}</dd>
 		</div>
 	{/if}
 </dl>

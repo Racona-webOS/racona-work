@@ -482,6 +482,7 @@
                   result={myBalance.calculation.result}
                   adjustmentDays={myBalance.adjustmentDays}
                   adjustmentNote={myBalance.adjustmentNote}
+                  carriedOverDays={myBalance.carriedOverDays}
                   showWarnings={false}
                 />
               </div>

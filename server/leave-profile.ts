@@ -19,7 +19,12 @@ import { getEmployeeOrganizationId } from './employees.js';
 import { BALANCE_COLUMNS, mapBalanceRow } from './leave.js';
 import type { LeaveBalance, LeaveBalanceCalculation } from './leave.js';
 import { calculateAnnualLeave, STATUTORY_EXTRA_DAYS } from './leave-entitlement.js';
-import type { EntitlementInput, ExtraLeaveKind, LeavePolicy } from './leave-entitlement.js';
+import type {
+	EntitlementInput,
+	EntitlementResult,
+	ExtraLeaveKind,
+	LeavePolicy
+} from './leave-entitlement.js';
 
 const SCHEMA = 'app__racona_work';
 
@@ -70,6 +75,8 @@ const EXTRA_KINDS: ReadonlySet<string> = new Set<ExtraLeaveKind>([
 
 const MAX_CUSTOM_EXTRA_DAYS = 60;
 const MAX_POLICY_EXTRA_DAYS = 30;
+/** Az áthozatal felső korlátja: több egy teljes évi keretnél; csak a hibás bevitelt fogja meg. */
+const MAX_CARRY_OVER_DAYS = 60;
 
 // --- Segédek ----------------------------------------------------------------
 
@@ -170,74 +177,93 @@ const EXTRA_COLUMNS = `id, employee_id, kind, days,
 	to_char(valid_from, 'YYYY-MM-DD') AS valid_from,
 	to_char(valid_to, 'YYYY-MM-DD') AS valid_to, note`;
 
-async function loadProfile(
-	context: RemoteContext,
-	employeeId: number
-): Promise<LeaveProfile & { organizationId: number }> {
-	const empResult = await context.db.query(
-		`SELECT organization_id,
-		        to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
-		        to_char(hire_date, 'YYYY-MM-DD') AS hire_date,
-		        to_char(employment_end_date, 'YYYY-MM-DD') AS employment_end_date,
-		        hire_date_confirmed
-		   FROM ${SCHEMA}.employees
-		  WHERE id = $1`,
-		[employeeId]
-	);
-	if (empResult.rows.length === 0) {
-		throw new Error(`Nem található dolgozó a megadott azonosítóval: ${employeeId}`);
-	}
-	const emp = empResult.rows[0];
+type ProfileWithOrg = LeaveProfile & { organizationId: number };
 
-	const [childrenResult, extrasResult] = await Promise.all([
+/**
+ * Dolgozók számításhoz szükséges adatai egyszerre, három lekérdezéssel —
+ * a tömeges előnézet így nem dolgozónként kérdez.
+ */
+async function loadProfiles(
+	context: RemoteContext,
+	employeeIds: number[]
+): Promise<Map<number, ProfileWithOrg>> {
+	const profiles = new Map<number, ProfileWithOrg>();
+	if (employeeIds.length === 0) return profiles;
+
+	const [empResult, childrenResult, extrasResult] = await Promise.all([
+		context.db.query(
+			`SELECT id, organization_id,
+			        to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
+			        to_char(hire_date, 'YYYY-MM-DD') AS hire_date,
+			        to_char(employment_end_date, 'YYYY-MM-DD') AS employment_end_date,
+			        hire_date_confirmed
+			   FROM ${SCHEMA}.employees
+			  WHERE id = ANY($1::int[])`,
+			[employeeIds]
+		),
 		context.db.query(
 			`SELECT ${CHILD_COLUMNS} FROM ${SCHEMA}.employee_children
-			  WHERE employee_id = $1 ORDER BY birth_date, id`,
-			[employeeId]
+			  WHERE employee_id = ANY($1::int[]) ORDER BY birth_date, id`,
+			[employeeIds]
 		),
 		context.db.query(
 			`SELECT ${EXTRA_COLUMNS} FROM ${SCHEMA}.employee_extra_leave
-			  WHERE employee_id = $1 ORDER BY kind, valid_from NULLS FIRST, id`,
-			[employeeId]
+			  WHERE employee_id = ANY($1::int[]) ORDER BY kind, valid_from NULLS FIRST, id`,
+			[employeeIds]
 		)
 	]);
 
+	for (const emp of empResult.rows) {
+		profiles.set(emp.id, {
+			organizationId: emp.organization_id,
+			employeeId: emp.id,
+			birthDate: emp.birth_date ?? null,
+			hireDate: emp.hire_date ?? null,
+			employmentEndDate: emp.employment_end_date ?? null,
+			hireDateConfirmed: emp.hire_date_confirmed === true,
+			children: [],
+			extras: []
+		});
+	}
+	for (const row of childrenResult.rows) profiles.get(row.employee_id)?.children.push(mapChild(row));
+	for (const row of extrasResult.rows) profiles.get(row.employee_id)?.extras.push(mapExtra(row));
+	return profiles;
+}
+
+async function loadProfile(context: RemoteContext, employeeId: number): Promise<ProfileWithOrg> {
+	const profile = (await loadProfiles(context, [employeeId])).get(employeeId);
+	if (!profile) {
+		throw new Error(`Nem található dolgozó a megadott azonosítóval: ${employeeId}`);
+	}
+	return profile;
+}
+
+/** A számítás bemenete a tárgyév nélkül. */
+function toEntitlementBase(profile: LeaveProfile, policy: LeavePolicy): Omit<EntitlementInput, 'year'> {
 	return {
-		organizationId: emp.organization_id,
-		employeeId,
-		birthDate: emp.birth_date ?? null,
-		hireDate: emp.hire_date ?? null,
-		employmentEndDate: emp.employment_end_date ?? null,
-		hireDateConfirmed: emp.hire_date_confirmed === true,
-		children: childrenResult.rows.map(mapChild),
-		extras: extrasResult.rows.map(mapExtra)
+		birthDate: profile.birthDate,
+		hireDate: profile.hireDate,
+		employmentEndDate: profile.employmentEndDate,
+		children: profile.children.map((c) => ({ birthDate: c.birthDate, isDisabled: c.isDisabled })),
+		extras: profile.extras.map((e) => ({
+			kind: e.kind,
+			days: e.days,
+			validFrom: e.validFrom,
+			validTo: e.validTo,
+			note: e.note
+		})),
+		policy
 	};
 }
 
-/** A számítás bemenete a tárgyév nélkül — egy dolgozóra egyszer töltjük be. */
+/** Egy dolgozó számítási bemenete (a tárgyév nélkül) — egyszer töltjük be. */
 async function loadEntitlementBase(
 	context: RemoteContext,
 	employeeId: number
 ): Promise<{ organizationId: number; base: Omit<EntitlementInput, 'year'> }> {
 	const profile = await loadProfile(context, employeeId);
 	const policy = await loadPolicy(context, profile.organizationId);
-	return {
-		organizationId: profile.organizationId,
-		base: {
-			birthDate: profile.birthDate,
-			hireDate: profile.hireDate,
-			employmentEndDate: profile.employmentEndDate,
-			children: profile.children.map((c) => ({ birthDate: c.birthDate, isDisabled: c.isDisabled })),
-			extras: profile.extras.map((e) => ({
-				kind: e.kind,
-				days: e.days,
-				validFrom: e.validFrom,
-				validTo: e.validTo,
-				note: e.note
-			})),
-			policy
-		}
-	};
+	return { organizationId: profile.organizationId, base: toEntitlementBase(profile, policy) };
 }
 
 function calculate(base: Omit<EntitlementInput, 'year'>, year: number): LeaveBalanceCalculation {
@@ -258,7 +284,7 @@ async function recalculateEmployeeBalances(
 	employeeId: number
 ): Promise<RecalculatedBalance[]> {
 	const rows = await context.db.query(
-		`SELECT id, year, calculated_days, adjustment_days
+		`SELECT id, year, calculated_days, adjustment_days, carried_over_days
 		   FROM ${SCHEMA}.leave_balances
 		  WHERE employee_id = $1 AND year >= $2
 		    AND calculated_days IS NOT NULL AND is_locked = FALSE
@@ -277,7 +303,7 @@ async function recalculateEmployeeBalances(
 		await context.db.query(
 			`UPDATE ${SCHEMA}.leave_balances
 			    SET calculated_days = $2,
-			        total_days = $2::int + adjustment_days,
+			        total_days = $2::int + adjustment_days + carried_over_days,
 			        calculation = $3::jsonb,
 			        calculated_at = NOW(),
 			        updated_by = $4,
@@ -286,11 +312,8 @@ async function recalculateEmployeeBalances(
 			[row.id, calculated, JSON.stringify(calculation), userId]
 		);
 		if (calculated !== row.calculated_days) {
-			changes.push({
-				year: row.year,
-				from: row.calculated_days + row.adjustment_days,
-				to: calculated + row.adjustment_days
-			});
+			const fixed = row.adjustment_days + row.carried_over_days;
+			changes.push({ year: row.year, from: row.calculated_days + fixed, to: calculated + fixed });
 		}
 	}
 	return changes;
@@ -503,78 +526,182 @@ export async function deleteExtraLeave(
 
 // --- Számított keretek ------------------------------------------------------
 
-/** A számítás egy dolgozóra és évre, a meglévő kerettel együtt (ha van). */
+/** Az előző évi keret röviden, az áthozatal javaslatához. */
+export interface PreviousYearBalance {
+	year: number;
+	totalDays: number;
+	usedDays: number;
+	remainingDays: number;
+}
+
+function parseCarryOver(value: unknown): number {
+	const days = value === undefined || value === null || value === '' ? 0 : Number(value);
+	if (!Number.isInteger(days) || days < 0 || days > MAX_CARRY_OVER_DAYS) {
+		throw new Error(`Az áthozott napok száma 0 és ${MAX_CARRY_OVER_DAYS} közötti egész szám legyen.`);
+	}
+	return days;
+}
+
+/**
+ * Áthozatal-javaslat: az előző év maradéka. Hogy ebből mennyi hozható át
+ * (Mt. 123. §: pl. október 1. utáni belépés, a felek megállapodása), az az
+ * adatokból nem következik — a HR dönt, a javaslat csak kiindulópont.
+ */
+function suggestCarryOver(previous: PreviousYearBalance | null): number {
+	return previous ? Math.max(0, Math.min(previous.remainingDays, MAX_CARRY_OVER_DAYS)) : 0;
+}
+
+async function loadPreviousBalances(
+	context: RemoteContext,
+	employeeIds: number[],
+	year: number
+): Promise<Map<number, PreviousYearBalance>> {
+	const result = new Map<number, PreviousYearBalance>();
+	if (employeeIds.length === 0) return result;
+	const r = await context.db.query(
+		`SELECT employee_id, year, total_days, used_days, remaining_days
+		   FROM ${SCHEMA}.leave_balances
+		  WHERE employee_id = ANY($1::int[]) AND year = $2`,
+		[employeeIds, year]
+	);
+	for (const row of r.rows) {
+		result.set(row.employee_id, {
+			year: row.year,
+			totalDays: row.total_days,
+			usedDays: row.used_days,
+			remainingDays: row.remaining_days
+		});
+	}
+	return result;
+}
+
+/**
+ * Számított keret beszúrása. Ha az évre már van keret, nem ír felül, és null-t ad.
+ * A tömeges mentés tranzakciós kliense is ezt használja.
+ */
+async function insertCalculatedBalance(
+	db: Pick<RemoteContext['db'], 'query'>,
+	values: {
+		employeeId: number;
+		organizationId: number;
+		year: number;
+		calculation: LeaveBalanceCalculation;
+		adjustmentDays: number;
+		adjustmentNote: string | null;
+		carriedOverDays: number;
+		userId: number;
+	}
+): Promise<LeaveBalance | null> {
+	const calculated = values.calculation.result.totalDays;
+	const result = await db.query(
+		`INSERT INTO ${SCHEMA}.leave_balances
+			(employee_id, organization_id, year, total_days, used_days,
+			 calculated_days, adjustment_days, adjustment_note, carried_over_days,
+			 calculation, calculated_at, updated_by, updated_at)
+		 VALUES ($1, $2, $3, $4::int + $5::int + $7::int, 0, $4::int, $5::int, $6, $7::int,
+		         $8::jsonb, NOW(), $9, NOW())
+		 ON CONFLICT (employee_id, year) DO NOTHING
+		 RETURNING ${BALANCE_COLUMNS}`,
+		[
+			values.employeeId,
+			values.organizationId,
+			values.year,
+			calculated,
+			values.adjustmentDays,
+			values.adjustmentNote,
+			values.carriedOverDays,
+			JSON.stringify(values.calculation),
+			values.userId
+		]
+	);
+	return result.rows.length > 0 ? mapBalanceRow(result.rows[0]) : null;
+}
+
+/**
+ * A számítás egy dolgozóra és évre, a meglévő kerettel, az előző évi kerettel
+ * és az áthozatal-javaslattal együtt.
+ */
 export async function previewLeaveEntitlement(
 	params: { employeeId: number; year: number },
 	context: RemoteContext
-): Promise<{ calculation: LeaveBalanceCalculation; balance: LeaveBalance | null }> {
+): Promise<{
+	calculation: LeaveBalanceCalculation;
+	balance: LeaveBalance | null;
+	previousBalance: PreviousYearBalance | null;
+	suggestedCarryOver: number;
+}> {
 	await requireSelfOrCapability(context, params.employeeId, 'leave.balance.manage');
 	const year = parseYear(params.year);
 
 	const { base } = await loadEntitlementBase(context, params.employeeId);
-	const existing = await context.db.query(
-		`SELECT ${BALANCE_COLUMNS} FROM ${SCHEMA}.leave_balances WHERE employee_id = $1 AND year = $2`,
-		[params.employeeId, year]
-	);
+	const [existing, previous] = await Promise.all([
+		context.db.query(
+			`SELECT ${BALANCE_COLUMNS} FROM ${SCHEMA}.leave_balances WHERE employee_id = $1 AND year = $2`,
+			[params.employeeId, year]
+		),
+		loadPreviousBalances(context, [params.employeeId], year - 1)
+	]);
+	const previousBalance = previous.get(params.employeeId) ?? null;
 
 	return {
 		calculation: calculate(base, year),
-		balance: existing.rows.length > 0 ? mapBalanceRow(existing.rows[0]) : null
+		balance: existing.rows.length > 0 ? mapBalanceRow(existing.rows[0]) : null,
+		previousBalance,
+		suggestedCarryOver: suggestCarryOver(previousBalance)
 	};
 }
 
-/** Keret létrehozása a számítás alapján, opcionális korrekcióval (K3). */
+/** Keret létrehozása a számítás alapján, opcionális korrekcióval és áthozatallal (K3). */
 export async function createLeaveBalanceFromCalculation(
-	params: { employeeId: number; year: number; adjustmentDays?: number; adjustmentNote?: string | null },
+	params: {
+		employeeId: number;
+		year: number;
+		adjustmentDays?: number;
+		adjustmentNote?: string | null;
+		carriedOverDays?: number;
+	},
 	context: RemoteContext
 ): Promise<LeaveBalance> {
 	const orgId = await requireManageForEmployee(context, params.employeeId);
 	const year = parseYear(params.year);
 	const adjustment = parseAdjustment(params.adjustmentDays, params.adjustmentNote);
-
-	const existing = await context.db.query(
-		`SELECT 1 FROM ${SCHEMA}.leave_balances WHERE employee_id = $1 AND year = $2`,
-		[params.employeeId, year]
-	);
-	if (existing.rows.length > 0) {
-		throw new Error(`A(z) ${year}. évre már van szabadságkeret.`);
-	}
+	const carriedOverDays = parseCarryOver(params.carriedOverDays);
 
 	const { base } = await loadEntitlementBase(context, params.employeeId);
 	const calculation = calculate(base, year);
-	const calculated = calculation.result.totalDays;
-	if (calculated + adjustment.days < 0) {
+	if (calculation.result.totalDays + adjustment.days + carriedOverDays < 0) {
 		throw new Error('A korrekcióval a keret nem lehet negatív.');
 	}
-	const userId = await resolveUserId(context);
 
-	const result = await context.db.query(
-		`INSERT INTO ${SCHEMA}.leave_balances
-			(employee_id, organization_id, year, total_days, used_days,
-			 calculated_days, adjustment_days, adjustment_note, calculation, calculated_at,
-			 updated_by, updated_at)
-		 VALUES ($1, $2, $3, $4::int + $5::int, 0, $4::int, $5::int, $6, $7::jsonb, NOW(), $8, NOW())
-		 RETURNING ${BALANCE_COLUMNS}`,
-		[
-			params.employeeId,
-			orgId,
-			year,
-			calculated,
-			adjustment.days,
-			adjustment.note,
-			JSON.stringify(calculation),
-			userId
-		]
-	);
-	return mapBalanceRow(result.rows[0]);
+	const balance = await insertCalculatedBalance(context.db, {
+		employeeId: params.employeeId,
+		organizationId: orgId,
+		year,
+		calculation,
+		adjustmentDays: adjustment.days,
+		adjustmentNote: adjustment.note,
+		carriedOverDays,
+		userId: await resolveUserId(context)
+	});
+	if (!balance) {
+		throw new Error(`A(z) ${year}. évre már van szabadságkeret.`);
+	}
+	return balance;
 }
 
 /**
- * Korrekció és zárolás (K4, K5). Nem zárolt keretnél a számítást is frissíti,
- * így a feloldás után a keret azonnal a mostani adatokat tükrözi.
+ * Korrekció, áthozatal és zárolás (K4, K5). Nem zárolt keretnél a számítást is
+ * frissíti, így a feloldás után a keret azonnal a mostani adatokat tükrözi.
+ * Ha `carriedOverDays` nincs megadva, a meglévő áthozatal marad.
  */
 export async function setLeaveBalanceAdjustment(
-	params: { balanceId: number; adjustmentDays: number; adjustmentNote?: string | null; isLocked: boolean },
+	params: {
+		balanceId: number;
+		adjustmentDays: number;
+		adjustmentNote?: string | null;
+		carriedOverDays?: number;
+		isLocked: boolean;
+	},
 	context: RemoteContext
 ): Promise<LeaveBalance> {
 	const row = await loadBalanceRow(context, params.balanceId);
@@ -582,6 +709,8 @@ export async function setLeaveBalanceAdjustment(
 		throw new Error('Ez kézi keret — előbb alkalmazd rá a számítást.');
 	}
 	const adjustment = parseAdjustment(params.adjustmentDays, params.adjustmentNote);
+	const carriedOverDays =
+		params.carriedOverDays === undefined ? row.carried_over_days : parseCarryOver(params.carriedOverDays);
 	const isLocked = params.isLocked === true;
 
 	let calculated: number = row.calculated_days;
@@ -592,7 +721,7 @@ export async function setLeaveBalanceAdjustment(
 		calculated = calculation.result.totalDays;
 		calculationJson = JSON.stringify(calculation);
 	}
-	if (calculated + adjustment.days < 0) {
+	if (calculated + adjustment.days + carriedOverDays < 0) {
 		throw new Error('A korrekcióval a keret nem lehet negatív.');
 	}
 	const userId = await resolveUserId(context);
@@ -603,14 +732,24 @@ export async function setLeaveBalanceAdjustment(
 		        adjustment_note = $3,
 		        is_locked = $4,
 		        calculated_days = $5,
-		        total_days = $5::int + $2::int,
+		        carried_over_days = $8,
+		        total_days = $5::int + $2::int + $8::int,
 		        calculation = COALESCE($6::jsonb, calculation),
 		        calculated_at = CASE WHEN $6::jsonb IS NULL THEN calculated_at ELSE NOW() END,
 		        updated_by = $7,
 		        updated_at = NOW()
 		  WHERE id = $1
 		  RETURNING ${BALANCE_COLUMNS}`,
-		[params.balanceId, adjustment.days, adjustment.note, isLocked, calculated, calculationJson, userId]
+		[
+			params.balanceId,
+			adjustment.days,
+			adjustment.note,
+			isLocked,
+			calculated,
+			calculationJson,
+			userId,
+			carriedOverDays
+		]
 	);
 	return mapBalanceRow(result.rows[0]);
 }
@@ -620,7 +759,8 @@ export async function setLeaveBalanceAdjustment(
  *
  * Kézi keretnél `keepTotal` esetén a korrekció a régi összeg és a számított
  * érték különbsége lesz, így a keret összege nem változik. Már számított
- * (zárolt) keretnél a meglévő korrekció marad, csak a számított érték frissül.
+ * (zárolt) keretnél a meglévő korrekció és áthozatal marad, csak a számított
+ * érték frissül.
  */
 export async function applyCalculationToBalance(
 	params: { balanceId: number; keepTotal?: boolean },
@@ -633,12 +773,13 @@ export async function applyCalculationToBalance(
 
 	let adjustmentDays: number = row.adjustment_days;
 	let adjustmentNote: string | null = row.adjustment_note;
+	const carriedOverDays: number = row.carried_over_days;
 	if (row.calculated_days === null) {
 		adjustmentDays = params.keepTotal ? row.total_days - calculated : 0;
 		adjustmentNote =
 			adjustmentDays !== 0 ? 'A korábbi kézi keret összege megtartva az átálláskor.' : null;
 	}
-	if (calculated + adjustmentDays < 0) {
+	if (calculated + adjustmentDays + carriedOverDays < 0) {
 		throw new Error('A korrekcióval a keret nem lehet negatív.');
 	}
 	const userId = await resolveUserId(context);
@@ -648,7 +789,7 @@ export async function applyCalculationToBalance(
 		    SET calculated_days = $2,
 		        adjustment_days = $3,
 		        adjustment_note = $4,
-		        total_days = $2::int + $3::int,
+		        total_days = $2::int + $3::int + carried_over_days,
 		        calculation = $5::jsonb,
 		        calculated_at = NOW(),
 		        updated_by = $6,
@@ -658,6 +799,186 @@ export async function applyCalculationToBalance(
 		[params.balanceId, calculated, adjustmentDays, adjustmentNote, JSON.stringify(calculation), userId]
 	);
 	return mapBalanceRow(result.rows[0]);
+}
+
+// --- Éves keretgenerálás (tömeges) -------------------------------------------
+
+export interface BulkEntitlementRow {
+	employeeId: number;
+	userName: string;
+	position: string | null;
+	department: string | null;
+	hireDateConfirmed: boolean;
+	calculation: EntitlementResult;
+	previousBalance: PreviousYearBalance | null;
+	suggestedCarryOver: number;
+}
+
+export interface BulkEntitlementPreview {
+	year: number;
+	/** Az aktív dolgozók, akiknek még nincs kerete az évre. */
+	rows: BulkEntitlementRow[];
+	/** Ennyi aktív dolgozónak már van kerete az évre. */
+	existingCount: number;
+}
+
+/** Egy sor a tömeges mentéshez: a HR döntései. A számítást a szerver újra elvégzi. */
+export interface BulkEntitlementDecision {
+	employeeId: number;
+	adjustmentDays?: number;
+	adjustmentNote?: string | null;
+	carriedOverDays?: number;
+}
+
+const MAX_BULK_ROWS = 1000;
+
+/** A szervezet aktív (nem kilépett) dolgozói, és hogy van-e már keretük az évre. */
+async function loadActiveEmployees(context: RemoteContext, organizationId: number, year: number) {
+	const r = await context.db.query(
+		`SELECT e.id, u.full_name, e.position, e.department,
+		        EXISTS (SELECT 1 FROM ${SCHEMA}.leave_balances lb
+		                 WHERE lb.employee_id = e.id AND lb.year = $2) AS has_balance
+		   FROM ${SCHEMA}.employees e
+		   JOIN auth.users u ON u.id = e.user_id
+		  WHERE e.organization_id = $1 AND e.status <> 'inactive'
+		  ORDER BY u.full_name, e.id`,
+		[organizationId, year]
+	);
+	return r.rows as Array<{
+		id: number;
+		full_name: string;
+		position: string | null;
+		department: string | null;
+		has_balance: boolean;
+	}>;
+}
+
+/**
+ * Éves keretek előnézete a szervezet összes olyan aktív dolgozójára, akinek
+ * még nincs kerete az adott évre: számítás, előző évi keret, áthozatal-javaslat.
+ */
+export async function previewBulkEntitlements(
+	params: { organizationId: number; year: number },
+	context: RemoteContext
+): Promise<BulkEntitlementPreview> {
+	if (!params?.organizationId || params.organizationId <= 0) {
+		throw new Error('Érvénytelen szervezet azonosító');
+	}
+	await requireCapability(context, params.organizationId, 'leave.balance.manage');
+	const year = parseYear(params.year);
+
+	const employees = await loadActiveEmployees(context, params.organizationId, year);
+	const pending = employees.filter((e) => !e.has_balance);
+	const ids = pending.map((e) => e.id);
+
+	const [profiles, policy, previous] = await Promise.all([
+		loadProfiles(context, ids),
+		loadPolicy(context, params.organizationId),
+		loadPreviousBalances(context, ids, year - 1)
+	]);
+
+	const rows: BulkEntitlementRow[] = pending.map((e) => {
+		const profile = profiles.get(e.id)!;
+		const previousBalance = previous.get(e.id) ?? null;
+		return {
+			employeeId: e.id,
+			userName: e.full_name,
+			position: e.position ?? null,
+			department: e.department ?? null,
+			hireDateConfirmed: profile.hireDateConfirmed,
+			calculation: calculate(toEntitlementBase(profile, policy), year).result,
+			previousBalance,
+			suggestedCarryOver: suggestCarryOver(previousBalance)
+		};
+	});
+
+	return { year, rows, existingCount: employees.length - pending.length };
+}
+
+/**
+ * Éves keretek létrehozása egyben, a HR soronkénti döntéseivel (korrekció,
+ * áthozatal). A számítást a szerver a mostani adatokból újra elvégzi.
+ *
+ * Előbb minden sort ellenőriz, és hiba esetén semmit nem ír. Az időközben
+ * (pl. egy másik ablakban) már létrehozott kereteket nem írja felül, ezeket
+ * a `skippedEmployeeIds` adja vissza.
+ */
+export async function applyLeaveEntitlements(
+	params: { organizationId: number; year: number; rows: BulkEntitlementDecision[] },
+	context: RemoteContext
+): Promise<{ created: number; skippedEmployeeIds: number[] }> {
+	if (!params?.organizationId || params.organizationId <= 0) {
+		throw new Error('Érvénytelen szervezet azonosító');
+	}
+	await requireCapability(context, params.organizationId, 'leave.balance.manage');
+	const year = parseYear(params.year);
+
+	const decisions = Array.isArray(params.rows) ? params.rows : [];
+	if (decisions.length === 0) throw new Error('Nincs kiválasztott dolgozó.');
+	if (decisions.length > MAX_BULK_ROWS) throw new Error('Túl sok sor egy mentésben.');
+
+	const employees = new Map(
+		(await loadActiveEmployees(context, params.organizationId, year)).map((e) => [e.id, e])
+	);
+	const seen = new Set<number>();
+	const prepared = decisions.map((d) => {
+		const employee = employees.get(Number(d.employeeId));
+		if (!employee) throw new Error('A dolgozó nem található ebben a szervezetben, vagy már kilépett.');
+		if (seen.has(employee.id)) throw new Error(`${employee.full_name}: kétszer szerepel.`);
+		seen.add(employee.id);
+		try {
+			return {
+				employeeId: employee.id,
+				name: employee.full_name,
+				adjustment: parseAdjustment(d.adjustmentDays, d.adjustmentNote),
+				carriedOverDays: parseCarryOver(d.carriedOverDays)
+			};
+		} catch (err) {
+			throw new Error(`${employee.full_name}: ${(err as Error).message}`);
+		}
+	});
+
+	const [profiles, policy] = await Promise.all([
+		loadProfiles(context, prepared.map((p) => p.employeeId)),
+		loadPolicy(context, params.organizationId)
+	]);
+	const calculated = prepared.map((p) => {
+		const calculation = calculate(toEntitlementBase(profiles.get(p.employeeId)!, policy), year);
+		if (calculation.result.totalDays + p.adjustment.days + p.carriedOverDays < 0) {
+			throw new Error(`${p.name}: a korrekcióval a keret nem lehet negatív.`);
+		}
+		return { ...p, calculation };
+	});
+
+	const userId = await resolveUserId(context);
+	const client = await context.db.connect();
+	let created = 0;
+	const skippedEmployeeIds: number[] = [];
+	try {
+		await client.query('BEGIN');
+		for (const row of calculated) {
+			const balance = await insertCalculatedBalance(client, {
+				employeeId: row.employeeId,
+				organizationId: params.organizationId,
+				year,
+				calculation: row.calculation,
+				adjustmentDays: row.adjustment.days,
+				adjustmentNote: row.adjustment.note,
+				carriedOverDays: row.carriedOverDays,
+				userId
+			});
+			if (balance) created++;
+			else skippedEmployeeIds.push(row.employeeId);
+		}
+		await client.query('COMMIT');
+	} catch (err) {
+		await client.query('ROLLBACK');
+		throw err;
+	} finally {
+		client.release();
+	}
+
+	return { created, skippedEmployeeIds };
 }
 
 // --- Céges szabály ----------------------------------------------------------

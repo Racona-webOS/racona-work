@@ -6,7 +6,11 @@
 	alkalmazása kézi vagy zárolt keretre. Szabályok: specs/leave-entitlement.md
 -->
 <script lang="ts">
-	import type { LeaveBalance, LeaveBalanceCalculation } from '../../../server/functions.js';
+	import type {
+		LeaveBalance,
+		LeaveBalanceCalculation,
+		PreviousYearBalance
+	} from '../../../server/functions.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import Checkbox from '../ui/Checkbox.svelte';
 	import EntitlementBreakdown from './EntitlementBreakdown.svelte';
@@ -90,6 +94,11 @@
 		return b.calculatedDays === null ? fresh - b.totalDays : fresh - b.calculatedDays;
 	}
 
+	/** A következő év keretébe innen áthozott napok (csak tájékoztatás). */
+	function carriedToNextYear(b: LeaveBalance): number {
+		return balances.find((x) => x.year === b.year + 1)?.carriedOverDays ?? 0;
+	}
+
 	function signed(n: number): string {
 		return n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0';
 	}
@@ -101,6 +110,8 @@
 	let createPreviewError = $state<string | null>(null);
 	let createAdjustment = $state(0);
 	let createNote = $state('');
+	let createCarryOver = $state(0);
+	let createPrevious = $state<PreviousYearBalance | null>(null);
 	let createSaving = $state(false);
 
 	function openCreate() {
@@ -111,6 +122,7 @@
 		createYear = year;
 		createAdjustment = 0;
 		createNote = '';
+		createCarryOver = 0;
 		createOpen = true;
 	}
 
@@ -119,14 +131,24 @@
 		const year = createYear;
 		createPreview = null;
 		createPreviewError = null;
+		createPrevious = null;
 		if (!Number.isInteger(year) || year < 2000 || year > 2100) return;
 		sdk?.remote
 			?.call('previewLeaveEntitlement', { employeeId, year })
-			.then((r: { calculation: LeaveBalanceCalculation; balance: LeaveBalance | null }) => {
-				if (createYear !== year) return;
-				createPreview = r.calculation;
-				createPreviewError = r.balance ? t('leaveEntitlement.create.exists', { year }) : null;
-			})
+			.then(
+				(r: {
+					calculation: LeaveBalanceCalculation;
+					balance: LeaveBalance | null;
+					previousBalance: PreviousYearBalance | null;
+					suggestedCarryOver: number;
+				}) => {
+					if (createYear !== year) return;
+					createPreview = r.calculation;
+					createPrevious = r.previousBalance;
+					createCarryOver = r.suggestedCarryOver;
+					createPreviewError = r.balance ? t('leaveEntitlement.create.exists', { year }) : null;
+				}
+			)
 			.catch((err: any) => (createPreviewError = errorText(err)));
 	});
 
@@ -137,7 +159,8 @@
 				employeeId,
 				year: createYear,
 				adjustmentDays: createAdjustment || 0,
-				adjustmentNote: createNote
+				adjustmentNote: createNote,
+				carriedOverDays: createCarryOver || 0
 			});
 			replaceBalance(saved);
 			expandedYear = saved.year;
@@ -155,6 +178,7 @@
 	let adjustDays = $state(0);
 	let adjustNote = $state('');
 	let adjustLocked = $state(false);
+	let adjustCarryOver = $state(0);
 	let adjustSaving = $state(false);
 
 	function openAdjust(b: LeaveBalance) {
@@ -162,6 +186,7 @@
 		adjustDays = b.adjustmentDays;
 		adjustNote = b.adjustmentNote ?? '';
 		adjustLocked = b.isLocked;
+		adjustCarryOver = b.carriedOverDays;
 	}
 
 	async function submitAdjust() {
@@ -176,6 +201,7 @@
 				balanceId: adjustTarget.id,
 				adjustmentDays: adjustDays || 0,
 				adjustmentNote: adjustNote,
+				carriedOverDays: adjustCarryOver || 0,
 				isLocked: adjustLocked
 			});
 			replaceBalance(saved);
@@ -263,6 +289,11 @@
 					{#if b.remainingDays < 0}
 						<p class="hint warn">{t('leaveEntitlement.balance.overdrawn')}</p>
 					{/if}
+					{#if carriedToNextYear(b) > 0}
+						<p class="hint">
+							{t('leaveEntitlement.balance.carriedToNext', { days: carriedToNextYear(b) })}
+						</p>
+					{/if}
 
 					<div class="balance-actions">
 						{#if b.calculation}
@@ -293,6 +324,7 @@
 								result={b.calculation.result}
 								adjustmentDays={b.adjustmentDays}
 								adjustmentNote={b.adjustmentNote}
+								carriedOverDays={b.carriedOverDays}
 							/>
 						</div>
 					{/if}
@@ -325,8 +357,22 @@
 							result={createPreview.result}
 							adjustmentDays={createAdjustment || 0}
 							adjustmentNote={createNote || null}
+							carriedOverDays={createCarryOver || 0}
 						/>
 					</div>
+
+					<label>
+						<span>{t('leaveEntitlement.carryOver.label')}</span>
+						<input class="input" type="number" bind:value={createCarryOver} min="0" max="60" />
+						<small class="field-hint">
+							{createPrevious
+								? t('leaveEntitlement.carryOver.previousHint', {
+										year: createPrevious.year,
+										remaining: createPrevious.remainingDays
+									})
+								: t('leaveEntitlement.carryOver.noPrevious')}
+						</small>
+					</label>
 
 					<label>
 						<span>{t('leaveEntitlement.adjust.days')}</span>
@@ -375,6 +421,10 @@
 					<span>{t('leaveEntitlement.adjust.note')}</span>
 					<input class="input" type="text" bind:value={adjustNote} />
 				</label>
+				<label>
+					<span>{t('leaveEntitlement.carryOver.label')}</span>
+					<input class="input" type="number" bind:value={adjustCarryOver} min="0" max="60" />
+				</label>
 				<label class="checkbox-row">
 					<Checkbox checked={adjustLocked} onCheckedChange={(v) => (adjustLocked = v)} />
 					<span>{t('leaveEntitlement.adjust.lock')}</span>
@@ -383,7 +433,8 @@
 					{t('leaveEntitlement.adjust.result', {
 						calculated,
 						adjustment: signed(adjustDays || 0),
-						total: calculated + (adjustDays || 0)
+						carriedOver: signed(adjustCarryOver || 0),
+						total: calculated + (adjustDays || 0) + (adjustCarryOver || 0)
 					})}
 				</p>
 			</div>
@@ -610,6 +661,12 @@
 
 	.result-line {
 		font-weight: 600;
+	}
+
+	.field-hint {
+		font-size: 0.75rem;
+		font-weight: 400;
+		color: var(--color-muted-foreground, #94a3b8);
 	}
 
 	.form-error {
