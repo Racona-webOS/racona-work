@@ -71,6 +71,16 @@ async function runMigrations(pool: Pool): Promise<void> {
 			ON CONFLICT (filename) DO NOTHING
 		`).catch(() => { /* nincs _migrations tábla — friss adatbázis */ });
 		await client.query('DROP TABLE IF EXISTS _migrations');
+		// Élesben a core PluginInstaller hozza létre telepítéskor — a beállítások
+		// (getSettings/saveSettings, céges szabadság-szabály) ide írnak.
+		await client.query(`
+			CREATE TABLE IF NOT EXISTS kv_store (
+				key VARCHAR(255) PRIMARY KEY,
+				value JSONB NOT NULL,
+				created_at TIMESTAMPTZ DEFAULT NOW(),
+				updated_at TIMESTAMPTZ DEFAULT NOW()
+			)
+		`);
 
 		const devMigrationsDir = join(ROOT, 'migrations', 'dev');
 		let devFiles: string[] = [];

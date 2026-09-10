@@ -11,7 +11,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import type {} from '@racona/sdk/types';
-	import type { EmployeeRow, PaginatedResult } from '../../server/functions.js';
+	import type { EmployeeRow, LeavePolicy, PaginatedResult } from '../../server/functions.js';
 	import { getOrganizationStore, createOrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
@@ -28,8 +28,12 @@
 	let currentOrganization = $state<import('../../server/functions.js').Organization | null>(null);
 	let hasAccess = $state(false);
 
-	function t(key: string): string {
-		return sdk?.i18n?.t(key) ?? key;
+	function t(key: string, vars?: Record<string, string | number>): string {
+		let str = sdk?.i18n?.t(key) ?? key;
+		if (vars) {
+			for (const [k, v] of Object.entries(vars)) str = str.replace(`{${k}}`, String(v));
+		}
+		return str;
 	}
 
 	// --- Állapot ---
@@ -38,6 +42,36 @@
 	let selectedNotifierIds = $state<number[]>([]);
 	let saving = $state(false);
 	let settingsLoading = $state(true);
+
+	// Céges szabadság-többlet (a számított keretekbe kerül, specs/leave-entitlement.md)
+	let policyDays = $state(0);
+	let policyLabel = $state('');
+	let policySaving = $state(false);
+
+	async function savePolicy() {
+		if (!currentOrganization) return;
+		policySaving = true;
+		try {
+			const result: { policy: LeavePolicy; recalculatedEmployees: number } = await sdk.remote.call(
+				'saveLeavePolicy',
+				{
+					organizationId: currentOrganization.id,
+					extraDaysForAll: Number(policyDays) || 0,
+					extraDaysLabel: policyLabel
+				}
+			);
+			policyDays = result.policy.extraDaysForAll;
+			policyLabel = result.policy.extraDaysLabel ?? '';
+			sdk?.ui?.toast(
+				t('settings.leavePolicy.saved', { count: result.recalculatedEmployees }),
+				'success'
+			);
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message?.replace(/^[A-Z_]+:\s*/, '') ?? t('error.saveFailed'), 'error');
+		} finally {
+			policySaving = false;
+		}
+	}
 
 	// --- Adatok betöltése ---
 	async function loadData() {
@@ -60,6 +94,12 @@
 				key: settingsKey
 			});
 			selectedNotifierIds = Array.isArray(saved) ? saved : [];
+
+			const policy: LeavePolicy = await sdk?.remote?.call('getLeavePolicy', {
+				organizationId: currentOrganization.id
+			});
+			policyDays = policy?.extraDaysForAll ?? 0;
+			policyLabel = policy?.extraDaysLabel ?? '';
 		} catch {
 			sdk?.ui?.toast(t('error.loadFailed'), 'error');
 		} finally {
@@ -161,6 +201,35 @@
 				<span>{t('loading')}</span>
 			</div>
 		{:else}
+			<!-- Céges szabadság-többlet -->
+			<div class="settings-section">
+				<div class="section-header">
+					<h3>{t('settings.leavePolicy.title')}</h3>
+					<p class="section-description">{t('settings.leavePolicy.description')}</p>
+				</div>
+				<div class="policy-fields">
+					<label>
+						<span>{t('settings.leavePolicy.days')}</span>
+						<input class="input" type="number" min="0" max="30" bind:value={policyDays} />
+					</label>
+					<label>
+						<span>{t('settings.leavePolicy.label')}</span>
+						<input
+							class="input"
+							type="text"
+							maxlength="100"
+							placeholder={t('settings.leavePolicy.labelPlaceholder')}
+							bind:value={policyLabel}
+						/>
+					</label>
+				</div>
+				<div class="save-row">
+					<button class="btn-secondary" onclick={savePolicy} disabled={policySaving}>
+						{policySaving ? t('loading') : t('settings.leavePolicy.save')}
+					</button>
+				</div>
+			</div>
+
 			<!-- Szabadságkérelem értesítendők szekció -->
 			<div class="settings-section">
 				<div class="section-header">
@@ -353,6 +422,13 @@
 	.save-row {
 		display: flex;
 		justify-content: flex-end;
+	}
+
+	.policy-fields {
+		display: grid;
+		grid-template-columns: 8rem 1fr;
+		align-items: end;
+		gap: 1rem;
 	}
 
 	:global(.dark) .settings-section {

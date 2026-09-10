@@ -10,6 +10,7 @@
 		"build:watch": "vite build --watch",
 		"preview": "vite preview",
 		"package": "bun build-package.js",
+		"test": "bun test",
 		"db:up": "docker compose -f docker-compose.dev.yml up -d",
 		"db:down": "docker compose -f docker-compose.dev.yml down",
 		"dev:full": "bun run --parallel dev:server dev"

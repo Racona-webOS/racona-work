@@ -202,6 +202,38 @@ export async function requireCapability(
 	}
 }
 
+/**
+ * Saját dolgozói rekord, vagy a megadott képesség.
+ * A dolgozó a saját adatait mindig láthatja, másét csak a képességgel.
+ *
+ * @returns A dolgozó szervezetének azonosítója.
+ */
+export async function requireSelfOrCapability(
+	context: RemoteContext,
+	employeeId: number,
+	capability: Capability
+): Promise<number> {
+	const r = await context.db.query(
+		`SELECT organization_id, user_id FROM app__racona_work.employees WHERE id = $1`,
+		[employeeId]
+	);
+	if (r.rows.length === 0) {
+		throw new Error(`Nem található dolgozó a megadott azonosítóval: ${employeeId}`);
+	}
+	const { organization_id: orgId, user_id: ownerId } = r.rows[0] as {
+		organization_id: number;
+		user_id: number;
+	};
+
+	if (await hasCapability(context, orgId, capability)) return orgId;
+
+	const callerUserId = await resolveUserId(context);
+	if (ownerId !== callerUserId) {
+		throw new Error('Nincs jogosultságod ehhez a művelethez');
+	}
+	return orgId;
+}
+
 // --- Rendszer szerepek seedelése (új szervezethez) --------------------------
 
 /**

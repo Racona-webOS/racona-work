@@ -7,10 +7,10 @@
 
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
-import { requireCapability } from './permissions.js';
-import { getEmployeeOrganizationId } from './employees.js';
+import { requireCapability, requireSelfOrCapability } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
 import { notifyLeaveRequestCreated, notifyLeaveRequestDecision } from './leave-notifications.js';
+import type { EntitlementInput, EntitlementResult } from './leave-entitlement.js';
 import type { PaginatedResult } from './types.js';
 
 export interface LeaveRequestListParams {
@@ -51,13 +51,49 @@ export interface LeaveRequestRow extends LeaveRequest {
 	approverName: string | null;
 }
 
+/** A keret mellé mentett számítás: az eredmény és a bemenet, amiből készült. */
+export interface LeaveBalanceCalculation {
+	result: EntitlementResult;
+	input: EntitlementInput;
+}
+
 export interface LeaveBalance {
 	id: number;
 	employeeId: number;
 	year: number;
+	/** A ténylegesen érvényes keret. Számított módban: calculatedDays + adjustmentDays. */
 	totalDays: number;
 	usedDays: number;
 	remainingDays: number;
+	/** null = kézi keret (a számítás bevezetése előtti, vagy kézzel beállított). */
+	calculatedDays: number | null;
+	adjustmentDays: number;
+	adjustmentNote: string | null;
+	isLocked: boolean;
+	calculation: LeaveBalanceCalculation | null;
+	calculatedAt: string | null;
+}
+
+/** A leave_balances oszlopai a LeaveBalance leképezéshez (mapBalanceRow). */
+export const BALANCE_COLUMNS = `id, employee_id, year, total_days, used_days, remaining_days,
+	calculated_days, adjustment_days, adjustment_note, is_locked, calculation, calculated_at`;
+
+/** Belső segéd (a functions.ts NEM reexportálja) — a leave-profile.ts is használja. */
+export function mapBalanceRow(row: any): LeaveBalance {
+	return {
+		id: row.id,
+		employeeId: row.employee_id,
+		year: row.year,
+		totalDays: row.total_days,
+		usedDays: row.used_days,
+		remainingDays: row.remaining_days,
+		calculatedDays: row.calculated_days ?? null,
+		adjustmentDays: row.adjustment_days ?? 0,
+		adjustmentNote: row.adjustment_note ?? null,
+		isLocked: row.is_locked === true,
+		calculation: row.calculation ?? null,
+		calculatedAt: row.calculated_at ?? null
+	};
 }
 
 /**
@@ -628,36 +664,35 @@ export async function deleteLeaveRequest(
 }
 
 /**
- * Dolgozó szabadságkeretei évenként.
+ * Dolgozó szabadságkeretei évenként, a számítás bontásával.
+ *
+ * A bontásból kiderül a gyerekek száma és az egészségkárosodás ténye, ezért a
+ * dolgozó csak a sajátját látja, másét csak leave.balance.manage joggal.
  * Követelmény: 8.10
  */
 export async function getLeaveBalances(
 	params: { employeeId: number },
 	context: RemoteContext
 ): Promise<LeaveBalance[]> {
-	const orgId = await getEmployeeOrganizationId(context, params.employeeId);
-	await requireCapability(context, orgId, 'leave.request');
+	await requireSelfOrCapability(context, params.employeeId, 'leave.balance.manage');
 
 	const result = await context.db.query(
-		`SELECT id, employee_id, year, total_days, used_days, remaining_days
+		`SELECT ${BALANCE_COLUMNS}
 		 FROM app__racona_work.leave_balances
 		 WHERE employee_id = $1
 		 ORDER BY year DESC`,
 		[params.employeeId]
 	);
 
-	return result.rows.map((row: any) => ({
-		id: row.id,
-		employeeId: row.employee_id,
-		year: row.year,
-		totalDays: row.total_days,
-		usedDays: row.used_days,
-		remainingDays: row.remaining_days
-	}));
+	return result.rows.map(mapBalanceRow);
 }
 
 /**
- * Éves szabadságkeret beállítása (UPSERT).
+ * Éves szabadságkeret kézi beállítása (UPSERT).
+ *
+ * A keretet kézi módba teszi: a számított értéket és a korrekciót törli, így a
+ * rögzített összeg nem íródik felül automatikusan. A számított keretekhez a
+ * leave-profile.ts függvényei tartoznak.
  * Követelmény: 8.11
  */
 export async function setLeaveBalance(
@@ -669,23 +704,24 @@ export async function setLeaveBalance(
 	}
 
 	await requireCapability(context, params.organizationId, 'leave.balance.manage');
+	const userId = await resolveUserId(context);
 
 	const result = await context.db.query(
-		`INSERT INTO app__racona_work.leave_balances (employee_id, organization_id, year, total_days, used_days)
-		 VALUES ($1, $2, $3, $4, 0)
+		`INSERT INTO app__racona_work.leave_balances
+			(employee_id, organization_id, year, total_days, used_days, updated_by, updated_at)
+		 VALUES ($1, $2, $3, $4, 0, $5, NOW())
 		 ON CONFLICT (employee_id, year)
-		 DO UPDATE SET total_days = EXCLUDED.total_days
-		 RETURNING id, employee_id, organization_id, year, total_days, used_days, remaining_days`,
-		[params.employeeId, params.organizationId, params.year, params.totalDays]
+		 DO UPDATE SET total_days = EXCLUDED.total_days,
+		               calculated_days = NULL,
+		               adjustment_days = 0,
+		               adjustment_note = NULL,
+		               calculation = NULL,
+		               calculated_at = NULL,
+		               updated_by = EXCLUDED.updated_by,
+		               updated_at = NOW()
+		 RETURNING ${BALANCE_COLUMNS}`,
+		[params.employeeId, params.organizationId, params.year, params.totalDays, userId]
 	);
 
-	const row = result.rows[0];
-	return {
-		id: row.id,
-		employeeId: row.employee_id,
-		year: row.year,
-		totalDays: row.total_days,
-		usedDays: row.used_days,
-		remainingDays: row.remaining_days
-	};
+	return mapBalanceRow(result.rows[0]);
 }

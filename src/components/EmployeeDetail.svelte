@@ -10,12 +10,9 @@
 
 <script lang="ts">
 	import type {} from '@racona/sdk/types';
-	import type {
-		EmployeeDetailView,
-		EmployeeDetail,
-		EmployeeRow,
-		LeaveBalance
-	} from '../../server/functions.js';
+	import type { EmployeeDetailView, EmployeeDetail } from '../../server/functions.js';
+	import LeaveBalanceCard from './leave-entitlement/LeaveBalanceCard.svelte';
+	import LeaveProfileCard from './leave-entitlement/LeaveProfileCard.svelte';
 
 	let {
 		pluginId = 'racona-work',
@@ -38,11 +35,38 @@
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 
-// Aktuális szervezet a window store-ból
-function getCurrentOrganizationId(): number | null {
-const store = (window as any).__racona_work_org_store__;
-return store?.currentOrganization?.id ?? null;
-}
+	// A szabadságkeret és a számítás adatai csak leave.balance.manage joggal
+	// látszanak (a bontásból kiderül a gyerekek száma, az egészségkárosodás).
+	let canManageBalance = $state(false);
+
+	function syncCapabilities() {
+		const store = (window as any).__racona_work_org_store__;
+		canManageBalance = store?.can?.('leave.balance.manage') ?? false;
+	}
+
+	$effect(() => {
+		syncCapabilities();
+		const handleCapabilities = (e: Event) => {
+			if ((e as CustomEvent).detail?.pluginId !== pluginId) return;
+			syncCapabilities();
+		};
+		window.addEventListener('plugin-capabilities-changed', handleCapabilities);
+		window.addEventListener('organization-changed', syncCapabilities);
+		return () => {
+			window.removeEventListener('plugin-capabilities-changed', handleCapabilities);
+			window.removeEventListener('organization-changed', syncCapabilities);
+		};
+	});
+
+	/** Növeljük, ha a szabadság-adatok változtak, hogy a keret kártya újratöltsön. */
+	let balanceRefreshKey = $state(0);
+
+	function onLeaveProfileChanged() {
+		balanceRefreshKey++;
+		// A belépés dátuma az alapadatok között is látszik
+		loadDetail();
+	}
+
 	// Alapadatok szerkesztése
 	let editingBasic = $state(false);
 	let editPosition = $state('');
@@ -99,7 +123,6 @@ return store?.currentOrganization?.id ?? null;
 	$effect(() => {
 		if (sdk?.remote && employeeId) {
 			loadDetail();
-			loadBalances(employeeId);
 		}
 	});
 
@@ -217,45 +240,6 @@ return store?.currentOrganization?.id ?? null;
 		)
 	);
 
-	// --- Szabadságkeret ---
-	let balances = $state<LeaveBalance[]>([]);
-	let balancesLoading = $state(false);
-	let balanceYear = $state(new Date().getFullYear());
-	let balanceTotalDays = $state(25);
-	let balanceSaving = $state(false);
-	let balanceError = $state<string | null>(null);
-
-	async function loadBalances(empId: number) {
-		balancesLoading = true;
-		try {
-			balances = await sdk?.remote?.call('getLeaveBalances', { employeeId: empId }) ?? [];
-		} catch { balances = []; }
-		finally { balancesLoading = false; }
-	}
-
-	async function saveBalance() {
-		if (!view?.employee?.id) return;
-		balanceSaving = true;
-		balanceError = null;
-		try {
-			const organizationId = getCurrentOrganizationId();
-			if (!organizationId) throw new Error('Nincs kiválasztott szervezet');
-			const saved: any = await sdk?.remote?.call('setLeaveBalance', {
-				employeeId: view.employee.id,
-				organizationId,
-				year: balanceYear,
-				totalDays: balanceTotalDays
-			});
-			const idx = balances.findIndex((b) => b.year === saved.year);
-			if (idx >= 0) balances = balances.map((b, i) => (i === idx ? saved : b));
-			else balances = [saved, ...balances].sort((a, b) => b.year - a.year);
-			sdk?.ui?.toast(t('employeeDetail.balanceSaved') || 'Keret mentve ✓', 'success');
-		} catch (err: any) {
-			balanceError = err?.message?.replace(/^[A-Z_]+:\s*/, '') ?? t('error.saveFailed');
-		} finally {
-			balanceSaving = false;
-		}
-	}
 </script>
 
 <div class="rw">
@@ -418,61 +402,13 @@ return store?.currentOrganization?.id ?? null;
 		{/each}
 			</div><!-- /col-main -->
 
-			<!-- Jobb hasáb: szabadságkeret -->
-			<div class="col-side">
-				<div class="card accent-blue">
-					<div class="card-header">
-						<h3>Szabadságkeret</h3>
-					</div>
-
-					{#if balancesLoading}
-						<div class="loading-state"><div class="spinner"></div></div>
-					{:else if balances.length > 0}
-						<table class="balance-table">
-							<thead>
-								<tr>
-									<th>Év</th>
-									<th>Összes nap</th>
-									<th>Felhasznált</th>
-									<th>Maradék</th>
-								</tr>
-							</thead>
-							<tbody>
-								{#each balances as b (b.year)}
-									<tr>
-										<td>{b.year}</td>
-										<td>{b.totalDays}</td>
-										<td>{b.usedDays}</td>
-										<td class={b.remainingDays <= 0 ? 'text-danger' : 'text-success'}>{b.remainingDays}</td>
-									</tr>
-								{/each}
-							</tbody>
-						</table>
-					{:else}
-						<p class="empty-hint">Még nincs beállított szabadságkeret.</p>
-					{/if}
-
-					<div class="balance-form">
-						<h4>Keret beállítása / módosítása</h4>
-						<div class="form-row">
-							<label class="form-label">
-								Év
-								<input class="form-input" type="number" bind:value={balanceYear} min={2020} max={2099} />
-							</label>
-							<label class="form-label">
-								Összes nap
-								<input class="form-input" type="number" bind:value={balanceTotalDays} min={0} max={365} />
-							</label>
-							<button class="btn-primary" onclick={saveBalance} disabled={balanceSaving}>
-								{balanceSaving ? t('loading') : t('form.save')}
-							</button>
-						</div>
-						{#if balanceError}
-							<p class="form-error">{balanceError}</p>
-						{/if}
-					</div>
-				</div>
-			</div><!-- /col-side -->
+			<!-- Jobb hasáb: szabadságkeret és a számítás adatai -->
+			{#if canManageBalance}
+				<div class="col-side">
+					<LeaveBalanceCard {pluginId} employeeId={view.employee.id} refreshKey={balanceRefreshKey} />
+					<LeaveProfileCard {pluginId} employeeId={view.employee.id} onChanged={onLeaveProfileChanged} />
+				</div><!-- /col-side -->
+			{/if}
 		</div><!-- /two-col-grid -->
 	{/if}
 </section>
@@ -518,61 +454,6 @@ return store?.currentOrganization?.id ?? null;
 		align-self: stretch;
         max-width: var(--max-col-width);
 	}
-
-	.col-side .card {
-		height: 100%;
-	}
-
-	.balance-table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.875rem;
-		margin-bottom: 1rem;
-	}
-
-	.balance-table th, .balance-table td {
-		padding: 0.5rem 0.75rem;
-		text-align: left;
-		border-bottom: 1px solid var(--color-border, #e2e8f0);
-	}
-
-	.balance-table th {
-		font-weight: 600;
-		color: var(--color-muted-foreground, #64748b);
-		font-size: 0.75rem;
-		text-transform: uppercase;
-	}
-
-	.balance-form {
-		border-top: 1px solid var(--color-border, #e2e8f0);
-		padding-top: 1rem;
-	}
-
-	.balance-form h4 {
-		font-size: 0.875rem;
-		font-weight: 600;
-		margin: 0 0 0.75rem;
-	}
-
-	.balance-form .form-row {
-		display: flex;
-		flex-direction: row;
-		align-items: flex-end;
-		gap: 0.5rem;
-		flex-wrap: wrap;
-	}
-
-	.balance-form .form-label {
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		gap: 0.5rem;
-		white-space: nowrap;
-	}
-
-	.text-danger { color: #dc2626; font-weight: 600; }
-	.text-success { color: #16a34a; font-weight: 600; }
-	.empty-hint { color: var(--color-muted-foreground, #94a3b8); font-size: 0.875rem; margin: 0; }
 
 	/* Kártya */
 	.card {
@@ -854,10 +735,5 @@ return store?.currentOrganization?.id ?? null;
 		background: var(--color-input, oklch(1 0 0 / 15%));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .balance-table th,
-	:global(.dark) .balance-table td {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}
 </style>

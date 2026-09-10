@@ -26,6 +26,7 @@
   } from "../stores/organizationStore.svelte.js";
   import type { OrganizationStore } from "../stores/organizationStore.svelte.js";
   import AccessDenied from "./AccessDenied.svelte";
+  import EntitlementBreakdown from "./leave-entitlement/EntitlementBreakdown.svelte";
 
   let { pluginId = "racona-work" }: { pluginId?: string } = $props();
 
@@ -67,6 +68,7 @@
   // --- Self-service nézet állapota ---
   let myEmployee = $state<EmployeeRow | null>(null);
   let myBalance = $state<LeaveBalance | null>(null);
+  let showBreakdown = $state(false);
   let myRequests = $state<LeaveRequestRow[]>([]);
   let selfLoading = $state(false);
   let selfError = $state<string | null>(null);
@@ -433,6 +435,16 @@
             <span class="balance-title"
               >{t("dashboard.self.balance", { year: thisYear })}</span
             >
+            {#if myBalance?.calculation}
+              <button
+                class="btn-link"
+                onclick={() => (showBreakdown = !showBreakdown)}
+              >
+                {showBreakdown
+                  ? t("dashboard.self.hideBreakdown")
+                  : t("dashboard.self.howCalculated")}
+              </button>
+            {/if}
           </div>
           {#if myBalance}
             <div class="balance-stats">
@@ -463,6 +475,17 @@
                   : 0}%"
               ></div>
             </div>
+            {#if showBreakdown && myBalance.calculation}
+              <div class="breakdown-box">
+                <EntitlementBreakdown
+                  {pluginId}
+                  result={myBalance.calculation.result}
+                  adjustmentDays={myBalance.adjustmentDays}
+                  adjustmentNote={myBalance.adjustmentNote}
+                  showWarnings={false}
+                />
+              </div>
+            {/if}
           {:else}
             <p class="empty-state">{t("dashboard.self.noBalance")}</p>
           {/if}
@@ -595,6 +618,29 @@
 
   .balance-stat.warning .b-value.remaining {
     color: #dc2626;
+  }
+
+  .btn-link {
+    border: none;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--color-primary, #3730a3);
+  }
+
+  .btn-link:hover {
+    text-decoration: underline;
+  }
+
+  .breakdown-box {
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    background: var(--color-accent, #f8fafc);
+  }
+
+  :global(.dark) .breakdown-box {
+    background: var(--color-accent, oklch(0.269 0 0));
   }
 
   .balance-bar {
