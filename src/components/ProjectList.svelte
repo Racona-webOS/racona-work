@@ -299,7 +299,6 @@
 		transition: background 0.2s ease;
 	}
 
-	.project-card[data-status-active]::before,
 	.project-card:has(.status-active)::before { background: #22c55e; }
 	.project-card:has(.status-paused)::before { background: #f59e0b; }
 	.project-card:has(.status-completed)::before { background: #3b82f6; }

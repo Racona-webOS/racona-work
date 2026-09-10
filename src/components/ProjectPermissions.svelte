@@ -757,10 +757,6 @@
 		background: var(--color-accent, #f8fafc);
 	}
 
-	.role-option input {
-		margin-top: 0.1rem;
-	}
-
 	.role-option-name {
 		font-size: 0.85rem;
 		font-weight: 500;

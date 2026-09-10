@@ -923,36 +923,6 @@
 		margin: 0;
 	}
 
-	/* No access message */
-	.no-access-message {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		text-align: center;
-		padding: 4rem 2rem;
-		gap: 1rem;
-	}
-
-	.no-access-icon {
-		font-size: 4rem;
-		opacity: 0.5;
-	}
-
-	.no-access-message h2 {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: var(--color-foreground, #0f172a);
-		margin: 0;
-	}
-
-	.no-access-message p {
-		color: var(--color-muted-foreground, #64748b);
-		font-size: 0.875rem;
-		margin: 0;
-		max-width: 400px;
-	}
-
 	/* Szabadságkeret táblázat */
 	.balance-table {
 		border: 1px solid var(--color-border, #e2e8f0);
@@ -1044,12 +1014,4 @@
 	:global(.dark) :global(.badge-pending) { background: oklch(0.3 0.05 60); color: #fde68a; }
 	:global(.dark) :global(.badge-approved) { background: oklch(0.25 0.05 145); color: #86efac; }
 	:global(.dark) :global(.badge-rejected) { background: oklch(0.25 0.05 20); color: #fca5a5; }
-
-	:global(.dark) .no-access-message h2 {
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .no-access-message p {
-		color: var(--color-muted-foreground, oklch(0.708 0 0));
-	}
 </style>

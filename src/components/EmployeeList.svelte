@@ -1266,36 +1266,6 @@
 		color: var(--color-muted-foreground, #64748b);
 	}
 
-	/* No access message */
-	.no-access-message {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		text-align: center;
-		padding: 4rem 2rem;
-		gap: 1rem;
-	}
-
-	.no-access-icon {
-		font-size: 4rem;
-		opacity: 0.5;
-	}
-
-	.no-access-message h2 {
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: var(--color-foreground, #0f172a);
-		margin: 0;
-	}
-
-	.no-access-message p {
-		color: var(--color-muted-foreground, #64748b);
-		font-size: 0.875rem;
-		margin: 0;
-		max-width: 400px;
-	}
-
 	/* Sötét mód */
 	:global(.dark) .modal {
 		background: var(--color-card, oklch(0.205 0 0));
@@ -1343,14 +1313,6 @@
 
 	:global(.dark) :global(.avatar-placeholder) {
 		background: var(--color-primary-subtle, oklch(0.269 0 0));
-	}
-
-	:global(.dark) .no-access-message h2 {
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .no-access-message p {
-		color: var(--color-muted-foreground, oklch(0.708 0 0));
 	}
 
 	:global(.dark) .modal-description {

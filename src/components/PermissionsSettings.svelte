@@ -848,10 +848,6 @@
 		font-size: 0.85rem;
 	}
 
-	.cap-item input {
-		margin: 0;
-	}
-
 	.editor-actions {
 		display: flex;
 		align-items: center;
