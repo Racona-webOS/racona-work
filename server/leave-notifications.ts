@@ -12,6 +12,7 @@
 
 import type { RemoteContext, LocalizedText } from './context.js';
 import { resolveUserId } from './context.js';
+import { isLeaveType, LEAVE_TYPE_LABELS } from './leave-types.js';
 
 /** Az email nyelve. A felhasználóknak nincs tárolt nyelvi beállítása, ezért fix. */
 const EMAIL_LOCALE: keyof LocalizedText = 'hu';
@@ -22,13 +23,6 @@ const SCHEMA = 'app__racona_work';
 function notifiersSettingsKey(organizationId: number): string {
 	return `settings:leave_request_notifiers:org_${organizationId}`;
 }
-
-const LEAVE_TYPE_LABELS: Record<string, LocalizedText> = {
-	annual: { hu: 'Éves szabadság', en: 'Annual leave' },
-	sick: { hu: 'Betegszabadság', en: 'Sick leave' },
-	unpaid: { hu: 'Fizetés nélküli szabadság', en: 'Unpaid leave' },
-	other: { hu: 'Egyéb távollét', en: 'Other leave' }
-};
 
 export type LeaveDecision = 'approved' | 'rejected' | 'deleted';
 
@@ -323,7 +317,7 @@ function workingDaysEn(days: number): string {
 }
 
 function leaveTypeLabel(type: string): LocalizedText {
-	return LEAVE_TYPE_LABELS[type] ?? { hu: type, en: type };
+	return isLeaveType(type) ? LEAVE_TYPE_LABELS[type] : { hu: type, en: type };
 }
 
 function formatDay(isoDay: string, locale: string): string {

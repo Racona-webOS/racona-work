@@ -16,7 +16,10 @@
  *   employees.ts     — dolgozók és dolgozói adatlap
  *   leave.ts         — szabadságkérelmek és egyenlegek
  *   leave-entitlement.ts — éves szabadságkeret számítása (tiszta függvény)
- *   leave-profile.ts — a számítás adatai (születési dátum, gyerekek) és a számított keretek
+ *   leave-profile.ts — a számítás adatai (születési dátum, gyerekek, távollétek) és a számított keretek
+ *   leave-allowances.ts — betegszabadság, apasági és szülői szabadság kerete
+ *   leave-history.ts — a szabadságkeretek változásnaplója
+ *   leave-types.ts   — szabadságtípusok (a kliens is importálja)
  *   dashboard.ts     — irányítópult statisztikák
  *   settings.ts      — kv_store alapú beállítások
  *   organizations.ts — szervezetek és szervezeti tagság
@@ -92,6 +95,8 @@ export {
 	deleteEmployeeChild,
 	saveExtraLeave,
 	deleteExtraLeave,
+	saveAbsencePeriod,
+	deleteAbsencePeriod,
 	previewLeaveEntitlement,
 	createLeaveBalanceFromCalculation,
 	setLeaveBalanceAdjustment,
@@ -106,12 +111,22 @@ export type {
 	LeaveProfile,
 	EmployeeChild,
 	ExtraLeave,
+	EmployeeAbsence,
+	EmployeeAbsenceKind,
 	RecalculatedBalance,
 	PreviousYearBalance,
 	BulkEntitlementRow,
 	BulkEntitlementPreview,
 	BulkEntitlementDecision
 } from './leave-profile.js';
+
+export { getLeaveAllowances } from './leave-allowances.js';
+export type { LeaveAllowances, SickLeaveStatus, ChildLeaveStatus } from './leave-allowances.js';
+
+export { getLeaveBalanceHistory } from './leave-history.js';
+export type { BalanceHistoryEntry, BalanceHistoryAction, BalanceSnapshot } from './leave-history.js';
+
+export type { LeaveType } from './leave-types.js';
 
 export type {
 	EntitlementResult,

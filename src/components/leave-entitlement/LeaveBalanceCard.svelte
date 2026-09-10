@@ -7,6 +7,8 @@
 -->
 <script lang="ts">
 	import type {
+		BalanceHistoryEntry,
+		BalanceSnapshot,
 		LeaveBalance,
 		LeaveBalanceCalculation,
 		PreviousYearBalance
@@ -214,6 +216,48 @@
 		}
 	}
 
+	// --- Előzmények ---
+	let historyTarget = $state<LeaveBalance | null>(null);
+	let historyEntries = $state<BalanceHistoryEntry[]>([]);
+	let historyLoading = $state(false);
+
+	async function openHistory(b: LeaveBalance) {
+		historyTarget = b;
+		historyEntries = [];
+		historyLoading = true;
+		try {
+			historyEntries = await sdk.remote.call('getLeaveBalanceHistory', { balanceId: b.id });
+		} catch (err) {
+			sdk?.ui?.toast(errorText(err), 'error');
+		} finally {
+			historyLoading = false;
+		}
+	}
+
+	/** A két állapot közti eltérések olvasható formában. */
+	function historyChanges(before: BalanceSnapshot | null, after: BalanceSnapshot): string[] {
+		const changes: string[] = [];
+		const field = (key: string, from: string | number | null, to: string | number | null) => {
+			if (from !== to) {
+				changes.push(
+					before === null
+						? `${t(`leaveEntitlement.history.field.${key}`)}: ${to ?? '—'}`
+						: `${t(`leaveEntitlement.history.field.${key}`)}: ${from ?? '—'} → ${to ?? '—'}`
+				);
+			}
+		};
+		field('calculated', before?.calculatedDays ?? null, after.calculatedDays);
+		field('adjustment', before ? signed(before.adjustmentDays) : null, signed(after.adjustmentDays));
+		field('carriedOver', before?.carriedOverDays ?? null, after.carriedOverDays);
+		if (after.adjustmentNote && after.adjustmentNote !== (before?.adjustmentNote ?? null)) {
+			changes.push(`${t('leaveEntitlement.history.field.note')}: ${after.adjustmentNote}`);
+		}
+		if (before && before.isLocked !== after.isLocked) {
+			changes.push(t(after.isLocked ? 'leaveEntitlement.history.locked' : 'leaveEntitlement.history.unlocked'));
+		}
+		return before === null ? changes.filter((c) => !c.endsWith(': 0') && !c.endsWith(': —')) : changes;
+	}
+
 	// --- Számítás alkalmazása ---
 	let applyTarget = $state<LeaveBalance | null>(null);
 	let applyKeepTotal = $state(false);
@@ -309,6 +353,9 @@
 								{t('leaveEntitlement.balance.applyCalculation')}
 							</button>
 						{/if}
+						<button class="btn-ghost-sm" onclick={() => openHistory(b)}>
+							{t('leaveEntitlement.history.open')}
+						</button>
 					</div>
 
 					{#if b.calculatedDays === null}
@@ -443,6 +490,46 @@
 				<button class="btn-primary" onclick={submitAdjust} disabled={adjustSaving}>
 					{adjustSaving ? t('loading') : t('form.save')}
 				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Előzmények -->
+{#if historyTarget}
+	<div class="modal-overlay" onclick={(e) => e.target === e.currentTarget && (historyTarget = null)} role="presentation">
+		<div class="modal modal-history" role="dialog" aria-modal="true" tabindex="-1">
+			<div class="modal-header">
+				<h3>{t('leaveEntitlement.history.title', { year: historyTarget.year })}</h3>
+				<button class="icon-btn" onclick={() => (historyTarget = null)}>✕</button>
+			</div>
+			<div class="modal-body">
+				{#if historyLoading}
+					<div class="loading-state"><div class="spinner"></div></div>
+				{:else if historyEntries.length === 0}
+					<p class="modal-text">{t('leaveEntitlement.history.empty')}</p>
+				{:else}
+					<ul class="history-list">
+						{#each historyEntries as entry (entry.id)}
+							<li class="history-item">
+								<div class="history-head">
+									<span class="history-action">{t(`leaveEntitlement.history.action.${entry.action}`)}</span>
+									<span class="history-total">
+										{entry.totalBefore === null
+											? t('leaveEntitlement.days', { days: entry.totalAfter })
+											: `${entry.totalBefore} → ${t('leaveEntitlement.days', { days: entry.totalAfter })}`}
+									</span>
+								</div>
+								<span class="history-meta">
+									{new Date(entry.createdAt).toLocaleString()}{entry.actorName ? ` · ${entry.actorName}` : ''}
+								</span>
+								{#each historyChanges(entry.before, entry.after) as change, i (i)}
+									<span class="history-change">{change}</span>
+								{/each}
+							</li>
+						{/each}
+					</ul>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -661,6 +748,54 @@
 
 	.result-line {
 		font-weight: 600;
+	}
+
+	.modal-history {
+		max-width: 560px;
+	}
+
+	.history-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.history-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		padding: 0.6rem 0.75rem;
+		border-radius: 0.375rem;
+		background: var(--color-accent, #f8fafc);
+		font-size: 0.85rem;
+	}
+
+	.history-head {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+
+	.history-action {
+		font-weight: 600;
+	}
+
+	.history-total {
+		font-weight: 600;
+		white-space: nowrap;
+	}
+
+	.history-meta,
+	.history-change {
+		font-size: 0.75rem;
+		color: var(--color-muted-foreground, #64748b);
+	}
+
+	:global(.dark) .history-item {
+		background: var(--color-accent, oklch(0.269 0 0));
 	}
 
 	.field-hint {

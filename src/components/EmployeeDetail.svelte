@@ -13,6 +13,7 @@
 	import type { EmployeeDetailView, EmployeeDetail } from '../../server/functions.js';
 	import LeaveBalanceCard from './leave-entitlement/LeaveBalanceCard.svelte';
 	import LeaveProfileCard from './leave-entitlement/LeaveProfileCard.svelte';
+	import OtherAllowances from './leave-entitlement/OtherAllowances.svelte';
 
 	let {
 		pluginId = 'racona-work',
@@ -406,6 +407,7 @@
 			{#if canManageBalance}
 				<div class="col-side">
 					<LeaveBalanceCard {pluginId} employeeId={view.employee.id} refreshKey={balanceRefreshKey} />
+					<OtherAllowances {pluginId} employeeId={view.employee.id} refreshKey={balanceRefreshKey} />
 					<LeaveProfileCard {pluginId} employeeId={view.employee.id} onChanged={onLeaveProfileChanged} />
 				</div><!-- /col-side -->
 			{/if}

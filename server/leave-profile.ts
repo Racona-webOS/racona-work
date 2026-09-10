@@ -18,8 +18,11 @@ import { requireCapability, requireSelfOrCapability } from './permissions.js';
 import { getEmployeeOrganizationId } from './employees.js';
 import { BALANCE_COLUMNS, mapBalanceRow } from './leave.js';
 import type { LeaveBalance, LeaveBalanceCalculation } from './leave.js';
+import { logBalanceChange } from './leave-history.js';
 import { calculateAnnualLeave, STATUTORY_EXTRA_DAYS } from './leave-entitlement.js';
 import type {
+	AbsenceKind,
+	EntitlementAbsence,
 	EntitlementInput,
 	EntitlementResult,
 	ExtraLeaveKind,
@@ -34,6 +37,21 @@ export interface EmployeeChild {
 	label: string | null;
 	birthDate: string;
 	isDisabled: boolean;
+	/** A HR jelöli: a dolgozónak apasági szabadság jár ennek a gyereknek a születése után. */
+	paternityEligible: boolean;
+}
+
+/** A HR által rögzített kézi távollét-típusok (a jóváhagyott kérelmeket a szerver hozza). */
+export type EmployeeAbsenceKind = Exclude<AbsenceKind, 'unpaid_request'>;
+
+/** Nem munkában töltött időszak (Mt. 115. §), ami csökkenti az arányos szabadságot. */
+export interface EmployeeAbsence {
+	id: number;
+	employeeId: number;
+	kind: EmployeeAbsenceKind;
+	startDate: string;
+	endDate: string;
+	note: string | null;
 }
 
 export interface ExtraLeave {
@@ -58,6 +76,7 @@ export interface LeaveProfile {
 	hireDateConfirmed: boolean;
 	children: EmployeeChild[];
 	extras: ExtraLeave[];
+	absences: EmployeeAbsence[];
 }
 
 /** Egy keret változása az automatikus újraszámoláskor (a felület üzenetben mutatja). */
@@ -71,6 +90,13 @@ const EXTRA_KINDS: ReadonlySet<string> = new Set<ExtraLeaveKind>([
 	'health_impaired',
 	'underground_radiation',
 	'custom'
+]);
+
+const ABSENCE_KINDS: ReadonlySet<string> = new Set<EmployeeAbsenceKind>([
+	'unpaid_leave',
+	'childcare_unpaid_leave',
+	'unexcused_absence',
+	'other'
 ]);
 
 const MAX_CUSTOM_EXTRA_DAYS = 60;
@@ -154,7 +180,19 @@ function mapChild(row: any): EmployeeChild {
 		employeeId: row.employee_id,
 		label: row.label ?? null,
 		birthDate: row.birth_date,
-		isDisabled: row.is_disabled === true
+		isDisabled: row.is_disabled === true,
+		paternityEligible: row.paternity_eligible === true
+	};
+}
+
+function mapAbsence(row: any): EmployeeAbsence {
+	return {
+		id: row.id,
+		employeeId: row.employee_id,
+		kind: row.kind,
+		startDate: row.start_date,
+		endDate: row.end_date,
+		note: row.note ?? null
 	};
 }
 
@@ -172,16 +210,28 @@ function mapExtra(row: any): ExtraLeave {
 
 // A DATE oszlopokat szövegként kérjük le, hogy a pg Date-konverziója ne tolja el
 // időzóna miatt a napot.
-const CHILD_COLUMNS = `id, employee_id, label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, is_disabled`;
+const CHILD_COLUMNS = `id, employee_id, label, to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
+	is_disabled, paternity_eligible`;
+const ABSENCE_COLUMNS = `id, employee_id, kind,
+	to_char(start_date, 'YYYY-MM-DD') AS start_date,
+	to_char(end_date, 'YYYY-MM-DD') AS end_date, note`;
 const EXTRA_COLUMNS = `id, employee_id, kind, days,
 	to_char(valid_from, 'YYYY-MM-DD') AS valid_from,
 	to_char(valid_to, 'YYYY-MM-DD') AS valid_to, note`;
 
-type ProfileWithOrg = LeaveProfile & { organizationId: number };
+/**
+ * A profil a szervezettel és a jóváhagyott fizetés nélküli szabadságkérelmekkel
+ * — utóbbiak nem munkában töltött időnek számítanak (Mt. 115. §), ezért a
+ * számítás magától levonja őket.
+ */
+type ProfileWithOrg = LeaveProfile & {
+	organizationId: number;
+	approvedUnpaid: { from: string; to: string }[];
+};
 
 /**
- * Dolgozók számításhoz szükséges adatai egyszerre, három lekérdezéssel —
- * a tömeges előnézet így nem dolgozónként kérdez.
+ * Dolgozók számításhoz szükséges adatai egyszerre, dolgozónként egy-egy
+ * lekérdezés helyett — a tömeges előnézet így nem dolgozónként kérdez.
  */
 async function loadProfiles(
 	context: RemoteContext,
@@ -190,7 +240,7 @@ async function loadProfiles(
 	const profiles = new Map<number, ProfileWithOrg>();
 	if (employeeIds.length === 0) return profiles;
 
-	const [empResult, childrenResult, extrasResult] = await Promise.all([
+	const [empResult, childrenResult, extrasResult, absencesResult, unpaidResult] = await Promise.all([
 		context.db.query(
 			`SELECT id, organization_id,
 			        to_char(birth_date, 'YYYY-MM-DD') AS birth_date,
@@ -210,6 +260,19 @@ async function loadProfiles(
 			`SELECT ${EXTRA_COLUMNS} FROM ${SCHEMA}.employee_extra_leave
 			  WHERE employee_id = ANY($1::int[]) ORDER BY kind, valid_from NULLS FIRST, id`,
 			[employeeIds]
+		),
+		context.db.query(
+			`SELECT ${ABSENCE_COLUMNS} FROM ${SCHEMA}.employee_absence_periods
+			  WHERE employee_id = ANY($1::int[]) ORDER BY start_date, id`,
+			[employeeIds]
+		),
+		context.db.query(
+			`SELECT employee_id,
+			        to_char(start_date, 'YYYY-MM-DD') AS start_date,
+			        to_char(end_date, 'YYYY-MM-DD') AS end_date
+			   FROM ${SCHEMA}.leave_requests
+			  WHERE employee_id = ANY($1::int[]) AND leave_type = 'unpaid' AND status = 'approved'`,
+			[employeeIds]
 		)
 	]);
 
@@ -222,11 +285,17 @@ async function loadProfiles(
 			employmentEndDate: emp.employment_end_date ?? null,
 			hireDateConfirmed: emp.hire_date_confirmed === true,
 			children: [],
-			extras: []
+			extras: [],
+			absences: [],
+			approvedUnpaid: []
 		});
 	}
 	for (const row of childrenResult.rows) profiles.get(row.employee_id)?.children.push(mapChild(row));
 	for (const row of extrasResult.rows) profiles.get(row.employee_id)?.extras.push(mapExtra(row));
+	for (const row of absencesResult.rows) profiles.get(row.employee_id)?.absences.push(mapAbsence(row));
+	for (const row of unpaidResult.rows) {
+		profiles.get(row.employee_id)?.approvedUnpaid.push({ from: row.start_date, to: row.end_date });
+	}
 	return profiles;
 }
 
@@ -239,7 +308,11 @@ async function loadProfile(context: RemoteContext, employeeId: number): Promise<
 }
 
 /** A számítás bemenete a tárgyév nélkül. */
-function toEntitlementBase(profile: LeaveProfile, policy: LeavePolicy): Omit<EntitlementInput, 'year'> {
+function toEntitlementBase(profile: ProfileWithOrg, policy: LeavePolicy): Omit<EntitlementInput, 'year'> {
+	const absences: EntitlementAbsence[] = [
+		...profile.absences.map((a) => ({ kind: a.kind, from: a.startDate, to: a.endDate })),
+		...profile.approvedUnpaid.map((r) => ({ kind: 'unpaid_request' as const, from: r.from, to: r.to }))
+	];
 	return {
 		birthDate: profile.birthDate,
 		hireDate: profile.hireDate,
@@ -252,7 +325,8 @@ function toEntitlementBase(profile: LeaveProfile, policy: LeavePolicy): Omit<Ent
 			validTo: e.validTo,
 			note: e.note
 		})),
-		policy
+		policy,
+		absences
 	};
 }
 
@@ -272,19 +346,20 @@ function calculate(base: Omit<EntitlementInput, 'year'>, year: number): LeaveBal
 }
 
 /**
- * Belső segéd (a functions.ts NEM reexportálja).
+ * Belső segéd (a functions.ts NEM reexportálja) — a leave.ts is hívja, ha egy
+ * fizetés nélküli kérelmet jóváhagynak vagy törölnek.
  *
  * A dolgozó nyitott, számított és nem zárolt kereteinek újraszámolása: az idei
  * és a későbbi évek. Új keretet nem hoz létre, a múltbeli évekhez nem nyúl.
  *
  * @returns Azok a keretek, amelyeknek az összege megváltozott.
  */
-async function recalculateEmployeeBalances(
+export async function recalculateEmployeeBalances(
 	context: RemoteContext,
 	employeeId: number
 ): Promise<RecalculatedBalance[]> {
 	const rows = await context.db.query(
-		`SELECT id, year, calculated_days, adjustment_days, carried_over_days
+		`SELECT ${BALANCE_COLUMNS}
 		   FROM ${SCHEMA}.leave_balances
 		  WHERE employee_id = $1 AND year >= $2
 		    AND calculated_days IS NOT NULL AND is_locked = FALSE
@@ -300,7 +375,7 @@ async function recalculateEmployeeBalances(
 	for (const row of rows.rows) {
 		const calculation = calculate(base, row.year);
 		const calculated = calculation.result.totalDays;
-		await context.db.query(
+		const updated = await context.db.query(
 			`UPDATE ${SCHEMA}.leave_balances
 			    SET calculated_days = $2,
 			        total_days = $2::int + adjustment_days + carried_over_days,
@@ -308,12 +383,15 @@ async function recalculateEmployeeBalances(
 			        calculated_at = NOW(),
 			        updated_by = $4,
 			        updated_at = NOW()
-			  WHERE id = $1`,
+			  WHERE id = $1
+			  RETURNING ${BALANCE_COLUMNS}`,
 			[row.id, calculated, JSON.stringify(calculation), userId]
 		);
 		if (calculated !== row.calculated_days) {
-			const fixed = row.adjustment_days + row.carried_over_days;
-			changes.push({ year: row.year, from: row.calculated_days + fixed, to: calculated + fixed });
+			const before = mapBalanceRow(row);
+			const after = mapBalanceRow(updated.rows[0]);
+			await logBalanceChange(context.db, { action: 'recalculated', before, after, actorUserId: userId });
+			changes.push({ year: row.year, from: before.totalDays, to: after.totalDays });
 		}
 	}
 	return changes;
@@ -346,8 +424,12 @@ export async function getLeaveProfile(
 	context: RemoteContext
 ): Promise<LeaveProfile> {
 	await requireSelfOrCapability(context, params.employeeId, 'leave.balance.manage');
-	const { organizationId: _orgId, ...profile } = await loadProfile(context, params.employeeId);
-	return profile;
+	return publicProfile(await loadProfile(context, params.employeeId));
+}
+
+function publicProfile(profile: ProfileWithOrg): LeaveProfile {
+	const { organizationId: _orgId, approvedUnpaid: _unpaid, ...rest } = profile;
+	return rest;
 }
 
 /**
@@ -386,8 +468,7 @@ export async function saveLeaveProfile(
 	);
 
 	const recalculated = await recalculateEmployeeBalances(context, params.employeeId);
-	const { organizationId: _orgId, ...profile } = await loadProfile(context, params.employeeId);
-	return { profile, recalculated };
+	return { profile: publicProfile(await loadProfile(context, params.employeeId)), recalculated };
 }
 
 /** Gyerek felvétele vagy módosítása (id megadásával), majd újraszámolás. */
@@ -398,6 +479,7 @@ export async function saveEmployeeChild(
 		label?: string | null;
 		birthDate: string;
 		isDisabled?: boolean;
+		paternityEligible?: boolean;
 	},
 	context: RemoteContext
 ): Promise<{ child: EmployeeChild; recalculated: RecalculatedBalance[] }> {
@@ -409,23 +491,26 @@ export async function saveEmployeeChild(
 	}
 	const label = typeof params.label === 'string' && params.label.trim() ? params.label.trim().slice(0, 255) : null;
 	const isDisabled = params.isDisabled === true;
+	const paternityEligible = params.paternityEligible === true;
 
 	let result;
 	if (params.id) {
 		result = await context.db.query(
 			`UPDATE ${SCHEMA}.employee_children
-			    SET label = $3, birth_date = $4, is_disabled = $5, updated_at = NOW()
+			    SET label = $3, birth_date = $4, is_disabled = $5, paternity_eligible = $6,
+			        updated_at = NOW()
 			  WHERE id = $1 AND employee_id = $2
 			  RETURNING ${CHILD_COLUMNS}`,
-			[params.id, params.employeeId, label, birthDate, isDisabled]
+			[params.id, params.employeeId, label, birthDate, isDisabled, paternityEligible]
 		);
 		if (result.rows.length === 0) throw new Error('Nem található a gyerek.');
 	} else {
 		result = await context.db.query(
-			`INSERT INTO ${SCHEMA}.employee_children (employee_id, label, birth_date, is_disabled)
-			 VALUES ($1, $2, $3, $4)
+			`INSERT INTO ${SCHEMA}.employee_children
+				(employee_id, label, birth_date, is_disabled, paternity_eligible)
+			 VALUES ($1, $2, $3, $4, $5)
 			 RETURNING ${CHILD_COLUMNS}`,
-			[params.employeeId, label, birthDate, isDisabled]
+			[params.employeeId, label, birthDate, isDisabled, paternityEligible]
 		);
 	}
 
@@ -524,6 +609,72 @@ export async function deleteExtraLeave(
 	return { recalculated: await recalculateEmployeeBalances(context, employeeId) };
 }
 
+/**
+ * Nem munkában töltött időszak felvétele vagy módosítása (Mt. 115. §), majd
+ * újraszámolás. A jóváhagyott fizetés nélküli szabadságkérelmeket nem kell
+ * itt rögzíteni: azokat a számítás magától levonja.
+ */
+export async function saveAbsencePeriod(
+	params: {
+		employeeId: number;
+		id?: number;
+		kind: EmployeeAbsenceKind;
+		startDate: string;
+		endDate: string;
+		note?: string | null;
+	},
+	context: RemoteContext
+): Promise<{ absence: EmployeeAbsence; recalculated: RecalculatedBalance[] }> {
+	await requireManageForEmployee(context, params.employeeId);
+
+	if (!ABSENCE_KINDS.has(params.kind)) throw new Error('Érvénytelen távollét-típus.');
+	const startDate = parseDay(params.startDate, 'Kezdete', true)!;
+	const endDate = parseDay(params.endDate, 'Vége', true)!;
+	if (endDate < startDate) throw new Error('A vége nem lehet korábbi a kezdeténél.');
+	const note = typeof params.note === 'string' && params.note.trim() ? params.note.trim() : null;
+	if (params.kind === 'other' && !note) {
+		throw new Error('Az egyéb távollétnél írd le, mi volt az ok.');
+	}
+
+	let result;
+	if (params.id) {
+		result = await context.db.query(
+			`UPDATE ${SCHEMA}.employee_absence_periods
+			    SET kind = $3, start_date = $4, end_date = $5, note = $6, updated_at = NOW()
+			  WHERE id = $1 AND employee_id = $2
+			  RETURNING ${ABSENCE_COLUMNS}`,
+			[params.id, params.employeeId, params.kind, startDate, endDate, note]
+		);
+		if (result.rows.length === 0) throw new Error('Nem található a távollét.');
+	} else {
+		result = await context.db.query(
+			`INSERT INTO ${SCHEMA}.employee_absence_periods (employee_id, kind, start_date, end_date, note)
+			 VALUES ($1, $2, $3, $4, $5)
+			 RETURNING ${ABSENCE_COLUMNS}`,
+			[params.employeeId, params.kind, startDate, endDate, note]
+		);
+	}
+
+	const recalculated = await recalculateEmployeeBalances(context, params.employeeId);
+	return { absence: mapAbsence(result.rows[0]), recalculated };
+}
+
+export async function deleteAbsencePeriod(
+	params: { id: number },
+	context: RemoteContext
+): Promise<{ recalculated: RecalculatedBalance[] }> {
+	const r = await context.db.query(
+		`SELECT employee_id FROM ${SCHEMA}.employee_absence_periods WHERE id = $1`,
+		[params.id]
+	);
+	if (r.rows.length === 0) throw new Error('Nem található a távollét.');
+	const employeeId: number = r.rows[0].employee_id;
+	await requireManageForEmployee(context, employeeId);
+
+	await context.db.query(`DELETE FROM ${SCHEMA}.employee_absence_periods WHERE id = $1`, [params.id]);
+	return { recalculated: await recalculateEmployeeBalances(context, employeeId) };
+}
+
 // --- Számított keretek ------------------------------------------------------
 
 /** Az előző évi keret röviden, az áthozatal javaslatához. */
@@ -590,6 +741,7 @@ async function insertCalculatedBalance(
 		adjustmentNote: string | null;
 		carriedOverDays: number;
 		userId: number;
+		action: 'created' | 'bulk_created';
 	}
 ): Promise<LeaveBalance | null> {
 	const calculated = values.calculation.result.totalDays;
@@ -614,7 +766,10 @@ async function insertCalculatedBalance(
 			values.userId
 		]
 	);
-	return result.rows.length > 0 ? mapBalanceRow(result.rows[0]) : null;
+	if (result.rows.length === 0) return null;
+	const balance = mapBalanceRow(result.rows[0]);
+	await logBalanceChange(db, { action: values.action, before: null, after: balance, actorUserId: values.userId });
+	return balance;
 }
 
 /**
@@ -681,7 +836,8 @@ export async function createLeaveBalanceFromCalculation(
 		adjustmentDays: adjustment.days,
 		adjustmentNote: adjustment.note,
 		carriedOverDays,
-		userId: await resolveUserId(context)
+		userId: await resolveUserId(context),
+		action: 'created'
 	});
 	if (!balance) {
 		throw new Error(`A(z) ${year}. évre már van szabadságkeret.`);
@@ -751,7 +907,9 @@ export async function setLeaveBalanceAdjustment(
 			carriedOverDays
 		]
 	);
-	return mapBalanceRow(result.rows[0]);
+	const after = mapBalanceRow(result.rows[0]);
+	await logBalanceChange(context.db, { action: 'adjusted', before: mapBalanceRow(row), after, actorUserId: userId });
+	return after;
 }
 
 /**
@@ -798,7 +956,14 @@ export async function applyCalculationToBalance(
 		  RETURNING ${BALANCE_COLUMNS}`,
 		[params.balanceId, calculated, adjustmentDays, adjustmentNote, JSON.stringify(calculation), userId]
 	);
-	return mapBalanceRow(result.rows[0]);
+	const after = mapBalanceRow(result.rows[0]);
+	await logBalanceChange(context.db, {
+		action: 'calculation_applied',
+		before: mapBalanceRow(row),
+		after,
+		actorUserId: userId
+	});
+	return after;
 }
 
 // --- Éves keretgenerálás (tömeges) -------------------------------------------
@@ -965,7 +1130,8 @@ export async function applyLeaveEntitlements(
 				adjustmentDays: row.adjustment.days,
 				adjustmentNote: row.adjustment.note,
 				carriedOverDays: row.carriedOverDays,
-				userId
+				userId,
+				action: 'bulk_created'
 			});
 			if (balance) created++;
 			else skippedEmployeeIds.push(row.employeeId);

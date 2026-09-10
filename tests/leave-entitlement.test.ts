@@ -8,6 +8,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
 	calculateAnnualLeave,
+	calculateSickLeave,
+	parentalDeadline,
+	parentalEligibleFrom,
+	paternityDeadline,
 	type EntitlementInput,
 	type EntitlementItemCode
 } from '../server/leave-entitlement.ts';
@@ -265,5 +269,87 @@ describe('hiányzó születési dátum', () => {
 		expect(r.items.map((i) => i.code)).toEqual(['base', 'children']);
 		expect(r.totalDays).toBe(22);
 		expect(warningCodes(r)).toContain('missing_birth_date');
+	});
+});
+
+describe('nem munkában töltött idő (Mt. 115. §)', () => {
+	test('fizetés nélküli szabadság arányosan csökkent: 23 × (365 − 31)/365 = 21,05 → 21', () => {
+		const r = calculateAnnualLeave(
+			input({ absences: [{ kind: 'unpaid_leave', from: '2026-03-01', to: '2026-03-31' }] })
+		);
+		expect(r.nonCountingDays).toBe(31);
+		expect(r.totalDays).toBe(21);
+	});
+	test('az átfedő időszakok csak egyszer számítanak', () => {
+		const r = calculateAnnualLeave(
+			input({
+				absences: [
+					{ kind: 'unpaid_leave', from: '2026-03-01', to: '2026-03-20' },
+					{ kind: 'unpaid_request', from: '2026-03-15', to: '2026-03-31' },
+					{ kind: 'unexcused_absence', from: '2026-04-01', to: '2026-04-01' }
+				]
+			})
+		);
+		expect(r.nonCountingDays).toBe(32);
+	});
+	test('csak a munkaviszony idejére eső rész számít', () => {
+		const r = calculateAnnualLeave(
+			input({
+				hireDate: '2026-03-01',
+				absences: [
+					{ kind: 'unpaid_leave', from: '2025-12-01', to: '2026-03-10' },
+					{ kind: 'other', from: '2026-12-20', to: '2027-01-10' }
+				]
+			})
+		);
+		expect(r.nonCountingDays).toBe(10 + 12);
+		expect(r.employedDays).toBe(306);
+	});
+	test('gyermekgondozási fizetés nélküli szabadság: az első 6 hónap még beszámít', () => {
+		// 2025-10-15-től 2026-04-14-ig beszámít, 2026-04-15 és 12-31 között nem → 261 nap
+		const r = calculateAnnualLeave(
+			input({ absences: [{ kind: 'childcare_unpaid_leave', from: '2025-10-15', to: '2027-06-30' }] })
+		);
+		expect(r.nonCountingDays).toBe(261);
+	});
+	test('6 hónapnál rövidebb gyermekgondozási szabadság nem csökkent', () => {
+		const r = calculateAnnualLeave(
+			input({ absences: [{ kind: 'childcare_unpaid_leave', from: '2026-02-01', to: '2026-07-31' }] })
+		);
+		expect(r.nonCountingDays).toBe(0);
+		expect(r.totalDays).toBe(r.fullYearDays);
+	});
+	test('a hu-mt@1 pillanatképek (absences nélkül) ugyanúgy számolnak', () => {
+		const r = calculateAnnualLeave(input());
+		expect(r.nonCountingDays).toBe(0);
+		expect(r.totalDays).toBe(23);
+	});
+});
+
+describe('betegszabadság (Mt. 126. §)', () => {
+	test('teljes évre 15 nap', () => {
+		expect(calculateSickLeave({ year: 2026, hireDate: '2020-01-01', employmentEndDate: null }).totalDays).toBe(15);
+	});
+	test('év közbeni belépésnél arányos: 15 × 306/365 = 12,6 → 13', () => {
+		expect(calculateSickLeave({ year: 2026, hireDate: '2026-03-01', employmentEndDate: null }).totalDays).toBe(13);
+	});
+	test('nincs munkaviszony az évben → 0', () => {
+		expect(calculateSickLeave({ year: 2026, hireDate: '2027-01-01', employmentEndDate: null }).totalDays).toBe(0);
+	});
+});
+
+describe('apasági és szülői szabadság határidői', () => {
+	test('apasági: a születést követő negyedik hónap vége', () => {
+		expect(paternityDeadline('2026-05-15')).toBe('2026-09-30');
+		expect(paternityDeadline('2026-10-01')).toBe('2027-02-28');
+		expect(paternityDeadline('2027-10-31')).toBe('2028-02-29');
+	});
+	test('szülői: a harmadik születésnap előtti nap', () => {
+		expect(parentalDeadline('2025-06-10')).toBe('2028-06-09');
+		expect(parentalDeadline('2024-02-29')).toBe('2027-02-27');
+	});
+	test('szülői: egy év munkaviszony után jár', () => {
+		expect(parentalEligibleFrom('2025-03-01')).toBe('2026-03-01');
+		expect(parentalEligibleFrom('2024-02-29')).toBe('2025-02-28');
 	});
 });

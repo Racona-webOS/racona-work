@@ -27,6 +27,8 @@
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	const proration = $derived(result.totalDays - result.fullYearDays);
+	/** A régebbi (hu-mt@1) pillanatképekben nincs ilyen mező. */
+	const nonCounting = $derived(result.nonCountingDays ?? 0);
 
 	function itemLabel(item: EntitlementItem): string {
 		if (item.code === 'custom') {
@@ -57,14 +59,20 @@
 		</div>
 	{/each}
 
-	{#if proration !== 0 || result.employedDays !== result.daysInYear}
+	{#if proration !== 0 || result.employedDays !== result.daysInYear || nonCounting > 0}
 		<div class="row">
 			<dt>
-				{t('leaveEntitlement.breakdown.proration', {
-					employed: result.employedDays,
-					yearDays: result.daysInYear
-				})}
-				<span class="ref">Mt. 121. §</span>
+				{nonCounting > 0
+					? t('leaveEntitlement.breakdown.prorationWithAbsences', {
+							employed: result.employedDays,
+							yearDays: result.daysInYear,
+							nonCounting
+						})
+					: t('leaveEntitlement.breakdown.proration', {
+							employed: result.employedDays,
+							yearDays: result.daysInYear
+						})}
+				<span class="ref">{nonCounting > 0 ? 'Mt. 115., 121. §' : 'Mt. 121. §'}</span>
 			</dt>
 			<dd>{signed(proration)}</dd>
 		</div>

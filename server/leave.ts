@@ -10,6 +10,10 @@ import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { requireCapability, requireSelfOrCapability } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
 import { notifyLeaveRequestCreated, notifyLeaveRequestDecision } from './leave-notifications.js';
+import { validateChildLeave } from './leave-allowances.js';
+import { recalculateEmployeeBalances } from './leave-profile.js';
+import { logBalanceChange } from './leave-history.js';
+import { CHILD_LEAVE_TYPES, isLeaveType } from './leave-types.js';
 import type { EntitlementInput, EntitlementResult } from './leave-entitlement.js';
 import type { PaginatedResult } from './types.js';
 
@@ -30,6 +34,8 @@ export interface CreateLeaveRequestParams {
 	startDate: string;
 	endDate: string;
 	reason?: string;
+	/** Apasági és szülői szabadságnál kötelező: melyik gyerek után. */
+	childId?: number | null;
 }
 
 export interface LeaveRequest {
@@ -42,6 +48,7 @@ export interface LeaveRequest {
 	status: string;
 	reason: string | null;
 	approvedBy: number | null;
+	childId: number | null;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -278,6 +285,7 @@ export async function getLeaveRequests(
 			lr.status,
 			lr.reason,
 			lr.approved_by,
+			lr.child_id,
 			lr.created_at,
 			lr.updated_at,
 			e_user.full_name AS employee_name,
@@ -304,6 +312,7 @@ export async function getLeaveRequests(
 		status: row.status,
 		reason: row.reason ?? null,
 		approvedBy: row.approved_by ?? null,
+		childId: row.child_id ?? null,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		employeeName: row.employee_name,
@@ -325,6 +334,11 @@ export async function createLeaveRequest(
 	context: RemoteContext
 ): Promise<LeaveRequest> {
 	const { employeeId, organizationId, leaveType, startDate, endDate, reason } = params;
+
+	if (!isLeaveType(leaveType)) {
+		throw new Error('Érvénytelen szabadságtípus.');
+	}
+	const childId = CHILD_LEAVE_TYPES.has(leaveType) ? (params.childId ?? null) : null;
 
 	if (!organizationId || organizationId <= 0) {
 		throw new Error('Érvénytelen szervezet azonosító');
@@ -386,12 +400,27 @@ export async function createLeaveRequest(
 		}
 	}
 
+	// Apasági és szülői szabadság: határidő és keret a gyerek szerint
+	if (leaveType === 'paternity' || leaveType === 'parental') {
+		await validateChildLeave(context, {
+			employeeId,
+			childId,
+			leaveType,
+			startDate,
+			endDate,
+			days,
+			countPending: true
+		});
+	}
+
 	const insertResult = await context.db.query(
 		`INSERT INTO app__racona_work.leave_requests
-			(employee_id, organization_id, leave_type, start_date, end_date, days, status, reason, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, NOW(), NOW())
-		 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by, created_at, updated_at`,
-		[employeeId, organizationId, leaveType, startDate, endDate, days, reason ?? null]
+			(employee_id, organization_id, leave_type, start_date, end_date, days, status, reason, child_id,
+			 created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, NOW(), NOW())
+		 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by,
+		           child_id, created_at, updated_at`,
+		[employeeId, organizationId, leaveType, startDate, endDate, days, reason ?? null, childId]
 	);
 
 	const row = insertResult.rows[0];
@@ -405,6 +434,7 @@ export async function createLeaveRequest(
 		status: row.status,
 		reason: row.reason ?? null,
 		approvedBy: row.approved_by ?? null,
+		childId: row.child_id ?? null,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at
 	};
@@ -434,7 +464,7 @@ export async function approveLeaveRequest(
 ): Promise<LeaveRequest> {
 	const requestResult = await context.db.query(
 		`SELECT lr.id, lr.employee_id, lr.leave_type, lr.start_date, lr.end_date, lr.days, lr.status,
-		        e.organization_id
+		        lr.child_id, e.organization_id
 		 FROM app__racona_work.leave_requests lr
 		 JOIN app__racona_work.employees e ON e.id = lr.employee_id
 		 WHERE lr.id = $1`,
@@ -491,11 +521,25 @@ export async function approveLeaveRequest(
 		}
 	}
 
+	// Apasági és szülői szabadság: a beadás óta jóváhagyott kérelmekkel együtt is beleférjen
+	if (req.leave_type === 'paternity' || req.leave_type === 'parental') {
+		await validateChildLeave(context, {
+			employeeId: req.employee_id,
+			childId: req.child_id,
+			leaveType: req.leave_type,
+			startDate: startDay,
+			endDate: endDay,
+			days,
+			countPending: false,
+			excludeRequestId: req.id
+		});
+	}
+
 	const updateResult = await context.db.query(
 		`UPDATE app__racona_work.leave_requests
 		 SET status = 'approved', days = $2, updated_at = NOW()
 		 WHERE id = $1
-		 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by, created_at, updated_at`,
+		 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by, child_id, created_at, updated_at`,
 		[params.id, days]
 	);
 
@@ -510,6 +554,11 @@ export async function approveLeaveRequest(
 		);
 	}
 
+	// A fizetés nélküli szabadság nem munkában töltött idő: csökkenti az éves keretet
+	if (req.leave_type === 'unpaid') {
+		await recalculateEmployeeBalances(context, req.employee_id);
+	}
+
 	const row = updateResult.rows[0];
 	const leaveRequest: LeaveRequest = {
 		id: row.id,
@@ -521,6 +570,7 @@ export async function approveLeaveRequest(
 		status: row.status,
 		reason: row.reason ?? null,
 		approvedBy: row.approved_by ?? null,
+		childId: row.child_id ?? null,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at
 	};
@@ -575,7 +625,7 @@ export async function rejectLeaveRequest(
 		`UPDATE app__racona_work.leave_requests
 		 SET status = 'rejected', updated_at = NOW()
 		 WHERE id = $1
-		 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by, created_at, updated_at`,
+		 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by, child_id, created_at, updated_at`,
 		[params.id]
 	);
 
@@ -590,6 +640,7 @@ export async function rejectLeaveRequest(
 		status: row.status,
 		reason: row.reason ?? null,
 		approvedBy: row.approved_by ?? null,
+		childId: row.child_id ?? null,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at
 	};
@@ -651,6 +702,10 @@ export async function deleteLeaveRequest(
 
 	await context.db.query(`DELETE FROM app__racona_work.leave_requests WHERE id = $1`, [params.id]);
 
+	if (req.status === 'approved' && req.leave_type === 'unpaid') {
+		await recalculateEmployeeBalances(context, req.employee_id);
+	}
+
 	await notifyLeaveRequestDecision(
 		context,
 		{
@@ -709,6 +764,11 @@ export async function setLeaveBalance(
 	await requireCapability(context, params.organizationId, 'leave.balance.manage');
 	const userId = await resolveUserId(context);
 
+	const existing = await context.db.query(
+		`SELECT ${BALANCE_COLUMNS} FROM app__racona_work.leave_balances WHERE employee_id = $1 AND year = $2`,
+		[params.employeeId, params.year]
+	);
+
 	const result = await context.db.query(
 		`INSERT INTO app__racona_work.leave_balances
 			(employee_id, organization_id, year, total_days, used_days, updated_by, updated_at)
@@ -727,5 +787,12 @@ export async function setLeaveBalance(
 		[params.employeeId, params.organizationId, params.year, params.totalDays, userId]
 	);
 
-	return mapBalanceRow(result.rows[0]);
+	const balance = mapBalanceRow(result.rows[0]);
+	await logBalanceChange(context.db, {
+		action: 'manual_set',
+		before: existing.rows.length > 0 ? mapBalanceRow(existing.rows[0]) : null,
+		after: balance,
+		actorUserId: userId
+	});
+	return balance;
 }

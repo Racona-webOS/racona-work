@@ -1,6 +1,6 @@
 # Szabadságkeret-számítás
 
-> Státusz: 1–2. fázis kész · Utolsó módosítás: 2026-09-10
+> Státusz: 1–3. fázis kész (a dolgozói adatbejelentés hátravan) · Utolsó módosítás: 2026-09-10
 
 A HR-es ma dolgozónként és évente kézzel írja be a szabadságkeretet (`leave_balances.total_days`). A cél, hogy a rendszer a dolgozó adataiból (születési dátum, gyerekek, belépés/kilépés, egyéb jogosultságok) a Munka törvénykönyve szerint **kiszámolja a javasolt keretet**, amit a HR-es indoklással korrigálhat.
 
@@ -40,7 +40,7 @@ Az életkor és a gyerek kora **az adott naptári évben betöltött kor** szeri
 
 **Eseti szabadságok.** Ezek nem az éves keret részei, csak a 3. fázisban foglalkozunk velük:
 
-- apasági szabadság: 10 munkanap, ikreknél 12;
+- apasági szabadság: 10 munkanap, ikreknél sem több; a születést követő negyedik hónap végéig, legfeljebb két részletben, nem arányosítjuk (Mt. 118. § (4));
 - szülői szabadság: 44 munkanap, a gyerek 3 éves koráig;
 - betegszabadság: évi 15 munkanap (126. §).
 
@@ -415,13 +415,39 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
 
 **Nyitott (későbbre):** az áthozott napokat a törvény szerint jellemzően a következő év március 31-ig kell kiadni. Ezt a határidőt és a „először az áthozottból fogy” sorrendet a rendszer most nem követi.
 
-### 3. fázis – bővítések
+### 3. fázis – bővítések ✅ (a dolgozói adatbejelentés kivételével)
 
-- [ ] Munkában töltött időnek nem számító időszakok levonása az arányosításnál, pl. a gyermekgondozási fizetés nélküli szabadság első 6 hónapján túli rész, igazolatlan távollét.
-- [ ] Betegszabadság-keret: évi 15 nap, ugyanazzal a motorral, arányosítva.
-- [ ] Apasági és szülői szabadság felajánlása új gyerek felvételekor. Ehhez előbb szabadságtípus-modell kell, mert most beégetett lista van: `annual | sick | unpaid | other`.
-- [ ] A dolgozó bejelentheti az adatait, a HR jóváhagyja.
-- [ ] Változásnapló a keretekről: ki, mikor, mit módosított.
+**Döntések**
+
+| # | Kérdés | Döntés |
+|---|---|---|
+| D8 | A jóváhagyott fizetés nélküli kérelmek csökkentsék-e a keretet? | **Igen, maguktól.** Jóváhagyáskor és törléskor a nyitott keretek újraszámolódnak. |
+| D9 | Mi legyen, ha a betegszabadság túllépi a keretet? | **Csak jelzés.** A 15 napon felüli rész táppénzes keresőképtelenség; a kérelmet nem akadályozza. |
+| D10 | Kinek jár apasági szabadság? | **A HR jelöli a gyereknél** (apa vagy örökbefogadó), mert a nemet nem tároljuk. |
+
+**Megvalósítás** — `migrations/009_leave_absences_types_history.sql`
+
+- [x] **Szabadságtípusok egy helyen:** `server/leave-types.ts` (`annual | sick | paternity | parental | unpaid | other`). A szerver elutasítja az ismeretlen típust; az értesítések, a kérelem-űrlap és az irányítópult ugyanezt a listát használja.
+- [x] **Nem munkában töltött idő (Mt. 115. §):**
+  - új tábla: `employee_absence_periods` (`unpaid_leave | childcare_unpaid_leave | unexcused_absence | other`); az egyébhez kötelező a megjegyzés;
+  - a jóváhagyott `unpaid` kérelmek maguktól beszámítanak (`unpaid_request`);
+  - a számítás a munkaviszony-időszakból vonja le őket; az átfedő időszakok egyszer számítanak;
+  - gyermekgondozási fizetés nélküli szabadságnál az első 6 hónap még munkában töltött idő;
+  - a szabálykészlet `hu-mt@2`; a régi pillanatképekben nincs `nonCountingDays` (= 0);
+  - a bontásban: „Arányosítás (306/365 nap munkaviszony, ebből 31 nap nem munkában töltött)”.
+- [x] **Betegszabadság (Mt. 126. §):** évi 15 munkanap, év közbeni belépésnél vagy kilépésnél arányosan. Nem tároljuk, a kérelmekből számoljuk (az év a kérelem kezdő dátuma szerint). A kérelem-űrlap jelzi, hány nap lépné túl.
+- [x] **Apasági szabadság (Mt. 118. § (4)):** 10 munkanap gyerekenként, a születést követő negyedik hónap végéig, legfeljebb két részletben. Ellenőrzés beadáskor (a függő kérelmekkel együtt) és jóváhagyáskor.
+- [x] **Szülői szabadság (Mt. 128/A. §):** 44 munkanap gyerekenként, a harmadik születésnap előtti napig, egy év munkaviszony után.
+- [x] A gyerekhez kötött kérelem hivatkozik a gyerekre (`leave_requests.child_id`); a kérelem-űrlapon gyerekválasztó a maradék napokkal és a határidővel.
+- [x] **Egyéb keretek kártya** (`OtherAllowances.svelte`) az adatlapon és a saját irányítópulton; `getLeaveAllowances` — saját, `leave.balance.manage` vagy `leave.approve` joggal.
+- [x] **Változásnapló** (`leave_balance_history`, `server/leave-history.ts`): létrehozás, tömeges létrehozás, újraszámolás (ha változott), korrekció, számítás alkalmazása, kézi beállítás — előtte és utána állapottal, a végrehajtóval. A keret-kártyán „Előzmények” ablak; csak `leave.balance.manage` joggal.
+- [x] 55 teszt (új: távollétek, 6 hónapos szabály, betegszabadság, határidők).
+
+**Hátravan**
+
+- [ ] A dolgozó bejelentheti az adatait (pl. új gyerek), a HR jóváhagyja.
+- [ ] Az áthozott napok március 31-i határideje és a „először az áthozottból fogy” sorrend (2. fázisból).
+- [ ] Örökbefogadásnál az apasági határidő az örökbefogadást engedélyező határozattól számít; most a születési dátumtól számolunk.
 
 ## 12. Szakmai ellenőrzést igényel
 
@@ -431,6 +457,9 @@ Ezeket bérszámfejtővel vagy munkajogásszal kell átnézetni, mielőtt élesb
 - Év közben keletkező egészségkárosodás: az 1. fázisban a teljes 5 nap jár, ha az érvényesség átfed az évvel. A HR korrigálhat.
 - Kit tekintünk gyereknek (vér szerinti, örökbe fogadott, nevelt, mostoha, közös háztartás)? Ezt a HR dönti el, a rendszer csak rögzít.
 - Részmunkaidő: tudomásunk szerint a szabadság napokban nem csökken, ezért a motor nem kezeli.
+- Szülői szabadság: gyerekenként 44 napként kezeljük. Ellenőrizendő, hogy a törvény gyerekenként vagy összesen adja-e.
+- Betegszabadság arányosítása: ugyanazzal a kerekítéssel számolunk, mint a szabadságnál (fél nap felfelé).
+- A távollétek naptári napokban csökkentik az arányosítás alapját (egy péntektől hétfőig tartó fizetés nélküli szabadság 4 nap).
 
 ## 13. Kapcsolódó meglévő hibák (külön feladatok)
 

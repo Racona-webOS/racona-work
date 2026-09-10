@@ -27,6 +27,8 @@
   import type { OrganizationStore } from "../stores/organizationStore.svelte.js";
   import AccessDenied from "./AccessDenied.svelte";
   import EntitlementBreakdown from "./leave-entitlement/EntitlementBreakdown.svelte";
+  import OtherAllowances from "./leave-entitlement/OtherAllowances.svelte";
+  import { LEAVE_TYPES } from "../../server/leave-types.js";
 
   let { pluginId = "racona-work" }: { pluginId?: string } = $props();
 
@@ -290,13 +292,9 @@
   }
 
   function leaveTypeLabel(type: string): string {
-    const map: Record<string, string> = {
-      annual: t("leaveRequests.type.annual"),
-      sick: t("leaveRequests.type.sick"),
-      unpaid: t("leaveRequests.type.unpaid"),
-      other: t("leaveRequests.type.other"),
-    };
-    return map[type] ?? type;
+    return (LEAVE_TYPES as readonly string[]).includes(type)
+      ? t(`leaveRequests.type.${type}`)
+      : type;
   }
 
   function statusLabel(status: string): string {
@@ -491,6 +489,13 @@
             <p class="empty-state">{t("dashboard.self.noBalance")}</p>
           {/if}
         </div>
+
+        <OtherAllowances
+          {pluginId}
+          employeeId={myEmployee.id}
+          year={thisYear}
+          accent={false}
+        />
 
         <div class="recent-section">
           <h3>{t("dashboard.self.myRequests")}</h3>

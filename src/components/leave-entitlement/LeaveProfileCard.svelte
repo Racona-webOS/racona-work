@@ -8,6 +8,8 @@
 -->
 <script lang="ts">
 	import type {
+		EmployeeAbsence,
+		EmployeeAbsenceKind,
 		EmployeeChild,
 		ExtraLeave,
 		ExtraLeaveKind,
@@ -32,6 +34,12 @@
 
 	const thisYear = new Date().getFullYear();
 	const EXTRA_KINDS: ExtraLeaveKind[] = ['health_impaired', 'underground_radiation', 'custom'];
+	const ABSENCE_KINDS: EmployeeAbsenceKind[] = [
+		'unpaid_leave',
+		'childcare_unpaid_leave',
+		'unexcused_absence',
+		'other'
+	];
 
 	let profile = $state<LeaveProfile | null>(null);
 	let loading = $state(false);
@@ -117,7 +125,13 @@
 	}
 
 	// --- Gyerekek ---
-	type ChildEdit = { id?: number; label: string; birthDate: string; isDisabled: boolean };
+	type ChildEdit = {
+		id?: number;
+		label: string;
+		birthDate: string;
+		isDisabled: boolean;
+		paternityEligible: boolean;
+	};
 	let childEdit = $state<ChildEdit | null>(null);
 	let childSaving = $state(false);
 
@@ -227,6 +241,61 @@
 		}
 	}
 
+	// --- Nem munkában töltött időszakok ---
+	type AbsenceEdit = {
+		id?: number;
+		kind: EmployeeAbsenceKind;
+		startDate: string;
+		endDate: string;
+		note: string;
+	};
+	let absenceEdit = $state<AbsenceEdit | null>(null);
+	let absenceSaving = $state(false);
+
+	function startEditAbsence(absence: EmployeeAbsence) {
+		absenceEdit = {
+			id: absence.id,
+			kind: absence.kind,
+			startDate: absence.startDate,
+			endDate: absence.endDate,
+			note: absence.note ?? ''
+		};
+	}
+
+	async function saveAbsence() {
+		if (!absenceEdit) return;
+		if (!absenceEdit.startDate || !absenceEdit.endDate) {
+			sdk?.ui?.toast(t('form.required'), 'warning');
+			return;
+		}
+		absenceSaving = true;
+		try {
+			const r: { absence: EmployeeAbsence; recalculated: RecalculatedBalance[] } = await sdk.remote.call(
+				'saveAbsencePeriod',
+				{ employeeId, ...absenceEdit }
+			);
+			absenceEdit = null;
+			await load();
+			afterChange(r.recalculated);
+		} catch (err) {
+			sdk?.ui?.toast(errorText(err), 'error');
+		} finally {
+			absenceSaving = false;
+		}
+	}
+
+	async function deleteAbsence(absence: EmployeeAbsence) {
+		try {
+			const r: { recalculated: RecalculatedBalance[] } = await sdk.remote.call('deleteAbsencePeriod', {
+				id: absence.id
+			});
+			await load();
+			afterChange(r.recalculated);
+		} catch (err) {
+			sdk?.ui?.toast(errorText(err), 'error');
+		}
+	}
+
 	async function deleteExtra(extra: ExtraLeave) {
 		try {
 			const r: { recalculated: RecalculatedBalance[] } = await sdk.remote.call('deleteExtraLeave', {
@@ -305,7 +374,8 @@
 				{#if !childEdit}
 					<button
 						class="btn-ghost"
-						onclick={() => (childEdit = { label: '', birthDate: '', isDisabled: false })}
+						onclick={() =>
+							(childEdit = { label: '', birthDate: '', isDisabled: false, paternityEligible: false })}
 					>
 						+ {t('leaveEntitlement.children.add')}
 					</button>
@@ -327,6 +397,9 @@
 								{#if child.isDisabled}
 									<span class="badge badge-info">{t('leaveEntitlement.children.disabledBadge')}</span>
 								{/if}
+								{#if child.paternityEligible}
+									<span class="badge badge-info">{t('leaveEntitlement.children.paternityBadge')}</span>
+								{/if}
 								<span class="badge {status === 'counts' ? 'badge-ok' : 'badge-muted'}">
 									{t(`leaveEntitlement.children.${status}`)}
 								</span>
@@ -339,7 +412,8 @@
 											id: child.id,
 											label: child.label ?? '',
 											birthDate: child.birthDate,
-											isDisabled: child.isDisabled
+											isDisabled: child.isDisabled,
+											paternityEligible: child.paternityEligible
 										})}
 								>
 									{t('employeeDetail.editDetail')}
@@ -369,6 +443,13 @@
 							onCheckedChange={(v) => childEdit && (childEdit.isDisabled = v)}
 						/>
 						<span>{t('leaveEntitlement.children.isDisabled')}</span>
+					</label>
+					<label class="checkbox-row">
+						<Checkbox
+							checked={childEdit.paternityEligible}
+							onCheckedChange={(v) => childEdit && (childEdit.paternityEligible = v)}
+						/>
+						<span>{t('leaveEntitlement.children.paternityEligible')}</span>
 					</label>
 					<div class="form-actions">
 						<button class="btn-secondary" onclick={() => (childEdit = null)}>{t('form.cancel')}</button>
@@ -457,6 +538,81 @@
 						<button class="btn-secondary" onclick={() => (extraEdit = null)}>{t('form.cancel')}</button>
 						<button class="btn-primary" onclick={saveExtra} disabled={extraSaving}>
 							{extraSaving ? t('loading') : t('form.save')}
+						</button>
+					</div>
+				</div>
+			{/if}
+		</div>
+
+		<!-- Nem munkában töltött időszakok -->
+		<div class="section">
+			<div class="section-head">
+				<h4>{t('leaveEntitlement.absences.title')}</h4>
+				{#if !absenceEdit}
+					<button
+						class="btn-ghost"
+						onclick={() => (absenceEdit = { kind: 'unpaid_leave', startDate: '', endDate: '', note: '' })}
+					>
+						+ {t('leaveEntitlement.absences.add')}
+					</button>
+				{/if}
+			</div>
+			<p class="field-hint">{t('leaveEntitlement.absences.hint')}</p>
+
+			{#if profile.absences.length > 0}
+				<ul class="item-list">
+					{#each profile.absences as absence (absence.id)}
+						<li class="item-row">
+							<span class="item-main">
+								<span class="item-title">{t(`leaveEntitlement.absences.kind.${absence.kind}`)}</span>
+								<span class="item-meta">
+									{formatDay(absence.startDate)} – {formatDay(absence.endDate)}{absence.note ? ` · ${absence.note}` : ''}
+								</span>
+							</span>
+							<span class="item-actions">
+								<button class="btn-ghost-sm" onclick={() => startEditAbsence(absence)}>
+									{t('employeeDetail.editDetail')}
+								</button>
+								<button class="btn-ghost-sm danger" onclick={() => deleteAbsence(absence)}>
+									{t('employeeDetail.deleteDetail')}
+								</button>
+							</span>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+
+			{#if absenceEdit}
+				<div class="edit-form">
+					<label>
+						<span>{t('leaveEntitlement.absences.kindLabel')}</span>
+						<select class="input" bind:value={absenceEdit.kind}>
+							{#each ABSENCE_KINDS as kind (kind)}
+								<option value={kind}>{t(`leaveEntitlement.absences.kind.${kind}`)}</option>
+							{/each}
+						</select>
+					</label>
+					{#if absenceEdit.kind === 'childcare_unpaid_leave'}
+						<p class="field-hint">{t('leaveEntitlement.absences.childcareHint')}</p>
+					{/if}
+					<div class="date-pair">
+						<label>
+							<span>{t('leaveEntitlement.absences.startDate')}</span>
+							<input class="input" type="date" bind:value={absenceEdit.startDate} />
+						</label>
+						<label>
+							<span>{t('leaveEntitlement.absences.endDate')}</span>
+							<input class="input" type="date" bind:value={absenceEdit.endDate} />
+						</label>
+					</div>
+					<label>
+						<span>{t('leaveEntitlement.absences.note')}</span>
+						<input class="input" type="text" bind:value={absenceEdit.note} />
+					</label>
+					<div class="form-actions">
+						<button class="btn-secondary" onclick={() => (absenceEdit = null)}>{t('form.cancel')}</button>
+						<button class="btn-primary" onclick={saveAbsence} disabled={absenceSaving}>
+							{absenceSaving ? t('loading') : t('form.save')}
 						</button>
 					</div>
 				</div>

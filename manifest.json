@@ -8,7 +8,7 @@
 		"hu": "Céges nyilvántartó alkalmazás (dolgozó kezelése, projektek, szabadságok).",
 		"en": "Company records app (employee management, projects, leave requests)."
 	},
-	"version": "0.8.27",
+	"version": "0.8.28",
 	"author": "Racona Developer <szigeti.developer@gmail.com>",
 	"entry": "dist/index.iife.js",
 	"icon": "icon.webp",

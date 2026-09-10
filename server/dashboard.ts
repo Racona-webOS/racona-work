@@ -110,6 +110,7 @@ export async function getDashboardStats(
 		status: row.status,
 		reason: row.reason,
 		approvedBy: row.approved_by,
+		childId: row.child_id ?? null,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		employeeName: row.employee_name,

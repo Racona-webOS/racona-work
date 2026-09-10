@@ -10,7 +10,7 @@
 
 /** A szabálykészlet azonosítója. A keretek pillanatképe ezt is tárolja, hogy egy
  *  későbbi szabályváltozásnál kiderüljön, melyik számítás melyik szerint készült. */
-export const RULE_SET = 'hu-mt@1';
+export const RULE_SET = 'hu-mt@2';
 
 /** Alapszabadság — Mt. 116. § */
 const BASE_DAYS = 20;
@@ -43,6 +43,8 @@ const CHILD_LAST_AGE = 16;
 const YOUTH_LAST_AGE = 18;
 const YOUTH_DAYS = 5;
 const DISABLED_CHILD_DAYS = 2;
+/** A gyermekgondozási fizetés nélküli szabadságból ennyi hónap még munkában töltött idő. */
+const CHILDCARE_COUNTED_MONTHS = 6;
 
 /** A törvény által rögzített napok az egyéb pótszabadságoknál (Mt. 119–120. §). */
 export const STATUTORY_EXTRA_DAYS = 5;
@@ -63,6 +65,23 @@ export interface LeavePolicy {
 	extraDaysLabel?: string | null;
 }
 
+/**
+ * Nem munkában töltött időszak (Mt. 115. §). Az `unpaid_request` a jóváhagyott
+ * fizetés nélküli szabadságkérelmekből jön, a többit a HR rögzíti.
+ */
+export type AbsenceKind =
+	| 'unpaid_leave'
+	| 'childcare_unpaid_leave'
+	| 'unexcused_absence'
+	| 'other'
+	| 'unpaid_request';
+
+export interface EntitlementAbsence {
+	kind: AbsenceKind;
+	from: string;
+	to: string;
+}
+
 export interface EntitlementInput {
 	year: number;
 	birthDate: string | null;
@@ -71,6 +90,8 @@ export interface EntitlementInput {
 	children: { birthDate: string; isDisabled: boolean }[];
 	extras: EntitlementExtra[];
 	policy: LeavePolicy;
+	/** Hiányzó mező: nincs levonandó időszak (a hu-mt@1 pillanatképekben nincs). */
+	absences?: EntitlementAbsence[];
 }
 
 export type EntitlementItemCode =
@@ -113,6 +134,11 @@ export interface EntitlementResult {
 	daysInYear: number;
 	/** A munkaviszonyban töltött naptári napok a tárgyévben. */
 	employedDays: number;
+	/**
+	 * Ebből a nem munkában töltött napok (Mt. 115. §). Az arányosítás alapja
+	 * employedDays − nonCountingDays. A hu-mt@1 pillanatképekben nincs (= 0).
+	 */
+	nonCountingDays?: number;
 	/** Arányosított, kerekített végösszeg. */
 	totalDays: number;
 	warnings: EntitlementWarning[];
@@ -241,31 +267,21 @@ export function calculateAnnualLeave(input: EntitlementInput): EntitlementResult
 	const fullYearDays = items.reduce((sum, item) => sum + item.days, 0);
 	const yearDays = daysInYear(year);
 
-	// Arányosítás — Mt. 121. §
-	let employedDays = yearDays;
+	// Arányosítás — Mt. 121. §, a nem munkában töltött idő nélkül (Mt. 115. §)
 	if (!input.hireDate) {
 		warnings.push({ code: 'missing_hire_date' });
 	}
-	const yearStart = Date.UTC(year, 0, 1);
-	const yearEnd = Date.UTC(year, 11, 31);
-	const hireMs = input.hireDate ? dayMs(input.hireDate) : null;
-	const endMs = input.employmentEndDate ? dayMs(input.employmentEndDate) : null;
-
-	if (hireMs !== null && endMs !== null && endMs < hireMs) {
+	const window = employmentWindow(year, input.hireDate, input.employmentEndDate);
+	if (window.endBeforeHire) {
 		warnings.push({ code: 'end_before_hire' });
-		employedDays = 0;
-	} else {
-		const from = Math.max(hireMs ?? yearStart, yearStart);
-		const to = Math.min(endMs ?? yearEnd, yearEnd);
-		employedDays = to < from ? 0 : (to - from) / DAY_MS + 1;
-	}
-
-	if (employedDays === 0 && !warnings.some((w) => w.code === 'end_before_hire')) {
+	} else if (window.days === 0) {
 		warnings.push({ code: 'not_employed_in_year', params: { year } });
 	}
 
+	const nonCountingDays = window.days > 0 ? countNonCountingDays(input.absences ?? [], window) : 0;
+	const countedDays = window.days - nonCountingDays;
 	const totalDays =
-		employedDays === yearDays ? fullYearDays : prorate(fullYearDays, employedDays, yearDays);
+		countedDays === yearDays ? fullYearDays : prorate(fullYearDays, countedDays, yearDays);
 
 	return {
 		ruleSet: RULE_SET,
@@ -273,8 +289,151 @@ export function calculateAnnualLeave(input: EntitlementInput): EntitlementResult
 		items,
 		fullYearDays,
 		daysInYear: yearDays,
-		employedDays,
+		employedDays: window.days,
+		nonCountingDays,
 		totalDays,
 		warnings
 	};
+}
+
+// --- Munkaviszony és távollétek ---------------------------------------------
+
+interface EmploymentWindow {
+	/** UTC ms, a tárgyévre vágva. Csak days > 0 esetén értelmes. */
+	fromMs: number;
+	toMs: number;
+	days: number;
+	endBeforeHire: boolean;
+}
+
+/** A munkaviszony a tárgyévben: [max(belépés, jan. 1.), min(kilépés, dec. 31.)]. */
+function employmentWindow(
+	year: number,
+	hireDate: string | null,
+	employmentEndDate: string | null
+): EmploymentWindow {
+	const yearStart = Date.UTC(year, 0, 1);
+	const yearEnd = Date.UTC(year, 11, 31);
+	const hireMs = hireDate ? dayMs(hireDate) : null;
+	const endMs = employmentEndDate ? dayMs(employmentEndDate) : null;
+
+	if (hireMs !== null && endMs !== null && endMs < hireMs) {
+		return { fromMs: yearStart, toMs: yearStart, days: 0, endBeforeHire: true };
+	}
+	const fromMs = Math.max(hireMs ?? yearStart, yearStart);
+	const toMs = Math.min(endMs ?? yearEnd, yearEnd);
+	const days = toMs < fromMs ? 0 : (toMs - fromMs) / DAY_MS + 1;
+	return { fromMs, toMs, days, endBeforeHire: false };
+}
+
+/** YYYY-MM-DD + n hónap, a hónap végére igazítva (jan. 31. + 1 hónap = febr. 28/29.). */
+function addMonths(isoDay: string, months: number): number {
+	const [y, m, d] = isoDay.slice(0, 10).split('-').map(Number);
+	const lastDay = new Date(Date.UTC(y, m - 1 + months + 1, 0)).getUTCDate();
+	return Date.UTC(y, m - 1 + months, Math.min(d, lastDay));
+}
+
+/**
+ * Egy távollét nem munkában töltött része [ms, ms] intervallumként, vagy null.
+ * A gyermek gondozása céljából kapott fizetés nélküli szabadság első hat
+ * hónapja munkában töltött időnek számít (Mt. 115. § (2)), csak az utána lévő
+ * rész nem.
+ */
+function nonCountingInterval(absence: EntitlementAbsence): [number, number] | null {
+	const from = dayMs(absence.from);
+	const to = dayMs(absence.to);
+	if (to < from) return null;
+	if (absence.kind === 'childcare_unpaid_leave') {
+		const after = addMonths(absence.from, CHILDCARE_COUNTED_MONTHS);
+		return after <= to ? [after, to] : null;
+	}
+	return [from, to];
+}
+
+/**
+ * A munkaviszony-időszakba eső nem munkában töltött napok száma. Az átfedő
+ * időszakok (pl. a HR által rögzített és egy jóváhagyott kérelem) csak egyszer
+ * számítanak.
+ */
+function countNonCountingDays(absences: EntitlementAbsence[], window: EmploymentWindow): number {
+	const intervals = absences
+		.map(nonCountingInterval)
+		.filter((i): i is [number, number] => i !== null)
+		.map(([from, to]) => [Math.max(from, window.fromMs), Math.min(to, window.toMs)] as [number, number])
+		.filter(([from, to]) => from <= to)
+		.sort((a, b) => a[0] - b[0]);
+
+	let days = 0;
+	let current: [number, number] | null = null;
+	for (const interval of intervals) {
+		if (current && interval[0] <= current[1] + DAY_MS) {
+			current[1] = Math.max(current[1], interval[1]);
+		} else {
+			if (current) days += (current[1] - current[0]) / DAY_MS + 1;
+			current = [interval[0], interval[1]];
+		}
+	}
+	if (current) days += (current[1] - current[0]) / DAY_MS + 1;
+	return days;
+}
+
+// --- Betegszabadság, apasági és szülői szabadság -----------------------------
+
+/** Betegszabadság: naptári évenként 15 munkanap — Mt. 126. § */
+export const SICK_LEAVE_DAYS = 15;
+/** Apasági szabadság: 10 munkanap, ikreknél sem több — Mt. 118. § (4) */
+export const PATERNITY_DAYS = 10;
+/** Az apasági szabadságot legfeljebb két részletben kell kiadni. */
+export const PATERNITY_MAX_PARTS = 2;
+/** Szülői szabadság: 44 munkanap a gyermek hároméves koráig — Mt. 128/A. § */
+export const PARENTAL_DAYS = 44;
+
+export interface SickLeaveAllowance {
+	year: number;
+	fullYearDays: number;
+	daysInYear: number;
+	employedDays: number;
+	/** Arányosított keret (év közbeni belépésnél vagy kilépésnél). */
+	totalDays: number;
+}
+
+/**
+ * A betegszabadság éves kerete. Év közben kezdődő munkaviszonynál arányos
+ * része jár; a kerekítés ugyanaz, mint a szabadságnál.
+ */
+export function calculateSickLeave(input: {
+	year: number;
+	hireDate: string | null;
+	employmentEndDate: string | null;
+}): SickLeaveAllowance {
+	const yearDays = daysInYear(input.year);
+	const window = employmentWindow(input.year, input.hireDate, input.employmentEndDate);
+	return {
+		year: input.year,
+		fullYearDays: SICK_LEAVE_DAYS,
+		daysInYear: yearDays,
+		employedDays: window.days,
+		totalDays:
+			window.days === yearDays ? SICK_LEAVE_DAYS : prorate(SICK_LEAVE_DAYS, window.days, yearDays)
+	};
+}
+
+function isoFromMs(ms: number): string {
+	return new Date(ms).toISOString().slice(0, 10);
+}
+
+/** Az apasági szabadság utolsó napja: a születést követő negyedik hónap vége. */
+export function paternityDeadline(birthDate: string): string {
+	const [y, m] = birthDate.slice(0, 10).split('-').map(Number);
+	return isoFromMs(Date.UTC(y, m - 1 + 5, 0));
+}
+
+/** A szülői szabadság utolsó napja: a gyermek harmadik születésnapja előtti nap. */
+export function parentalDeadline(birthDate: string): string {
+	return isoFromMs(addMonths(birthDate, 36) - DAY_MS);
+}
+
+/** Szülői szabadság attól a naptól jár, amikor a munkaviszony egy éve fennáll. */
+export function parentalEligibleFrom(hireDate: string): string {
+	return isoFromMs(addMonths(hireDate, 12));
 }

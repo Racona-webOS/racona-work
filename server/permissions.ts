@@ -203,7 +203,7 @@ export async function requireCapability(
 }
 
 /**
- * Saját dolgozói rekord, vagy a megadott képesség.
+ * Saját dolgozói rekord, vagy a megadott képességek valamelyike.
  * A dolgozó a saját adatait mindig láthatja, másét csak a képességgel.
  *
  * @returns A dolgozó szervezetének azonosítója.
@@ -211,7 +211,7 @@ export async function requireCapability(
 export async function requireSelfOrCapability(
 	context: RemoteContext,
 	employeeId: number,
-	capability: Capability
+	capability: Capability | Capability[]
 ): Promise<number> {
 	const r = await context.db.query(
 		`SELECT organization_id, user_id FROM app__racona_work.employees WHERE id = $1`,
@@ -225,7 +225,9 @@ export async function requireSelfOrCapability(
 		user_id: number;
 	};
 
-	if (await hasCapability(context, orgId, capability)) return orgId;
+	for (const cap of Array.isArray(capability) ? capability : [capability]) {
+		if (await hasCapability(context, orgId, cap)) return orgId;
+	}
 
 	const callerUserId = await resolveUserId(context);
 	if (ownerId !== callerUserId) {

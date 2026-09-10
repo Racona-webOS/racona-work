@@ -15,8 +15,12 @@
 		LeaveRequestRow,
 		LeaveBalance,
 		EmployeeRow,
-		PaginatedResult
+		PaginatedResult,
+		LeaveAllowances,
+		ChildLeaveStatus
 	} from '../../server/functions.js';
+	import { CHILD_LEAVE_TYPES, LEAVE_TYPES } from '../../server/leave-types.js';
+	import type { LeaveType } from '../../server/leave-types.js';
 	import { getOrganizationStore, createOrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
@@ -73,9 +77,61 @@
 	let employees = $state<EmployeeRow[]>([]);
 	let employeesLoading = $state(false);
 	let newReqEmployeeId = $state<number | null>(null);
-	let newReqType = $state('annual');
+	let newReqType = $state<LeaveType>('annual');
 	let newReqStartDate = $state('');
 	let newReqEndDate = $state('');
+	let newReqChildId = $state<number | null>(null);
+
+	// Betegszabadság-, apasági és szülői keret a kiválasztott dolgozóra — csak
+	// tájékoztat és a gyerekválasztót tölti; a szabályokat a szerver ellenőrzi.
+	let allowances = $state<LeaveAllowances | null>(null);
+	const allowanceYear = $derived(
+		newReqStartDate ? Number(newReqStartDate.slice(0, 4)) : new Date().getFullYear()
+	);
+	const childOptions = $derived<ChildLeaveStatus[]>(
+		newReqType === 'paternity'
+			? (allowances?.paternity.filter((c) => c.active) ?? [])
+			: newReqType === 'parental'
+				? (allowances?.parental ?? [])
+				: []
+	);
+	const selectedChild = $derived(childOptions.find((c) => c.childId === newReqChildId) ?? null);
+	/** Ennyi nap lépné túl a betegszabadság keretét — az már táppénzes keresőképtelenség. */
+	const sickOverflow = $derived(
+		allowances && previewDays !== null
+			? Math.max(
+					0,
+					allowances.sick.usedDays + allowances.sick.pendingDays + previewDays - allowances.sick.totalDays
+				)
+			: 0
+	);
+
+	$effect(() => {
+		const employeeId = newReqEmployeeId;
+		const type = newReqType;
+		const year = allowanceYear;
+		if (!showNewRequestModal || !employeeId || (type !== 'sick' && !CHILD_LEAVE_TYPES.has(type))) {
+			allowances = null;
+			return;
+		}
+		sdk?.remote
+			?.call('getLeaveAllowances', { employeeId, year })
+			.then((result: LeaveAllowances) => {
+				if (newReqEmployeeId === employeeId && allowanceYear === year) allowances = result;
+			})
+			.catch(() => (allowances = null));
+	});
+
+	// Típus- vagy dolgozóváltáskor a gyerekválasztás nem örökölhető
+	$effect(() => {
+		newReqType;
+		newReqEmployeeId;
+		newReqChildId = null;
+	});
+
+	function childLabel(child: ChildLeaveStatus): string {
+		return child.label || formatDate(child.birthDate);
+	}
 
 	// Élő munkanap-számláló: a szerver számol, hogy a kiírt és a ténylegesen
 	// levont napok ne csúszhassanak el (ugyanaz a munkanaptár, ugyanaz a logika).
@@ -208,6 +264,7 @@
 	async function openNewRequestModal() {
 		showNewRequestModal = true;
 		newReqType = 'annual';
+		newReqChildId = null;
 		newReqStartDate = '';
 		newReqEndDate = '';
 		newReqReason = '';
@@ -289,6 +346,10 @@
 			newReqError = t('form.required');
 			return;
 		}
+		if (CHILD_LEAVE_TYPES.has(newReqType) && !newReqChildId) {
+			newReqError = t('leaveRequests.form.childRequired');
+			return;
+		}
 		if (!currentOrganization) {
 			newReqError = 'Nincs kiválasztott szervezet';
 			return;
@@ -303,7 +364,8 @@
 				leaveType: newReqType,
 				startDate: newReqStartDate,
 				endDate: newReqEndDate,
-				reason: newReqReason || undefined
+				reason: newReqReason || undefined,
+				childId: CHILD_LEAVE_TYPES.has(newReqType) ? newReqChildId : undefined
 			});
 
 			sdk?.ui?.toast(t('leaveRequests.newRequest') + ' ✓', 'success');
@@ -390,13 +452,7 @@
 	}
 
 	function leaveTypeLabel(type: string): string {
-		const map: Record<string, string> = {
-			annual: t('leaveRequests.type.annual'),
-			sick: t('leaveRequests.type.sick'),
-			unpaid: t('leaveRequests.type.unpaid'),
-			other: t('leaveRequests.type.other')
-		};
-		return map[type] ?? type;
+		return (LEAVE_TYPES as readonly string[]).includes(type) ? t(`leaveRequests.type.${type}`) : type;
 	}
 
 	function statusLabel(status: string): string {
@@ -678,12 +734,41 @@
 			<label class="form-label">
 				{t('leaveRequests.form.type')} *
 				<select class="form-input" bind:value={newReqType}>
-					<option value="annual">{t('leaveRequests.type.annual')}</option>
-					<option value="sick">{t('leaveRequests.type.sick')}</option>
-					<option value="unpaid">{t('leaveRequests.type.unpaid')}</option>
-					<option value="other">{t('leaveRequests.type.other')}</option>
+					{#each LEAVE_TYPES as type (type)}
+						<option value={type}>{t(`leaveRequests.type.${type}`)}</option>
+					{/each}
 				</select>
 			</label>
+
+			{#if CHILD_LEAVE_TYPES.has(newReqType)}
+				<label class="form-label">
+					{t('leaveRequests.form.child')} *
+					{#if childOptions.length === 0}
+						<span class="form-hint">
+							{newReqType === 'paternity'
+								? t('leaveRequests.form.noPaternityChild')
+								: t('leaveRequests.form.noParentalChild')}
+						</span>
+					{:else}
+						<select class="form-input" bind:value={newReqChildId}>
+							<option value={null}>{t('leaveRequests.form.selectChild')}</option>
+							{#each childOptions as child (child.childId)}
+								<option value={child.childId}>
+									{childLabel(child)} — {t('leaveRequests.form.childRemaining', { days: child.remainingDays })}
+								</option>
+							{/each}
+						</select>
+					{/if}
+					{#if selectedChild}
+						<span class="form-hint">
+							{t('leaveRequests.form.childDeadline', { deadline: formatDate(selectedChild.deadline) })}
+							{#if selectedChild.eligibleFrom}
+								· {t('leaveRequests.form.parentalEligibleFrom', { date: formatDate(selectedChild.eligibleFrom) })}
+							{/if}
+						</span>
+					{/if}
+				</label>
+			{/if}
 
 			<div class="form-row">
 				<label class="form-label">
@@ -712,6 +797,19 @@
 						? t('leaveRequests.form.daysZero')
 						: `${t('leaveRequests.form.daysPrefix')} ${previewDays} ${t('leaveRequests.form.daysSuffix')}`}
 				</p>
+			{/if}
+
+			{#if newReqType === 'sick' && allowances}
+				<p class="form-hint">
+					{t('leaveRequests.form.sickStatus', {
+						year: allowances.sick.year,
+						used: allowances.sick.usedDays + allowances.sick.pendingDays,
+						total: allowances.sick.totalDays
+					})}
+				</p>
+				{#if sickOverflow > 0}
+					<p class="form-hint warn">{t('leaveRequests.form.sickOverflow', { days: sickOverflow })}</p>
+				{/if}
 			{/if}
 
 			<label class="form-label">
@@ -798,6 +896,19 @@
 		font-size: 0.875rem;
 		font-weight: 500;
 		color: var(--primary, #2563eb);
+	}
+
+	.form-hint {
+		display: block;
+		margin: 0;
+		font-size: 0.8rem;
+		font-weight: 400;
+		color: var(--color-muted-foreground, #64748b);
+	}
+
+	.form-hint.warn {
+		margin-top: 0.25rem;
+		color: #b45309;
 	}
 
 	.day-preview.is-loading {
