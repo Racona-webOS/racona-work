@@ -449,8 +449,8 @@
 
 	<!-- Új user hozzárendelése modal -->
 	{#if showAdd && selectedProject}
-		<div class="modal-overlay" onclick={() => (showAdd = false)} role="presentation">
-			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+		<div class="modal-overlay" onclick={(e) => e.target === e.currentTarget && (showAdd = false)} role="presentation">
+			<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
 				<div class="modal-header">
 					<h3>{t('projects.permissions.addUser')}</h3>
 					<button class="icon-btn" onclick={() => (showAdd = false)}>✕</button>

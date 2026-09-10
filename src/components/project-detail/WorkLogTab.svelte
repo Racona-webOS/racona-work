@@ -325,8 +325,8 @@
 
 <!-- Munkabejegyzés modal (új / szerkesztés) -->
 {#if showWorkForm}
-	<div class="modal-overlay" onclick={() => (showWorkForm = false)} role="presentation">
-		<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+	<div class="modal-overlay" onclick={(e) => e.target === e.currentTarget && (showWorkForm = false)} role="presentation">
+		<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
 			<div class="modal-header">
 				<h3>{workFormMode === 'edit' ? t('projects.detail.edit') : t('work.newEntry')}</h3>
 				<button class="icon-btn" onclick={() => (showWorkForm = false)}>✕</button>

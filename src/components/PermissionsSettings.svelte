@@ -560,10 +560,10 @@
 	{#if showCreate}
 		<div
 			class="modal-overlay"
-			onclick={() => (showCreate = false)}
+			onclick={(e) => e.target === e.currentTarget && (showCreate = false)}
 			role="presentation"
 		>
-			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+			<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
 				<div class="modal-header">
 					<h3>{t('permissions.roles.new')}</h3>
 					<button class="icon-btn" onclick={() => (showCreate = false)}>✕</button>
@@ -621,10 +621,10 @@
 	{#if showAddMember && selectedRole}
 		<div
 			class="modal-overlay"
-			onclick={() => (showAddMember = false)}
+			onclick={(e) => e.target === e.currentTarget && (showAddMember = false)}
 			role="presentation"
 		>
-			<div class="modal" onclick={(e) => e.stopPropagation()} role="dialog">
+			<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
 				<div class="modal-header">
 					<h3>{t('permissions.members.add')}</h3>
 					<button class="icon-btn" onclick={() => (showAddMember = false)}>✕</button>
