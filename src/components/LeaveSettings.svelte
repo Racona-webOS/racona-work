@@ -182,7 +182,6 @@
 								<Checkbox
 									checked={isSelected(emp.id)}
 									onCheckedChange={() => toggleNotifier(emp.id)}
-									class="checkbox"
 								/>
 								<div class="employee-avatar">
 									{#if emp.userImage}
@@ -273,8 +272,11 @@
 		padding: 0.25rem;
 	}
 
+	/* A shared.css globális `label { flex-direction: column }` szabályát
+	   felül kell írni, különben a sor elemei egymás alá csúsznak. */
 	.employee-item {
 		display: flex;
+		flex-direction: row;
 		align-items: center;
 		gap: 0.75rem;
 		padding: 0.625rem 0.75rem;
@@ -290,14 +292,6 @@
 
 	.employee-item.selected {
 		background: var(--color-primary-subtle, #e0e7ff);
-	}
-
-	.checkbox {
-		width: 1rem;
-		height: 1rem;
-		flex-shrink: 0;
-		accent-color: var(--color-primary, #3730a3);
-		cursor: pointer;
 	}
 
 	.employee-avatar {

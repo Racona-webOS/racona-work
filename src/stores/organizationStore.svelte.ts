@@ -24,9 +24,12 @@ export class OrganizationStore {
 
 	private sdk: any = null;
 	private pluginId: string = '';
+	private isRevalidating = false;
 
 	/**
-	 * Store inicializálása az SDK-val
+	 * Store inicializálása az SDK-val.
+	 * Újranyitáskor is meg kell hívni: a core minden megnyitáskor új SDK példányt
+	 * hoz létre, a régi (bezárt ablakhoz tartozó) példány UI handlerei már nem élnek.
 	 */
 	init(pluginId: string, sdk: any) {
 		this.pluginId = pluginId;
@@ -55,14 +58,76 @@ export class OrganizationStore {
 			return;
 		}
 		try {
-			const result = await this.sdk.remote.call('getMyCapabilities', { organizationId });
-			const list: string[] = Array.isArray(result?.capabilities) ? result.capabilities : [];
-			this.capabilities = new Set(list);
+			this.capabilities = await this.fetchCapabilities(organizationId);
 		} catch (err) {
 			console.warn('[OrganizationStore] Képességek lekérése sikertelen:', err);
 			this.capabilities = new Set();
 		}
 		this.publishCapabilities();
+	}
+
+	/** getMyCapabilities hívás; hiba esetén dob (a hívó dönti el, mi legyen). */
+	private async fetchCapabilities(organizationId: number): Promise<Set<string>> {
+		const result = await this.sdk.remote.call('getMyCapabilities', { organizationId });
+		const list: string[] = Array.isArray(result?.capabilities) ? result.capabilities : [];
+		return new Set(list);
+	}
+
+	/**
+	 * Csendes háttér-frissítés: újra lekéri az admin jelzőt, a szervezeteket és a
+	 * képességeket, és csak akkor ír a store-ba, ha valami ténylegesen változott.
+	 *
+	 * Miért kell: a store a window-on él, ezért az app bezárása/újranyitása után is
+	 * megmarad, így egy admin által közben kiosztott (vagy elvett) jogosultság csak
+	 * teljes oldal-újratöltés után látszott volna. Változáskor `organization-changed`
+	 * eseményt küld, erre minden komponens már most is újraszinkronizál.
+	 *
+	 * Nem állít isLoading-ot és nem toastol — hiba esetén a meglévő állapot marad.
+	 * @returns true, ha változás volt
+	 */
+	async revalidate(): Promise<boolean> {
+		if (!this.sdk?.remote || this.isLoading || this.isRevalidating) return false;
+		this.isRevalidating = true;
+		try {
+			let isAdmin = false;
+			try {
+				isAdmin = (await this.sdk.remote.call('isUserAdmin', {})) === true;
+			} catch {
+				// Ugyanaz a fallback, mint a loadOrganizations-ben
+			}
+			const orgs = (await this.sdk.remote.call('getUserOrganizations', {})) as Organization[];
+			const current =
+				orgs.find((o) => o.id === this.currentOrganization?.id) ?? orgs[0] ?? null;
+			const caps = current ? await this.fetchCapabilities(current.id) : new Set<string>();
+
+			const changed =
+				isAdmin !== this.isAdmin ||
+				current?.id !== this.currentOrganization?.id ||
+				!sameOrganizations(orgs, this.availableOrganizations) ||
+				!sameSet(caps, this.capabilities);
+			if (!changed) return false;
+
+			this.isAdmin = isAdmin;
+			this.availableOrganizations = orgs;
+			this.currentOrganization = current;
+			this.capabilities = caps;
+			if (current) this.saveLastOrganizationId(current.id);
+
+			this.publishCapabilities();
+			if (typeof window !== 'undefined') {
+				window.dispatchEvent(
+					new CustomEvent('organization-changed', {
+						detail: { organizationId: current?.id ?? null, organization: current }
+					})
+				);
+			}
+			return true;
+		} catch (err) {
+			console.warn('[OrganizationStore] Háttér-frissítés sikertelen:', err);
+			return false;
+		} finally {
+			this.isRevalidating = false;
+		}
 	}
 
 	/**
@@ -473,6 +538,18 @@ export class OrganizationStore {
 		// Egyébként az alapértelmezett üzenetet
 		return defaultMessage;
 	}
+}
+
+function sameSet(a: Set<string>, b: Set<string>): boolean {
+	if (a.size !== b.size) return false;
+	for (const v of a) if (!b.has(v)) return false;
+	return true;
+}
+
+/** Id és név alapján hasonlít (a váltó felirata a névből jön). */
+function sameOrganizations(a: Organization[], b: Organization[]): boolean {
+	if (a.length !== b.length) return false;
+	return a.every((org, i) => org.id === b[i].id && org.name === b[i].name);
 }
 
 // Singleton instance - window-on tárolva, hogy minden Web Component bundle ugyanazt lássa

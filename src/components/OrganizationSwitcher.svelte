@@ -48,6 +48,8 @@
 		if (sdk?.remote) {
 			try {
 				store = getOrganizationStore();
+				// Újranyitás: a core új SDK példányt hozott létre, a store az újat használja
+				store.init(pluginId, sdk);
 			} catch {
 				store = createOrganizationStore(pluginId, sdk);
 			}
@@ -59,15 +61,27 @@
 			if (store.availableOrganizations.length === 0) {
 				store.loadOrganizations().then(() => syncFromStore());
 			} else {
-				// Újranyitáskor a plugin singleton store élve maradt, de a core
-				// pluginCapabilitiesStore üres lehet (pl. ha az ablakot bezárták
-				// és most nyitottuk újra). A capabilities-t publikáljuk, hogy a
-				// menü-szűrés helyes legyen.
+				// Újranyitáskor a plugin singleton store élve maradt (a window-on),
+				// de az adatai elavultak lehetnek (pl. egy admin közben jogot adott).
+				// Előbb a meglévő képességeket publikáljuk, hogy a core menü-szűrése
+				// azonnal helyes legyen, aztán a háttérben frissítünk.
 				store.publishCapabilities();
+				store.revalidate().then(() => syncFromStore());
 			}
 		} else {
 			console.warn('[OrganizationSwitcher] SDK or SDK.remote not available');
 		}
+
+		// Nyitott app mellett is átvegyük a más által módosított jogosultságokat:
+		// visszatéréskor (fül/ablak fókusz) és időközönként, amíg a lap látható.
+		// A változás `organization-changed` eseményként jut el a komponensekhez.
+		const REVALIDATE_INTERVAL_MS = 60_000;
+		const revalidate = () => {
+			if (document.visibilityState === 'visible') store?.revalidate();
+		};
+		const revalidateTimer = setInterval(revalidate, REVALIDATE_INTERVAL_MS);
+		document.addEventListener('visibilitychange', revalidate);
+		window.addEventListener('focus', revalidate);
 
 		// Kattintás figyelő a dropdown bezárásához
 		const handleClickOutside = (event: MouseEvent) => {
@@ -96,6 +110,9 @@
 		window.addEventListener('organization-created', handleOrganizationChanged);
 
 		return () => {
+			clearInterval(revalidateTimer);
+			document.removeEventListener('visibilitychange', revalidate);
+			window.removeEventListener('focus', revalidate);
 			document.removeEventListener('click', handleClickOutside);
 			window.removeEventListener('organization-changed', handleOrgChanged);
 			window.removeEventListener('organization-updated', handleOrgChanged);

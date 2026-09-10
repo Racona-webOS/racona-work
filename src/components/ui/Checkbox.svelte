@@ -11,6 +11,12 @@
 	 *    a pipa ikonnak.
 	 *  - A `checked` prop minden renderelésnél érvényesül; semmi belső state
 	 *    nem ragad.
+	 *
+	 * A wrapper szándékosan `<span>` és NEM `<label>`: a komponenst több helyen
+	 * egy külső `<label>`-en belül használjuk (sor-szintű kiválasztás), az
+	 * egymásba ágyazott label pedig érvénytelen HTML. Helyette a natív input
+	 * átlátszóan a vizuális doboz fölé van feszítve, így önmagában is
+	 * kattintható, külső label alatt pedig a label-forwarding kezeli.
 	 */
 
 	interface Props {
@@ -35,7 +41,7 @@
 	}
 </script>
 
-<label class="wk-checkbox {checked ? 'is-checked' : ''} {disabled ? 'is-disabled' : ''} {className}">
+<span class="wk-checkbox {checked ? 'is-checked' : ''} {disabled ? 'is-disabled' : ''} {className}">
 	<input
 		type="checkbox"
 		{checked}
@@ -58,24 +64,29 @@
 			</svg>
 		{/if}
 	</span>
-</label>
+</span>
 
 <style>
 	.wk-checkbox {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
+		flex-shrink: 0;
 		cursor: pointer;
 		position: relative;
 		vertical-align: middle;
 	}
 
+	/* Az input átlátszóan lefedi a vizuális dobozt: a wrapper nem label,
+	   így a kattintást magának az inputnak kell elkapnia. */
 	.wk-checkbox input {
 		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		margin: 0;
 		opacity: 0;
-		pointer-events: none;
-		width: 0;
-		height: 0;
+		cursor: pointer;
 	}
 
 	.wk-checkbox-box {
@@ -109,7 +120,8 @@
 		opacity: 0.5;
 	}
 
-	.wk-checkbox.is-disabled .wk-checkbox-box {
+	.wk-checkbox.is-disabled .wk-checkbox-box,
+	.wk-checkbox.is-disabled input {
 		cursor: not-allowed;
 	}
 
