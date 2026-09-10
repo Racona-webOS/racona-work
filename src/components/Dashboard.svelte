@@ -33,6 +33,10 @@
     (window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS,
   );
 
+  // Ugyanaz a primary gomb + ⋮ menü, mint a táblázatok műveleti oszlopában.
+  // Régebbi core-on (és standalone dev módban) nincs kiajánlva: ott csak a státusz látszik.
+  const RowActions = $derived(sdk?.components?.DataTableRowActions ?? null);
+
   function t(key: string, vars?: Record<string, string | number>): string {
     let str = sdk?.i18n?.t(key) ?? key;
     if (vars) {
@@ -50,6 +54,9 @@
   >(null);
   let hasAccess = $state(false);
   let canManagerView = $state(false);
+  // A vezetői nézetet employee.manage joggal is látni lehet, elbírálni csak leave.approve-val
+  let canApprove = $state(false);
+  let decidingId = $state<number | null>(null);
   let orgLoading = $derived(orgStore?.isLoading ?? false);
 
   // --- Vezetői nézet állapota ---
@@ -161,8 +168,62 @@
     if (!orgStore) return;
     currentOrganization = orgStore.currentOrganization;
     hasAccess = orgStore.hasAccess;
-    canManagerView =
-      orgStore.can("leave.approve") || orgStore.can("employee.manage");
+    syncCapabilities();
+  }
+
+  function syncCapabilities() {
+    if (!orgStore) return;
+    canApprove = orgStore.can("leave.approve");
+    canManagerView = canApprove || orgStore.can("employee.manage");
+  }
+
+  // --- Elbírálás ----------------------------------------------------------
+  function requestActions(req: LeaveRequestRow) {
+    return [
+      {
+        label: t("leaveRequests.approve"),
+        onClick: () => decideRequest(req, "approve"),
+      },
+      {
+        label: t("leaveRequests.reject"),
+        onClick: () => decideRequest(req, "reject"),
+        variant: "destructive" as const,
+        separator: true,
+      },
+    ];
+  }
+
+  async function decideRequest(
+    req: LeaveRequestRow,
+    decision: "approve" | "reject",
+  ) {
+    // A gombcsoportnak nincs letiltott állapota, ezért itt védjük a dupla kattintást
+    if (decidingId !== null) return;
+    decidingId = req.id;
+    try {
+      // Az érintett dolgozó értesítését a szerver küldi
+      await sdk?.remote?.call(
+        decision === "approve" ? "approveLeaveRequest" : "rejectLeaveRequest",
+        { id: req.id },
+      );
+      sdk?.ui?.toast(
+        t(
+          decision === "approve"
+            ? "leaveRequests.approveSuccess"
+            : "leaveRequests.rejectSuccess",
+        ),
+        "success",
+      );
+      // A számlálók és a lista is változik, ezért az egész összesítőt frissítjük
+      await loadManagerStats();
+    } catch (err: any) {
+      sdk?.ui?.toast(
+        err?.message?.replace(/^[A-Z_]+:\s*/, "") ?? t("error.saveFailed"),
+        "error",
+      );
+    } finally {
+      decidingId = null;
+    }
   }
 
   onMount(() => {
@@ -193,6 +254,23 @@
     window.addEventListener("organization-changed", handleOrgChange);
     return () =>
       window.removeEventListener("organization-changed", handleOrgChange);
+  });
+
+  // Az Irányítópult az alapoldal, így gyakran akkor mountol, amikor a sidebar
+  // már betöltötte a szervezeteket, de a képességek még úton vannak. A betöltés
+  // végén nincs organization-changed, csak ez az esemény — enélkül vezetőként is
+  // a dolgozói nézet ragadna be. Nézetváltáskor a lenti $effect tölt újra.
+  $effect(() => {
+    const handleCapabilities = (e: Event) => {
+      if ((e as CustomEvent).detail?.pluginId !== pluginId) return;
+      syncCapabilities();
+    };
+    window.addEventListener("plugin-capabilities-changed", handleCapabilities);
+    return () =>
+      window.removeEventListener(
+        "plugin-capabilities-changed",
+        handleCapabilities,
+      );
   });
 
   $effect(() => {
@@ -306,9 +384,15 @@
                     {formatDate(req.startDate)} – {formatDate(req.endDate)}
                   </div>
                   <div class="request-days">{req.days} nap</div>
-                  <span class="badge {statusClass(req.status)}"
-                    >{statusLabel(req.status)}</span
-                  >
+                  {#if RowActions && canApprove && req.status === "pending"}
+                    <div class="request-actions">
+                      <RowActions actions={requestActions(req)} row={req} />
+                    </div>
+                  {:else}
+                    <span class="badge {statusClass(req.status)}"
+                      >{statusLabel(req.status)}</span
+                    >
+                  {/if}
                 </div>
               {/each}
             </div>
@@ -570,6 +654,11 @@
     font-weight: 500;
     min-width: 60px;
     text-align: right;
+  }
+
+  .request-actions {
+    display: flex;
+    flex-shrink: 0;
   }
 
   .badge {
