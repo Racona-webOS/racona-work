@@ -18,6 +18,7 @@
 	} from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
+	import { isWeekend, monthGrid } from '../lib/calendar-grid.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
@@ -74,40 +75,7 @@
 
 	const MONTHS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
-	// --- Naptár rács ---------------------------------------------------------
-
-	/**
-	 * Egy hónap napjai hétfővel kezdődő rácsban, az elején üres helyekkel.
-	 *
-	 * @param y - Év.
-	 * @param month - Hónap indexe (0-11).
-	 * @returns A rács cellái; a null a hónap előtti üres hely.
-	 */
-	function monthGrid(y: number, month: number): Array<string | null> {
-		const first = new Date(Date.UTC(y, month, 1));
-		// getUTCDay: 0 = vasárnap → hétfő-kezdetű indexre alakítjuk
-		const leading = (first.getUTCDay() + 6) % 7;
-		const daysInMonth = new Date(Date.UTC(y, month + 1, 0)).getUTCDate();
-
-		const cells: Array<string | null> = Array(leading).fill(null);
-		for (let d = 1; d <= daysInMonth; d++) {
-			cells.push(
-				`${y}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-			);
-		}
-		return cells;
-	}
-
-	/**
-	 * Hétvége-e a nap (bejegyzés nélküli alapszabály).
-	 *
-	 * @param iso - A nap YYYY-MM-DD formában.
-	 * @returns Igaz, ha szombat vagy vasárnap.
-	 */
-	function isWeekend(iso: string): boolean {
-		const dow = new Date(`${iso}T00:00:00Z`).getUTCDay();
-		return dow === 0 || dow === 6;
-	}
+	// --- Naptár rács (src/lib/calendar-grid.ts) ------------------------------
 
 	/**
 	 * Egy cella állapot-osztálya a színezéshez.

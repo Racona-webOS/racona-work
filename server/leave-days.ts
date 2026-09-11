@@ -11,6 +11,10 @@
  * adatbázis-műveletek, amiket a leave.ts hív. Részletek: specs/leave-days.md
  */
 
+import type { RemoteContext } from './context.js';
+import { hasCapability, requireCapability } from './permissions.js';
+import { getWorkCalendarOverrides } from './work-calendar.js';
+
 // ---------------------------------------------------------------------------
 // Tiszta segédfüggvények
 // ---------------------------------------------------------------------------
@@ -389,4 +393,144 @@ export async function findEmployeeIdOfUser(
 		[userId, organizationId]
 	);
 	return result.rows[0]?.id ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Naptár (hívható a kliensről; a functions.ts exportálja)
+// ---------------------------------------------------------------------------
+
+/** Egy dolgozó egy szabadságnapja a naptárban. */
+export interface LeaveCalendarDay {
+	/** YYYY-MM-DD */
+	day: string;
+	employeeId: number;
+	employeeName: string;
+	/** Csak leave.approve joggal van kitöltve; a kollégák nem látják a típust. */
+	leaveType: string | null;
+	leaveRequestId: number;
+}
+
+/** Egy függő kérelem munkanapja a naptárban (halványan jelenik meg). */
+export interface LeaveCalendarPendingDay {
+	day: string;
+	employeeId: number;
+	employeeName: string;
+	leaveType: string | null;
+	leaveRequestId: number;
+}
+
+export interface LeaveCalendar {
+	from: string;
+	to: string;
+	/** A jóváhagyott napok (leave_days). */
+	days: LeaveCalendarDay[];
+	/** A függő kérelmek munkanapjai a kérelem időszakából. */
+	pending: LeaveCalendarPendingDay[];
+	/** A munkanaptár kivételei az időszakban: nap → munkanap-e. */
+	calendar: { day: string; isWorkingDay: boolean }[];
+	/** A hívó látja-e a típust és szerkesztheti-e a naptárat (leave.approve). */
+	canManage: boolean;
+}
+
+/** Legfeljebb ennyi nap kérhető le egyszerre (két hónap). */
+const MAX_CALENDAR_DAYS = 62;
+
+/**
+ * A szabadságnaptár egy időszakra (specs/leave-days.md, K5).
+ *
+ * Aki `leave.request` joggal belép, látja, ki mikor van távol; a típust csak
+ * a `leave.approve` jog mutatja (a betegszabadság egészségügyi adat). A függő
+ * kérelmek napjait a kérelem időszakából számoljuk a munkanaptárral.
+ *
+ * @param params - A szervezet, az időszak (legfeljebb 62 nap) és a dolgozószűrő.
+ * @param context - Remote futási kontextus.
+ * @returns A napok, a függő napok és a munkanaptár kivételei.
+ */
+export async function getLeaveCalendar(
+	params: { organizationId: number; from: string; to: string; employeeId?: number | null },
+	context: RemoteContext
+): Promise<LeaveCalendar> {
+	const { organizationId } = params;
+	if (!organizationId || organizationId <= 0) {
+		throw new Error('Érvénytelen szervezet azonosító');
+	}
+	const [from, to] = normalizeDays([params.from, params.to]);
+	if (from !== params.from || to !== params.to) {
+		throw new Error('A záró dátum nem lehet korábbi a kezdő dátumnál.');
+	}
+	if ((dayMs(to) - dayMs(from)) / DAY_MS + 1 > MAX_CALENDAR_DAYS) {
+		throw new Error(`Egyszerre legfeljebb ${MAX_CALENDAR_DAYS} nap kérhető le.`);
+	}
+
+	await requireCapability(context, organizationId, 'leave.request');
+	const canManage = await hasCapability(context, organizationId, 'leave.approve');
+
+	const employeeFilter = params.employeeId ? Number(params.employeeId) : null;
+	const conditions = ['e.organization_id = $1'];
+	const queryParams: unknown[] = [organizationId, from, to];
+	if (employeeFilter) {
+		conditions.push('e.id = $4');
+		queryParams.push(employeeFilter);
+	}
+	const where = conditions.join(' AND ');
+
+	const [daysResult, pendingResult, overrides] = await Promise.all([
+		context.db.query(
+			`SELECT to_char(ld.day, 'YYYY-MM-DD') AS day, ld.employee_id, ld.leave_type, ld.leave_request_id,
+			        u.full_name AS employee_name
+			   FROM ${SCHEMA}.leave_days ld
+			   JOIN ${SCHEMA}.employees e ON e.id = ld.employee_id
+			   JOIN auth.users u ON u.id = e.user_id
+			  WHERE ${where} AND ld.day >= $2::date AND ld.day <= $3::date
+			  ORDER BY ld.day, u.full_name`,
+			queryParams
+		),
+		context.db.query(
+			`SELECT lr.id, lr.employee_id, lr.leave_type,
+			        to_char(lr.start_date, 'YYYY-MM-DD') AS start_date,
+			        to_char(lr.end_date, 'YYYY-MM-DD') AS end_date,
+			        u.full_name AS employee_name
+			   FROM ${SCHEMA}.leave_requests lr
+			   JOIN ${SCHEMA}.employees e ON e.id = lr.employee_id
+			   JOIN auth.users u ON u.id = e.user_id
+			  WHERE ${where} AND lr.status = 'pending'
+			    AND lr.start_date <= $3::date AND lr.end_date >= $2::date
+			  ORDER BY lr.start_date, u.full_name`,
+			queryParams
+		),
+		getWorkCalendarOverrides(context, organizationId, from, to)
+	]);
+
+	const days: LeaveCalendarDay[] = daysResult.rows.map((row: any) => ({
+		day: row.day,
+		employeeId: row.employee_id,
+		employeeName: row.employee_name ?? '—',
+		leaveType: canManage ? row.leave_type : null,
+		leaveRequestId: row.leave_request_id
+	}));
+
+	const pending: LeaveCalendarPendingDay[] = [];
+	for (const row of pendingResult.rows) {
+		// Csak az időszakba eső munkanapok
+		const start = row.start_date < from ? from : row.start_date;
+		const end = row.end_date > to ? to : row.end_date;
+		for (const day of listWorkingDays(start, end, overrides)) {
+			pending.push({
+				day,
+				employeeId: row.employee_id,
+				employeeName: row.employee_name ?? '—',
+				leaveType: canManage ? row.leave_type : null,
+				leaveRequestId: row.id
+			});
+		}
+	}
+
+	return {
+		from,
+		to,
+		days,
+		pending,
+		calendar: [...overrides].map(([day, isWorking]) => ({ day, isWorkingDay: isWorking })),
+		canManage
+	};
 }

@@ -15,6 +15,7 @@
  *   types.ts         — modulok közt megosztott típusok
  *   employees.ts     — dolgozók és dolgozói adatlap
  *   leave.ts         — szabadságkérelmek és egyenlegek
+ *   leave-days.ts    — a jóváhagyott szabadság napjai és a szabadságnaptár
  *   leave-entitlement.ts — éves szabadságkeret számítása (tiszta függvény)
  *   leave-profile.ts — a számítás adatai (születési dátum, gyerekek, távollétek) és a számított keretek
  *   leave-allowances.ts — betegszabadság, apasági és szülői szabadság kerete
@@ -102,6 +103,11 @@ export type {
 	LeaveBalance,
 	LeaveBalanceCalculation
 } from './leave.js';
+
+// --- Szabadságnapok és naptár ---------------------------------------------
+
+export { getLeaveCalendar } from './leave-days.js';
+export type { LeaveCalendar, LeaveCalendarDay, LeaveCalendarPendingDay, LeaveRun } from './leave-days.js';
 
 // --- Szabadságkeret-számítás ------------------------------------------------
 

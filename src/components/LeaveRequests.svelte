@@ -24,6 +24,7 @@
 	import { getOrganizationStore, createOrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
+	import LeaveCalendar from './leave-calendar/LeaveCalendar.svelte';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
@@ -64,6 +65,9 @@
 	const renderSnippet = $derived(sdk?.components?.renderSnippet);
 	const createActionsColumn = $derived(sdk?.components?.createActionsColumn);
 	const DatePickerComponent = $derived(sdk?.components?.DatePicker ?? null);
+
+	// --- Naptár: növelve újratölt, ha egy kérelem státusza változott ---
+	let calendarRefresh = $state(0);
 
 	// --- Táblázat állapot ---
 	let data = $state<LeaveRequestRow[]>([]);
@@ -241,6 +245,7 @@
 		try {
 			// Az érintett dolgozó értesítését a szerver küldi (8.7)
 			await sdk?.remote?.call('approveLeaveRequest', { id: row.id });
+			calendarRefresh += 1;
 			sdk?.ui?.toast(t('leaveRequests.approveSuccess'), 'success');
 			loadData();
 		} catch (err: any) {
@@ -253,6 +258,7 @@
 		try {
 			// Az érintett dolgozó értesítését a szerver küldi (8.7)
 			await sdk?.remote?.call('rejectLeaveRequest', { id: row.id });
+			calendarRefresh += 1;
 			sdk?.ui?.toast(t('leaveRequests.rejectSuccess'), 'success');
 			loadData();
 		} catch (err: any) {
@@ -369,6 +375,7 @@
 			});
 
 			sdk?.ui?.toast(t('leaveRequests.newRequest') + ' ✓', 'success');
+			calendarRefresh += 1;
 			showNewRequestModal = false;
 			loadData();
 		} catch (err: any) {
@@ -404,6 +411,7 @@
 		try {
 			// Az érintett dolgozó értesítését a szerver küldi
 			await sdk?.remote?.call('deleteLeaveRequest', { id: row.id });
+			calendarRefresh += 1;
 			sdk?.ui?.toast('Szabadság törölve', 'success');
 			loadData();
 		} catch (err: any) {
@@ -727,6 +735,18 @@
 				<div class="spinner"></div>
 				<span>{t('loading')}</span>
 			</div>
+		{/if}
+
+		{#if currentOrganization}
+			<h3 class="section-title">{t('leaveRequests.section.calendar')}</h3>
+			<LeaveCalendar
+				{pluginId}
+				organizationId={currentOrganization.id}
+				canManage={canApprove}
+				employeeId={viewMode === 'mine' ? (myEmployee?.id ?? null) : null}
+				lockEmployee={viewMode === 'mine'}
+				refreshKey={calendarRefresh}
+			/>
 		{/if}
 	{/if}
 </section>

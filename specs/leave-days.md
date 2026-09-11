@@ -1,6 +1,6 @@
 # Szabadságnapok és szabadságnaptár
 
-> Státusz: 1. fázis kész · Utolsó módosítás: 2026-09-11
+> Státusz: 1–2. fázis kész · Utolsó módosítás: 2026-09-11
 
 Ma a szabadság egyetlen igazságforrása a szabadságkérelem (`leave_requests`): egy intervallum és egy `days` szám. Ebből nem lehet utólag egy napot kivenni, és a HR nem látja napokra bontva, ki mikor van szabadságon. A cél, hogy a kérelem **beadott, utólag nem módosuló meta sor** maradjon, a tényleges szabadság viszont **napszinten** legyen tárolva. A napok táblája lesz az igazságforrás a szabadságok mutatásához, a keretek terheléséhez és a naptárhoz. A nyilvántartó oldalon a kérelmek listája alá naptárnézet kerül, amiben a HR napokat vehet fel és törölhet.
 
@@ -222,13 +222,14 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 - Az éves keret ellenőrzése beadáskor is a napok éve szerint történik (nem a kezdőnap éve szerint), ezért az évet átlépő kérelemhez mindkét évre kell keret.
 - A `calculateWorkingDays` megmaradt exportált függvényként, a `listWorkingDays` hosszát adja.
 
-### 2. fázis: naptárnézet
+### 2. fázis: naptárnézet ✅
 
-- [ ] `getLeaveCalendar` (K5, D13)
-- [ ] `src/lib/calendar-grid.ts` a `WorkCalendar.svelte`-ből kiemelve
-- [ ] `LeaveCalendar.svelte` olvasásra: havi rács, nevek, dolgozószűrő, függő kérelmek, jelmagyarázat (K6, K7)
-- [ ] Beillesztés a `LeaveRequests.svelte` oldalra „Naptár” címmel; dolgozói nézetben saját napok
-- [ ] Locale
+- [x] `getLeaveCalendar` (K5, D13): legfeljebb 62 nap, a típus csak `leave.approve` joggal, a függő kérelmek munkanapjai a munkanaptárral, a munkanaptár kivételei a válaszban
+- [x] `src/lib/calendar-grid.ts` a `WorkCalendar.svelte`-ből kiemelve (`monthGrid`, `isWeekend`, `isoDay`, `monthRange`)
+- [x] `LeaveCalendar.svelte` olvasásra: havi rács, nevek (legfeljebb három, utána „+N”, a teljes lista tooltipben), dolgozószűrő, függő kérelmek szaggatott kerettel, jelmagyarázat, mai nap kiemelve (K6, K7)
+- [x] Beillesztés a `LeaveRequests.svelte` oldalra „Naptár” címmel; saját nézetben a saját dolgozóra rögzítve, szűrő nélkül; kérelem beadása, jóváhagyása, elutasítása és törlése után újratölt
+- [x] Locale (hu, en)
+- [x] Kézi ellenőrzés a dev felületen: mindenki nézet, dolgozószűrő típus szerinti jelmagyarázattal, hónapléptetés, függő kérelem napjai
 
 ### 3. fázis: szerkesztés a naptárban
 
