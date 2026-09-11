@@ -79,6 +79,9 @@
   let myRequests = $state<LeaveRequestRow[]>([]);
   let selfLoading = $state(false);
   let selfError = $state<string | null>(null);
+  // Vezetői nézetben a saját bejelentések és az elbírálás panel ugyanazon az
+  // oldalon van: ha az egyik változik, a másikat is újratöltjük
+  let dataRefreshKey = $state(0);
 
   let isDataLoading = $derived(statsLoading || selfLoading || orgLoading);
   const thisYear = new Date().getFullYear();
@@ -168,8 +171,19 @@
   }
 
   function reload() {
+    // A vezető is lehet dolgozó: neki a saját adatai a vezetői nézet alatt jelennek meg
     if (canManagerView) loadManagerStats();
-    else loadSelfOverview();
+    loadSelfOverview();
+  }
+
+  function onOwnDataChanged() {
+    dataRefreshKey++;
+  }
+
+  // Az elbírálás a keretet is módosíthatja, ha a vezető a saját bejelentését bírálta el
+  function onDataRequestDecided() {
+    dataRefreshKey++;
+    if (myEmployee) loadSelfOverview();
   }
 
   // --- Inicializálás ------------------------------------------------------
@@ -227,6 +241,7 @@
       );
       // A számlálók és a lista is változik, ezért az egész összesítőt frissítjük
       await loadManagerStats();
+      if (myEmployee && req.employeeId === myEmployee.id) await loadSelfOverview();
     } catch (err: any) {
       sdk?.ui?.toast(
         err?.message?.replace(/^[A-Z_]+:\s*/, "") ?? t("error.saveFailed"),
@@ -379,6 +394,8 @@
           <DataRequestReview
             {pluginId}
             organizationId={currentOrganization.id}
+            refreshKey={dataRefreshKey}
+            onDecided={onDataRequestDecided}
           />
           <CarryOverAlerts {pluginId} organizationId={currentOrganization.id} />
         {/if}
@@ -414,6 +431,26 @@
           {/if}
         </div>
       {/if}
+
+      <!-- A vezető is lehet dolgozó: a saját keretét, kérelmeit és bejelentéseit itt látja -->
+      {#if myEmployee}
+        <div class="self-section">
+          <div class="page-header">
+            <div class="page-header_title">
+              <h2>{t("dashboard.self.sectionTitle")}</h2>
+              <p class="subtitle">{t("dashboard.self.sectionSubtitle")}</p>
+            </div>
+            <button class="btn-primary" onclick={handleNewRequest}>
+              + {t("dashboard.self.newRequest")}
+            </button>
+          </div>
+          {#if selfError}
+            <p class="error-message">{selfError}</p>
+          {:else}
+            {@render selfOverview(myEmployee)}
+          {/if}
+        </div>
+      {/if}
     {:else}
       <!-- ========== Self-service nézet ========== -->
       {#if selfError}
@@ -443,121 +480,126 @@
           </button>
         </div>
 
-        <div class="balance-card">
-          <div class="balance-header">
-            <span class="balance-title"
-              >{t("dashboard.self.balance", { year: thisYear })}</span
-            >
-            {#if myBalance?.calculation}
-              <button
-                class="btn-link"
-                onclick={() => (showBreakdown = !showBreakdown)}
-              >
-                {showBreakdown
-                  ? t("dashboard.self.hideBreakdown")
-                  : t("dashboard.self.howCalculated")}
-              </button>
-            {/if}
-          </div>
-          {#if myBalance}
-            <div class="balance-stats">
-              <div class="balance-stat">
-                <span class="b-label">{t("dashboard.self.totalDays")}</span>
-                <span class="b-value">{myBalance.totalDays}</span>
-              </div>
-              <div class="balance-stat">
-                <span class="b-label">{t("dashboard.self.usedDays")}</span>
-                <span class="b-value used">{myBalance.usedDays}</span>
-              </div>
-              <div
-                class="balance-stat"
-                class:warning={myBalance.remainingDays < 5}
-              >
-                <span class="b-label">{t("dashboard.self.remainingDays")}</span>
-                <span class="b-value remaining">{myBalance.remainingDays}</span>
-              </div>
-            </div>
-            <div class="balance-bar">
-              <div
-                class="balance-bar-fill"
-                style="width: {myBalance.totalDays > 0
-                  ? Math.min(
-                      100,
-                      (myBalance.usedDays / myBalance.totalDays) * 100,
-                    )
-                  : 0}%"
-              ></div>
-            </div>
-            {#if myBalance.carryOver && myBalance.carryOver.remainingDays > 0}
-              <p
-                class="carry-notice"
-                class:expired={myBalance.carryOver.status === "expired"}
-              >
-                {t(
-                  myBalance.carryOver.status === "expired"
-                    ? "carryOver.self.expired"
-                    : "carryOver.self.reminder",
-                  {
-                    days: myBalance.carryOver.remainingDays,
-                    deadline: formatDate(myBalance.carryOver.deadline),
-                  },
-                )}
-              </p>
-            {/if}
-            {#if showBreakdown && myBalance.calculation}
-              <div class="breakdown-box">
-                <EntitlementBreakdown
-                  {pluginId}
-                  result={myBalance.calculation.result}
-                  adjustmentDays={myBalance.adjustmentDays}
-                  adjustmentNote={myBalance.adjustmentNote}
-                  carriedOverDays={myBalance.carriedOverDays}
-                  carryOverDeadline={myBalance.carryOverDeadline}
-                  showWarnings={false}
-                />
-              </div>
-            {/if}
-          {:else}
-            <p class="empty-state">{t("dashboard.self.noBalance")}</p>
-          {/if}
-        </div>
-
-        <OtherAllowances
-          {pluginId}
-          employeeId={myEmployee.id}
-          year={thisYear}
-          accent={false}
-        />
-
-        <MyLeaveData {pluginId} employeeId={myEmployee.id} />
-
-        <div class="recent-section">
-          <h3>{t("dashboard.self.myRequests")}</h3>
-          {#if myRequests.length === 0}
-            <p class="empty-state">{t("dashboard.self.noMyRequests")}</p>
-          {:else}
-            <div class="requests-list">
-              {#each myRequests as req (req.id)}
-                <div class="request-row">
-                  <div class="request-type">
-                    {leaveTypeLabel(req.leaveType)}
-                  </div>
-                  <div class="request-dates">
-                    {formatDate(req.startDate)} – {formatDate(req.endDate)}
-                  </div>
-                  <div class="request-days">{req.days} nap</div>
-                  <span class="badge {statusClass(req.status)}"
-                    >{statusLabel(req.status)}</span
-                  >
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        {@render selfOverview(myEmployee)}
       {/if}
     {/if}
   </section>
 </div>
+
+<!-- Saját keret, adatok és kérelmek: a dolgozói nézet tartalma, és a vezetői nézet alján is megjelenik -->
+{#snippet selfOverview(employee: EmployeeRow)}
+  <div class="balance-card">
+    <div class="balance-header">
+      <span class="balance-title"
+        >{t("dashboard.self.balance", { year: thisYear })}</span
+      >
+      {#if myBalance?.calculation}
+        <button
+          class="btn-link"
+          onclick={() => (showBreakdown = !showBreakdown)}
+        >
+          {showBreakdown
+            ? t("dashboard.self.hideBreakdown")
+            : t("dashboard.self.howCalculated")}
+        </button>
+      {/if}
+    </div>
+    {#if myBalance}
+      <div class="balance-stats">
+        <div class="balance-stat">
+          <span class="b-label">{t("dashboard.self.totalDays")}</span>
+          <span class="b-value">{myBalance.totalDays}</span>
+        </div>
+        <div class="balance-stat">
+          <span class="b-label">{t("dashboard.self.usedDays")}</span>
+          <span class="b-value used">{myBalance.usedDays}</span>
+        </div>
+        <div class="balance-stat" class:warning={myBalance.remainingDays < 5}>
+          <span class="b-label">{t("dashboard.self.remainingDays")}</span>
+          <span class="b-value remaining">{myBalance.remainingDays}</span>
+        </div>
+      </div>
+      <div class="balance-bar">
+        <div
+          class="balance-bar-fill"
+          style="width: {myBalance.totalDays > 0
+            ? Math.min(100, (myBalance.usedDays / myBalance.totalDays) * 100)
+            : 0}%"
+        ></div>
+      </div>
+      {#if myBalance.carryOver && myBalance.carryOver.remainingDays > 0}
+        <p
+          class="carry-notice"
+          class:expired={myBalance.carryOver.status === "expired"}
+        >
+          {t(
+            myBalance.carryOver.status === "expired"
+              ? "carryOver.self.expired"
+              : "carryOver.self.reminder",
+            {
+              days: myBalance.carryOver.remainingDays,
+              deadline: formatDate(myBalance.carryOver.deadline),
+            },
+          )}
+        </p>
+      {/if}
+      {#if showBreakdown && myBalance.calculation}
+        <div class="breakdown-box">
+          <EntitlementBreakdown
+            {pluginId}
+            result={myBalance.calculation.result}
+            adjustmentDays={myBalance.adjustmentDays}
+            adjustmentNote={myBalance.adjustmentNote}
+            carriedOverDays={myBalance.carriedOverDays}
+            carryOverDeadline={myBalance.carryOverDeadline}
+            showWarnings={false}
+          />
+        </div>
+      {/if}
+    {:else}
+      <p class="empty-state">{t("dashboard.self.noBalance")}</p>
+    {/if}
+  </div>
+
+  <OtherAllowances
+    {pluginId}
+    employeeId={employee.id}
+    year={thisYear}
+    accent={false}
+    refreshKey={dataRefreshKey}
+  />
+
+  <MyLeaveData
+    {pluginId}
+    employeeId={employee.id}
+    refreshKey={dataRefreshKey}
+    onChanged={onOwnDataChanged}
+  />
+
+  <div class="recent-section">
+    <h3>{t("dashboard.self.myRequests")}</h3>
+    {#if myRequests.length === 0}
+      <p class="empty-state">{t("dashboard.self.noMyRequests")}</p>
+    {:else}
+      <div class="requests-list">
+        {#each myRequests as req (req.id)}
+          <div class="request-row">
+            <div class="request-type">
+              {leaveTypeLabel(req.leaveType)}
+            </div>
+            <div class="request-dates">
+              {formatDate(req.startDate)} – {formatDate(req.endDate)}
+            </div>
+            <div class="request-days">{req.days} nap</div>
+            <span class="badge {statusClass(req.status)}"
+              >{statusLabel(req.status)}</span
+            >
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
+{/snippet}
 
 <style>
   @import "../styles/shared.css";
@@ -599,6 +641,20 @@
   }
   .stat-value.on-leave {
     color: #2563eb;
+  }
+
+  /* Vezetői nézet — saját adatok szakasz */
+  .self-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--color-border, #e2e8f0);
+  }
+
+  :global(.dark) .self-section {
+    border-color: var(--color-border, oklch(1 0 0 / 10%));
   }
 
   /* Self-service nézet — keret kártya */

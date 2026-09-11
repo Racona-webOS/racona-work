@@ -15,11 +15,14 @@
 		pluginId = 'racona-work',
 		organizationId = null,
 		employeeId = null,
+		refreshKey = 0,
 		onDecided
 	}: {
 		pluginId?: string;
 		organizationId?: number | null;
 		employeeId?: number | null;
+		/** Növelésével újratöltjük (pl. ha a HR-es a saját bejelentését küldte be). */
+		refreshKey?: number;
 		/** Döntés után: a szülő frissítheti a dolgozó adatait és kereteit. */
 		onDecided?: () => void;
 	} = $props();
@@ -77,6 +80,7 @@
 	$effect(() => {
 		organizationId;
 		employeeId;
+		refreshKey;
 		if (sdk?.remote && (organizationId || employeeId)) load();
 	});
 

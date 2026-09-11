@@ -51,6 +51,8 @@
 	"dashboard.self.myRequests": "My requests",
 	"dashboard.self.noMyRequests": "You haven't submitted any leave requests yet",
 	"dashboard.self.newRequest": "New leave request",
+	"dashboard.self.sectionTitle": "My overview",
+	"dashboard.self.sectionSubtitle": "Your leave allowance, requests and data changes",
 
 	"leaveRequests.subtitle.manager": "Manage all leave requests",
 	"leaveRequests.subtitle.self": "Your own leave requests",

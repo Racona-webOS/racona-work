@@ -50,6 +50,8 @@
 	"dashboard.self.myRequests": "Saját kérelmek",
 	"dashboard.self.noMyRequests": "Még nem adtál be szabadságkérelmet",
 	"dashboard.self.newRequest": "Új szabadságkérelem",
+	"dashboard.self.sectionTitle": "Saját adataim",
+	"dashboard.self.sectionSubtitle": "A saját szabadságkereted, kérelmeid és adatbejelentéseid",
 
 	"leaveRequests.subtitle.manager": "Az összes szabadságkérelem kezelése",
 	"leaveRequests.subtitle.self": "Saját szabadságkérelmek",

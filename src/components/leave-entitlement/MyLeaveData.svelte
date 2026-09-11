@@ -17,7 +17,19 @@
 	import { describeDataRequest, formatDay } from './dataRequests.js';
 	import { checkFile, FILE_ACCEPT, formatSize, MAX_FILES_PER_REQUEST, openFile, uploadFiles } from './files.js';
 
-	let { pluginId = 'racona-work', employeeId }: { pluginId?: string; employeeId: number } = $props();
+	let {
+		pluginId = 'racona-work',
+		employeeId,
+		refreshKey = 0,
+		onChanged
+	}: {
+		pluginId?: string;
+		employeeId: number;
+		/** Növelésével újratöltjük (pl. ha a HR ugyanazon az oldalon elbírálta). */
+		refreshKey?: number;
+		/** Beküldés, visszavonás vagy igazolás változása után. */
+		onChanged?: () => void;
+	} = $props();
 
 	const sdk = $derived(resolveSdk(pluginId));
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
@@ -42,7 +54,13 @@
 		}
 	}
 
+	async function reloadAfterChange() {
+		await load();
+		onChanged?.();
+	}
+
 	$effect(() => {
+		refreshKey;
 		if (sdk?.remote && employeeId) load();
 	});
 
@@ -92,13 +110,13 @@
 		const errors = await uploadFiles(sdk, request.id, picked, t);
 		errors.forEach((e) => sdk?.ui?.toast(e, 'error'));
 		if (errors.length < picked.length) sdk?.ui?.toast(t('files.uploaded'), 'success');
-		await load();
+		await reloadAfterChange();
 	}
 
 	async function removeFile(fileId: number) {
 		try {
 			await sdk.remote.call('deleteLeaveDataRequestFile', { fileId });
-			await load();
+			await reloadAfterChange();
 		} catch (err) {
 			sdk?.ui?.toast(errorText(err), 'error');
 		}
@@ -178,7 +196,7 @@
 			draftFiles = [];
 			errors.forEach((e) => sdk?.ui?.toast(e, 'error'));
 			sdk?.ui?.toast(t('dataRequest.submitted'), 'success');
-			await load();
+			await reloadAfterChange();
 		} catch (err) {
 			sdk?.ui?.toast(errorText(err), 'error');
 		} finally {
@@ -189,7 +207,7 @@
 	async function cancel(request: LeaveDataRequest) {
 		try {
 			await sdk.remote.call('cancelLeaveDataRequest', { id: request.id });
-			await load();
+			await reloadAfterChange();
 		} catch (err) {
 			sdk?.ui?.toast(errorText(err), 'error');
 		}
