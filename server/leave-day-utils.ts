@@ -17,6 +17,12 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
  */
 export const CALENDAR_LEAVE_TYPES: readonly LeaveType[] = ['annual', 'company_mandatory', 'sick', 'unpaid', 'other'];
 
+/**
+ * A dolgozó a saját naptárából ezeket kérheti (specs/leave-days.md, K15). A
+ * gyerekhez kötött típusok az űrlapon maradnak, a céges kötelező a HR-é.
+ */
+export const REQUEST_CALENDAR_LEAVE_TYPES: readonly LeaveType[] = ['annual', 'sick', 'unpaid', 'other'];
+
 /** Egy összefüggő szabadságszakasz a naptárban felvett napokból. */
 export interface LeaveRun {
 	/** Az első felvett nap (YYYY-MM-DD). */

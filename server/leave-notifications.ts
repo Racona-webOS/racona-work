@@ -91,6 +91,23 @@ export async function notifyLeaveRequestCreated(
 	context: RemoteContext,
 	request: LeaveNotificationRequest
 ): Promise<void> {
+	await notifyLeaveRequestsCreated(context, [request]);
+}
+
+/**
+ * Egyszerre beadott kérelmek (a naptárból) egy értesítésben: az időszakok
+ * felsorolva, a munkanapok összesítve. Egy kérelemnél ugyanaz, mint a sima
+ * új-kérelem értesítés.
+ *
+ * @param context - Remote hívás kontextus.
+ * @param requests - A létrehozott kérelmek, azonos dolgozótól és típusból.
+ */
+export async function notifyLeaveRequestsCreated(
+	context: RemoteContext,
+	requests: LeaveNotificationRequest[]
+): Promise<void> {
+	if (requests.length === 0) return;
+	const request = requests[0];
 	try {
 		const settingsResult = await context.db.query(
 			`SELECT value FROM ${SCHEMA}.kv_store WHERE key = $1`,
@@ -121,14 +138,22 @@ export async function notifyLeaveRequestCreated(
 		const organizationName = await loadOrganizationName(context, request.organizationId);
 		const employeeName = employee?.name ?? '—';
 		const leaveType = leaveTypeLabel(request.leaveType);
-		const period = formatPeriod(request.startDate, request.endDate);
+		const periods = requests.map((r) => formatPeriod(r.startDate, r.endDate));
+		const period: LocalizedText = {
+			hu: periods.map((p) => p.hu).join(', '),
+			en: periods.map((p) => p.en).join(', ')
+		};
+		const days = requests.reduce((sum, r) => sum + r.days, 0);
 
 		await sendInApp(context, {
 			userIds: recipients.map((r) => r.userId),
-			title: { hu: 'Új szabadságkérelem', en: 'New leave request' },
+			title:
+				requests.length === 1
+					? { hu: 'Új szabadságkérelem', en: 'New leave request' }
+					: { hu: `${requests.length} új szabadságkérelem`, en: `${requests.length} new leave requests` },
 			message: {
-				hu: `${employeeName}: ${leaveType.hu}, ${period.hu} (${request.days} munkanap)`,
-				en: `${employeeName}: ${leaveType.en}, ${period.en} (${workingDaysEn(request.days)})`
+				hu: `${employeeName}: ${leaveType.hu}, ${period.hu} (${days} munkanap)`,
+				en: `${employeeName}: ${leaveType.en}, ${period.en} (${workingDaysEn(days)})`
 			},
 			type: 'info',
 			data: { leaveRequestId: request.id, organizationId: request.organizationId }
@@ -148,7 +173,7 @@ export async function notifyLeaveRequestCreated(
 				organizationNameHtml: escapeHtml(organizationName),
 				leaveTypeLabel: leaveType[EMAIL_LOCALE],
 				period: period[EMAIL_LOCALE],
-				days: request.days,
+				days,
 				reasonHtml: reason ? reasonBlockHtml(reason) : '',
 				reasonText: reason ? `${EMAIL_LOCALE === 'hu' ? 'Indoklás' : 'Reason'}: ${reason}\n` : ''
 			})

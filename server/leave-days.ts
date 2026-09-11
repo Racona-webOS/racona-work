@@ -11,10 +11,14 @@
  */
 
 import type { RemoteContext } from './context.js';
-import { resolveUserId } from './context.js';
+import { isCoreAdmin, isDevMode, resolveUserId } from './context.js';
 import { hasCapability, requireCapability } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
-import { notifyLeaveDaysAdded, notifyLeaveDaysRemoved } from './leave-notifications.js';
+import {
+	notifyLeaveDaysAdded,
+	notifyLeaveDaysRemoved,
+	notifyLeaveRequestsCreated
+} from './leave-notifications.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
 import { BALANCE_LEAVE_TYPES, consumesAnnualBalance, isLeaveType } from './leave-types.js';
 import type { LeaveType } from './leave-types.js';
@@ -25,7 +29,8 @@ import {
 	groupIntoRuns,
 	isWorkingDay,
 	listWorkingDays,
-	normalizeDays
+	normalizeDays,
+	REQUEST_CALENDAR_LEAVE_TYPES
 } from './leave-day-utils.js';
 import type { LeaveRun } from './leave-day-utils.js';
 
@@ -667,4 +672,221 @@ export async function saveLeaveCalendar(
 	});
 
 	return { createdRequests: created, removedDays: plan.removeDays.map((r) => r.day) };
+}
+
+// ---------------------------------------------------------------------------
+// A dolgozó kérelmei a saját naptárból (specs/leave-days.md, K15)
+// ---------------------------------------------------------------------------
+
+export interface LeaveRequestBatchParams {
+	organizationId: number;
+	employeeId: number;
+	/** A kért napok típusa (REQUEST_CALENDAR_LEAVE_TYPES). */
+	leaveType: string;
+	days: string[];
+	reason?: string | null;
+}
+
+export interface LeaveRequestBatchResult {
+	createdRequests: { id: number; startDate: string; endDate: string; days: number }[];
+}
+
+interface RequestBatchInput {
+	organizationId: number;
+	employeeId: number;
+	leaveType: LeaveType;
+	days: string[];
+	reason: string | null;
+}
+
+function parseBatchParams(params: LeaveRequestBatchParams): RequestBatchInput {
+	if (!params.organizationId || params.organizationId <= 0) {
+		throw new Error('Érvénytelen szervezet azonosító');
+	}
+	if (!params.employeeId || params.employeeId <= 0) {
+		throw new Error('Érvénytelen dolgozó azonosító');
+	}
+	if (!isLeaveType(params.leaveType) || !REQUEST_CALENDAR_LEAVE_TYPES.includes(params.leaveType)) {
+		throw new Error('Ezt a típust a naptárból nem lehet kérni, add be az űrlapon.');
+	}
+	return {
+		organizationId: params.organizationId,
+		employeeId: params.employeeId,
+		leaveType: params.leaveType,
+		days: normalizeDays(Array.isArray(params.days) ? params.days : []),
+		reason: params.reason?.trim() || null
+	};
+}
+
+/** A dolgozó a sajátját kérheti; más nevében a jóváhagyó (mint az űrlapon). */
+async function requireOwnOrApprover(context: RemoteContext, input: RequestBatchInput): Promise<void> {
+	await requireCapability(context, input.organizationId, 'leave.request');
+	if (isDevMode(context) || isCoreAdmin(context)) return;
+	const callerUserId = await resolveUserId(context);
+	const r = await context.db.query(
+		`SELECT user_id FROM ${SCHEMA}.employees WHERE id = $1 AND organization_id = $2`,
+		[input.employeeId, input.organizationId]
+	);
+	if (r.rows.length === 0) throw new Error('A dolgozó nem található ebben a szervezetben');
+	if (Number(r.rows[0].user_id) !== Number(callerUserId)) {
+		await requireCapability(context, input.organizationId, 'leave.approve');
+	}
+}
+
+/**
+ * A kért napok terve: szakaszok és évenként a keret, a függő kérelmekkel
+ * együtt számolva (a dolgozó csak annyit jelölhet, amennyi még van neki).
+ */
+async function planRequestBatch(
+	db: Queryable,
+	context: RemoteContext,
+	input: RequestBatchInput
+): Promise<LeaveCalendarChangePlan> {
+	const errors: string[] = [];
+	const days = input.days;
+	const overrides =
+		days.length > 0
+			? await getWorkCalendarOverrides(context, input.organizationId, days[0], days[days.length - 1])
+			: new Map<string, boolean>();
+	const working = (day: string) => isWorkingDay(day, overrides);
+
+	const closedYear = await loadClosedYear(db, input.organizationId);
+	const closedDays = days.filter((d) => isDayClosed(d, closedYear));
+	if (closedDays.length > 0) {
+		errors.push(`A(z) ${closedYear}. évig az évek le vannak zárva: ${closedDays.join(', ')}.`);
+	}
+
+	const notWorking = days.filter((d) => !working(d));
+	if (notWorking.length > 0) {
+		errors.push(`Nem munkanapra nem kérhető szabadság: ${notWorking.join(', ')}.`);
+	}
+	const taken = await findTakenDays(db, input.employeeId, days);
+	if (taken.length > 0) {
+		errors.push(`Ezeken a napokon már van jóváhagyott szabadságod: ${taken.join(', ')}.`);
+	}
+	if (days.length > 0) {
+		const pending = await db.query(
+			`SELECT to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date
+			   FROM ${SCHEMA}.leave_requests
+			  WHERE employee_id = $1 AND status = 'pending'
+			    AND start_date <= $3::date AND end_date >= $2::date`,
+			[input.employeeId, days[0], days[days.length - 1]]
+		);
+		const blocked = days.filter((d) => pending.rows.some((r: any) => r.start_date <= d && d <= r.end_date));
+		if (blocked.length > 0) {
+			errors.push(`Ezekre a napokra már van függő kérelmed: ${blocked.join(', ')}.`);
+		}
+	}
+
+	// Keret évenként: a maradékból a függő kérelmek napjai is levonva
+	const balances: CalendarBalanceEffect[] = [];
+	if (consumesAnnualBalance(input.leaveType)) {
+		for (const [year, yearDays] of groupDaysByYear(days)) {
+			const r = await db.query(
+				`SELECT b.remaining_days,
+				        COALESCE((SELECT SUM(lr.days) FROM ${SCHEMA}.leave_requests lr
+				                   WHERE lr.employee_id = b.employee_id AND lr.status = 'pending'
+				                     AND lr.leave_type = ANY($3::text[])
+				                     AND EXTRACT(YEAR FROM lr.start_date)::int = b.year), 0)::int AS pending_days
+				   FROM ${SCHEMA}.leave_balances b
+				  WHERE b.employee_id = $1 AND b.year = $2`,
+				[input.employeeId, year, [...BALANCE_LEAVE_TYPES]]
+			);
+			const hasBalance = r.rows.length > 0;
+			const before: number = hasBalance ? r.rows[0].remaining_days - r.rows[0].pending_days : 0;
+			const after = before - yearDays.length;
+			balances.push({ year, hasBalance, remainingBefore: before, remainingAfter: after });
+			if (!hasBalance) {
+				errors.push(`Nincs szabadságkeret beállítva a(z) ${year}. évre.`);
+			} else if (after < 0) {
+				errors.push(
+					`A(z) ${year}. évi keretbe nem fér bele: ${yearDays.length} napot kérsz, ${before} nap van (a függő kérelmekkel együtt).`
+				);
+			}
+		}
+	}
+
+	return { runs: groupIntoRuns(days, working), removeDays: [], balances, errors };
+}
+
+/**
+ * Mentés nélkül: a kért napokból készülő kérelmek, a keret és a hibák.
+ */
+export async function previewLeaveRequestBatch(
+	params: LeaveRequestBatchParams,
+	context: RemoteContext
+): Promise<LeaveCalendarChangePlan> {
+	const input = parseBatchParams(params);
+	await requireOwnOrApprover(context, input);
+	return planRequestBatch(context.db, context, input);
+}
+
+/**
+ * A naptárban kijelölt napok beküldése: összefüggő szakaszonként egy függő
+ * kérelem, egy tranzakcióban. A beadásról egy összevont értesítés megy.
+ */
+export async function submitLeaveRequestBatch(
+	params: LeaveRequestBatchParams,
+	context: RemoteContext
+): Promise<LeaveRequestBatchResult> {
+	const input = parseBatchParams(params);
+	if (input.days.length === 0) throw new Error('Jelölj ki legalább egy napot.');
+	await requireOwnOrApprover(context, input);
+
+	const client = await context.db.connect();
+	const created: LeaveRequestBatchResult['createdRequests'] = [];
+	let plan: LeaveCalendarChangePlan;
+	try {
+		await client.query('BEGIN');
+		await client.query(`SELECT id FROM ${SCHEMA}.employees WHERE id = $1 FOR UPDATE`, [input.employeeId]);
+		plan = await planRequestBatch(client, context, input);
+		if (plan.errors.length > 0) throw new Error(plan.errors.join(' '));
+
+		for (const run of plan.runs) {
+			const inserted = await client.query(
+				`INSERT INTO ${SCHEMA}.leave_requests
+					(employee_id, organization_id, leave_type, start_date, end_date, days, status, reason, child_id,
+					 created_at, updated_at)
+				 VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, NULL, NOW(), NOW())
+				 RETURNING id`,
+				[
+					input.employeeId,
+					input.organizationId,
+					input.leaveType,
+					run.startDate,
+					run.endDate,
+					run.days.length,
+					input.reason
+				]
+			);
+			created.push({
+				id: inserted.rows[0].id,
+				startDate: run.startDate,
+				endDate: run.endDate,
+				days: run.days.length
+			});
+		}
+		await client.query('COMMIT');
+	} catch (err) {
+		await client.query('ROLLBACK');
+		throw err;
+	} finally {
+		client.release();
+	}
+
+	await notifyLeaveRequestsCreated(
+		context,
+		created.map((r) => ({
+			id: r.id,
+			employeeId: input.employeeId,
+			organizationId: input.organizationId,
+			leaveType: input.leaveType,
+			startDate: r.startDate,
+			endDate: r.endDate,
+			days: r.days,
+			reason: input.reason
+		}))
+	);
+
+	return { createdRequests: created };
 }

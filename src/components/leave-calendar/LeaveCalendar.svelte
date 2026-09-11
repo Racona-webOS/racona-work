@@ -8,8 +8,10 @@
 	Három nézet: havi rács, éves nézet (tizenkét kis havi rács) és csapatnézet
 	(soronként egy dolgozó, oszloponként egy nap). A csapatnézet csak olvasásra.
 
-	Saját nézetben a dolgozó a függő kérelme napjára kattintva visszavonhatja
-	a kérelmet (megerősítés után). Szerkesztés nélkül a napra kattintva a nap
+	Saját nézetben a dolgozó a naptárban jelöli ki a kért napokat (alapból az
+	éves nézet), a szerver szakaszokra bontja és mutatja a keretét, egy gombbal
+	beküldi: szakaszonként egy függő kérelem. A függő kérelme napjára
+	kattintva visszavonhatja a kérelmet (megerősítés után). Szerkesztés nélkül a napra kattintva a nap
 	mellett felugró doboz mutatja a nap összes bejegyzését (a tooltip helyett).
 
 	Szerkesztés (leave.approve joggal, kiválasztott dolgozóval, havi és éves
@@ -27,11 +29,12 @@
 		LeaveCalendarPendingDay,
 		LeaveCalendarChangePlan,
 		LeaveCalendarSaveResult,
+		LeaveRequestBatchResult,
 		PaginatedResult
 	} from '../../../server/functions.js';
 	import { LEAVE_TYPES } from '../../../server/leave-types.js';
 	import type { LeaveType } from '../../../server/leave-types.js';
-	import { CALENDAR_LEAVE_TYPES } from '../../../server/leave-day-utils.js';
+	import { CALENDAR_LEAVE_TYPES, REQUEST_CALENDAR_LEAVE_TYPES } from '../../../server/leave-day-utils.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import { isWeekend, monthGrid, monthRange } from '../../lib/calendar-grid.js';
 
@@ -86,6 +89,12 @@
 
 	type CalendarView = 'month' | 'year' | 'team';
 	let view = $state<CalendarView>('month');
+
+	// Saját nézetben az éves nézet a kiindulás: ott jelöli a dolgozó a kért
+	// napokat. A Saját/Összes váltás csak a prop-ot változtatja, ezért effekt.
+	$effect(() => {
+		view = lockEmployee ? 'year' : 'month';
+	});
 	const MONTHS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 
 	/** A lekérdezett időszak: éves nézetben az egész év, egyébként a hónap. */
@@ -165,6 +174,13 @@
 
 	/** Csak a jóváhagyó szerkeszthet, és csak kiválasztott dolgozóval. */
 	const editable = $derived(canManage && !lockEmployee && !!filterEmployeeId && data?.canManage === true);
+
+	/** Saját nézet: a dolgozó a naptárból kérelmet ad be (K15). */
+	const canRequest = $derived(lockEmployee && !!employeeId && !editable);
+	let requestType = $state<LeaveType>('annual');
+
+	/** A jelölések típusa: a HR felvételnél vagy a dolgozó kérelménél. */
+	const activeType = $derived(editable ? addType : requestType);
 
 	let addType = $state<LeaveType>('annual');
 	// Sima Set, minden változásnál újra létrehozva. A svelte/reactivity SvelteSet
@@ -315,12 +331,20 @@
 		const approved = dayMap.get(iso)?.length ?? 0;
 		const pending = pendingMap.get(iso)?.length ?? 0;
 		if (editable) return isWorkingDay(iso) && pending === 0 && !isClosed(iso);
+		if (canRequest) return approved + pending > 0 || (isWorkingDay(iso) && !isClosed(iso));
 		return approved + pending > 0;
 	}
 
 	function toggleDay(iso: string, cell: HTMLElement | null = null) {
 		if (canWithdraw && (pendingMap.get(iso) ?? []).some((d) => d.employeeId === employeeId)) {
 			withdrawPending(iso);
+			return;
+		}
+		if (canRequest) {
+			// Meglévő napon a részletek; üres munkanapon a kérés jelölése
+			const hasAny = (dayMap.get(iso)?.length ?? 0) + (pendingMap.get(iso)?.length ?? 0) > 0;
+			if (hasAny) openDetails(iso, cell);
+			else if (isWorkingDay(iso) && !isClosed(iso)) toAdd = toggled(toAdd, iso);
 			return;
 		}
 		if (!editable) {
@@ -339,11 +363,12 @@
 	let planTimer: ReturnType<typeof setTimeout> | null = null;
 	$effect(() => {
 		const employee = filterEmployeeId;
-		const type = addType;
+		const type = activeType;
+		const mode = editable ? 'save' : canRequest ? 'request' : null;
 		const add = [...toAdd];
 		const remove = [...toRemove];
 		if (planTimer) clearTimeout(planTimer);
-		if (!editable || !employee || add.length + remove.length === 0) {
+		if (!mode || !employee || add.length + remove.length === 0) {
 			plan = null;
 			planLoading = false;
 			return;
@@ -351,13 +376,21 @@
 		planLoading = true;
 		planTimer = setTimeout(async () => {
 			try {
-				const result: LeaveCalendarChangePlan = await sdk.remote.call('previewLeaveCalendarSave', {
-					organizationId,
-					employeeId: employee,
-					leaveType: type,
-					addDays: add,
-					removeDays: remove
-				});
+				const result: LeaveCalendarChangePlan =
+					mode === 'save'
+						? await sdk.remote.call('previewLeaveCalendarSave', {
+								organizationId,
+								employeeId: employee,
+								leaveType: type,
+								addDays: add,
+								removeDays: remove
+							})
+						: await sdk.remote.call('previewLeaveRequestBatch', {
+								organizationId,
+								employeeId: employee,
+								leaveType: type,
+								days: add
+							});
 				// Csak akkor vesszük át, ha közben nem változott a jelölés
 				if (add.length === toAdd.size && remove.length === toRemove.size) plan = result;
 			} catch (err: any) {
@@ -384,6 +417,34 @@
 					added: result.createdRequests.reduce((sum, r) => sum + r.days, 0),
 					requests: result.createdRequests.length,
 					removed: result.removedDays.length
+				}),
+				'success'
+			);
+			clearChanges();
+			await loadCalendar();
+			onSaved?.();
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
+		} finally {
+			saving = false;
+		}
+	}
+
+	/** A dolgozó beküldi a kijelölt napokat: szakaszonként egy függő kérelem. */
+	async function submitRequests() {
+		if (!canRequest || !employeeId || toAdd.size === 0 || saving) return;
+		saving = true;
+		try {
+			const result: LeaveRequestBatchResult = await sdk.remote.call('submitLeaveRequestBatch', {
+				organizationId,
+				employeeId,
+				leaveType: requestType,
+				days: [...toAdd]
+			});
+			sdk?.ui?.toast(
+				t('leaveCalendar.submitted', {
+					requests: result.createdRequests.length,
+					days: result.createdRequests.reduce((sum, r) => sum + r.days, 0)
 				}),
 				'success'
 			);
@@ -569,6 +630,17 @@
 			</label>
 		{/if}
 
+		{#if canRequest}
+			<label class="filter">
+				<span>{t('leaveCalendar.requestType')}</span>
+				<select class="form-input" bind:value={requestType} disabled={saving}>
+					{#each REQUEST_CALENDAR_LEAVE_TYPES as type (type)}
+						<option value={type}>{t(`leaveRequests.type.${type}`)}</option>
+					{/each}
+				</select>
+			</label>
+		{/if}
+
 		{#if editable}
 			<label class="filter">
 				<span>{t('leaveCalendar.addType')}</span>
@@ -584,6 +656,14 @@
 	{#if editable}
 		<p class="hint">
 			{view === 'team' ? t('leaveCalendar.team.readOnly') : t('leaveCalendar.editHint')}
+			{#if data?.closedYear !== null && data?.closedYear !== undefined}
+				{t('leaveCalendar.closedHint', { year: data.closedYear })}
+			{/if}
+		</p>
+	{:else if canRequest}
+		<p class="hint">
+			{t('leaveCalendar.requestHint')}
+			{t('leaveCalendar.withdrawHint')}
 			{#if data?.closedYear !== null && data?.closedYear !== undefined}
 				{t('leaveCalendar.closedHint', { year: data.closedYear })}
 			{/if}
@@ -608,6 +688,8 @@
 		{#if editable}
 			<span class="chip mark-add">{t('leaveCalendar.legend.toAdd')}</span>
 			<span class="chip mark-remove">{t('leaveCalendar.legend.toRemove')}</span>
+		{:else if canRequest}
+			<span class="chip mark-add">{t('leaveCalendar.legend.toRequest')}</span>
 		{/if}
 	</div>
 
@@ -664,7 +746,7 @@
 								<span class="mark is-pending">{t('leaveCalendar.pending')}</span>
 							{/each}
 							{#if toAdd.has(iso)}
-								<span class="mark mark-add">{t(`leaveRequests.type.${addType}`)}</span>
+								<span class="mark mark-add">{t(`leaveRequests.type.${activeType}`)}</span>
 							{/if}
 						{:else}
 							{#each shown as d (d.leaveRequestId + ':' + d.day)}
@@ -804,12 +886,12 @@
 		<p class="empty-state">{t('leaveCalendar.empty')}</p>
 	{/if}
 
-	{#if editable && hasChanges}
+	{#if (editable || canRequest) && hasChanges}
 		<div class="summary" class:is-loading={planLoading}>
 			<div class="summary-text">
 				{#if toAdd.size > 0}
 					<span>
-						{t('leaveCalendar.summary.add', {
+						{t(canRequest ? 'leaveCalendar.summary.request' : 'leaveCalendar.summary.add', {
 							days: addedDays,
 							requests: plan?.runs.length ?? '…'
 						})}
@@ -839,10 +921,10 @@
 				</button>
 				<button
 					class="btn-primary"
-					onclick={save}
+					onclick={canRequest ? submitRequests : save}
 					disabled={saving || planLoading || (plan?.errors.length ?? 0) > 0}
 				>
-					{saving ? t('loading') : t('leaveCalendar.save')}
+					{saving ? t('loading') : canRequest ? t('leaveCalendar.submit') : t('leaveCalendar.save')}
 				</button>
 			</div>
 		</div>

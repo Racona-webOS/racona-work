@@ -108,7 +108,13 @@ export type {
 
 // --- Szabadságnapok és naptár ---------------------------------------------
 
-export { getLeaveCalendar, previewLeaveCalendarSave, saveLeaveCalendar } from './leave-days.js';
+export {
+	getLeaveCalendar,
+	previewLeaveCalendarSave,
+	saveLeaveCalendar,
+	previewLeaveRequestBatch,
+	submitLeaveRequestBatch
+} from './leave-days.js';
 export { getLeaveClosedYear, setLeaveClosedYear } from './leave-closing.js';
 export type {
 	LeaveCalendar,
@@ -117,6 +123,8 @@ export type {
 	LeaveCalendarChangeParams,
 	LeaveCalendarChangePlan,
 	LeaveCalendarSaveResult,
+	LeaveRequestBatchParams,
+	LeaveRequestBatchResult,
 	CalendarBalanceEffect,
 	LeaveRun
 } from './leave-days.js';

@@ -122,6 +122,8 @@ Kérelem (leave_requests)            Napok (leave_days)
 
 **K14. Áthelyezett napok szinkronja.** A munkanaptár figyelmeztet, ha az évben az áthelyezett munkanapok és a máskor ledolgozott szabadnapok száma nem egyezik. Csak jelzés, nem tilt.
 
+**K15. Kérelem a saját naptárból.** A dolgozó a saját naptárában (alapból az éves nézetben) üres munkanapokra kattintva jelöli ki a kért napokat; a jóváhagyott és függő napjai látszanak, azokra nem lehet jelölni. Az összegzősáv a szerver előnézetéből mutatja, hány kérelem lesz (az összefüggő napok egy kérelem, mint a HR-nél), és a keretet a módosítás után: **a maradékból a függő kérelmek napjai is le vannak vonva**, ennél többet nem jelölhet. Típus: éves, betegszabadság, fizetés nélküli, egyéb (a gyerekhez kötött típusok az űrlapon maradnak). A beküldés egy tranzakcióban szakaszonként egy függő kérelmet hoz létre, és a beadásról egy összevont értesítés megy a megjelölt dolgozóknak (az időszakok felsorolva). Az űrlap megmarad.
+
 **K11. Értesítések.** A dolgozó értesítést kap a naptárból törölt napokról (a napok listájával) és a felvett szakaszokról (időszakonként a munkanapok számával), rendszeren belül és emailben (D16). A műveletet végző HR nem kap értesítést a saját napjairól.
 
 **K12. Migráció.** A meglévő jóváhagyott kérelmek napjai legenerálódnak (D15). A migráció idempotens (`ON CONFLICT DO NOTHING`).
@@ -254,6 +256,7 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 - [x] Értesítések és a két új email sablon: `leave_days_removed`, `leave_days_added` (K11, D16)
 - [x] Locale (hu, en)
 - [x] Függő kérelem visszavonása a saját naptárban és a listában (K12/b): `withdrawLeaveRequest`, `withdrawn` státusz
+- [x] Kérelem beadása a saját naptárból, szakaszokra bontva, a függő kérelmekkel csökkentett keret ellenőrzésével, összevont értesítéssel (K15)
 - [x] Céges kötelező szabadság típus, az éves keretet terheli, csak a jóváhagyó rögzítheti (D17)
 - [x] Év lezárása: `leave-closing.ts`, ellenőrzés a beadásnál, jóváhagyásnál, törlésnél és a naptáras mentésnél, gomb a munkanaptáron (K13, D18)
 - [x] Áthelyezett napok szinkron-figyelmeztetése a munkanaptáron (K14); a „Ledolgozós munkanap” felirat „Áthelyezett munkanap” lett
