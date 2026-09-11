@@ -563,17 +563,20 @@
 </script>
 
 {#snippet sectionHeader(section: Section, title: string)}
-	<div class="section-header">
-		<h3 class="section-title">{title}</h3>
+	<!-- A nyíl a cím előtt, és a címre kattintva is nyílik-csukódik -->
+	<h3 class="section-title">
 		<button
-			class="collapse-btn"
+			class="section-toggle"
 			onclick={() => toggleSection(section)}
 			title={collapsed[section] ? t('report.section.expand') : t('report.section.collapse')}
 			aria-expanded={!collapsed[section]}
 		>
-			<svg class="collapse-icon" class:rotated={collapsed[section]} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+			<span class="collapse-btn">
+				<svg class="collapse-icon" class:collapsed={collapsed[section]} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+			</span>
+			{title}
 		</button>
-	</div>
+	</h3>
 {/snippet}
 
 <div class="rw">
@@ -733,17 +736,22 @@
 		min-width: 0;
 	}
 
-	.section-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-	}
-
 	.section-title {
 		font-size: 1.05rem;
 		font-weight: 600;
 		margin: 0;
+	}
+
+	.section-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 0;
+		border: none;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		cursor: pointer;
 	}
 
 	.collapse-btn {
@@ -757,11 +765,10 @@
 		border-radius: 0.375rem;
 		background: transparent;
 		color: var(--color-muted-foreground, #64748b);
-		cursor: pointer;
 		transition: background 0.15s, color 0.15s;
 	}
 
-	.collapse-btn:hover {
+	.section-toggle:hover .collapse-btn {
 		background: var(--color-accent, #f1f5f9);
 		color: var(--color-foreground, #0f172a);
 	}
@@ -770,11 +777,12 @@
 		transition: transform 0.2s ease;
 	}
 
-	.collapse-icon.rotated {
-		transform: rotate(180deg);
+	/* Összecsukva jobbra mutat */
+	.collapse-icon.collapsed {
+		transform: rotate(-90deg);
 	}
 
-	:global(.dark) .collapse-btn:hover {
+	:global(.dark) .section-toggle:hover .collapse-btn {
 		background: var(--color-accent, oklch(0.269 0 0));
 		color: oklch(0.985 0 0);
 	}
