@@ -389,6 +389,7 @@
 			</div>
 		{:else}
 			<div class="layout">
+				<div class="sidebar">
 				<!-- Szerep lista -->
 				<aside class="roles-panel">
 					<div class="panel-header">
@@ -418,7 +419,7 @@
 											{/if}
 										</span>
 										<span class="role-meta">
-											<span>{role.capabilities.length} cap</span>
+											<span>{role.capabilities.length} {t('permissions.roles.capabilitiesCount')}</span>
 											<span>·</span>
 											<span>{role.memberCount} {t('permissions.roles.members')}</span>
 										</span>
@@ -428,87 +429,6 @@
 						</ul>
 					{/if}
 				</aside>
-
-				<!-- Szerkesztő -->
-				<div class="editor-panel">
-					{#if !selectedRole}
-						<p class="empty-state">{t('permissions.roles.empty')}</p>
-					{:else}
-						<div class="editor-header">
-							<h3>
-								{selectedRole.name}
-								{#if selectedRole.isSystem}
-									<span class="badge">{t('permissions.roles.systemBadge')}</span>
-								{/if}
-							</h3>
-							{#if selectedRole.isSystem}
-								<p class="hint">{t('permissions.role.systemHint')}</p>
-							{/if}
-						</div>
-
-						<div class="form-grid">
-							<label>
-								<span>{t('permissions.role.name')}</span>
-								<input
-									class="input"
-									type="text"
-									bind:value={editName}
-									disabled={selectedRole.isSystem}
-								/>
-							</label>
-							<label>
-								<span>{t('permissions.role.key')}</span>
-								<input class="input" type="text" value={selectedRole.key} disabled />
-							</label>
-							<label class="full">
-								<span>{t('permissions.role.description')}</span>
-								<textarea
-									class="input textarea"
-									rows="2"
-									bind:value={editDescription}
-								></textarea>
-							</label>
-						</div>
-
-						<div class="caps-section">
-							<h4>{t('permissions.role.capabilities')}</h4>
-							<div class="caps-groups">
-								{#each CAPABILITY_GROUPS as group (group.labelKey)}
-									<div class="cap-group">
-										<div class="cap-group-label">{t(group.labelKey)}</div>
-										<div class="cap-items">
-											{#each group.items as cap (cap)}
-												<label class="cap-item">
-													<Checkbox
-														checked={editCapabilities.has(cap)}
-														onCheckedChange={() => toggleEditCapability(cap)}
-													/>
-													<span>{t(`capability.${cap}`)}</span>
-												</label>
-											{/each}
-										</div>
-									</div>
-								{/each}
-							</div>
-						</div>
-
-						<div class="editor-actions">
-							{#if !selectedRole.isSystem}
-								<button
-									class="btn-danger"
-									onclick={handleDeleteRole}
-									disabled={saving}
-								>
-									{t('permissions.role.delete')}
-								</button>
-							{/if}
-							<div class="spacer"></div>
-							<button class="btn-primary" onclick={handleSaveRole} disabled={saving}>
-								{saving ? t('loading') : t('permissions.role.save')}
-							</button>
-						</div>
-					{/if}
-				</div>
 
 				<!-- Tagok -->
 				<aside class="members-panel">
@@ -556,6 +476,97 @@
 						</ul>
 					{/if}
 				</aside>
+				</div>
+
+				<!-- Szerkesztő -->
+				<div class="editor-panel">
+					{#if !selectedRole}
+						<p class="empty-state">{t('permissions.roles.empty')}</p>
+					{:else}
+						<div class="editor-header">
+							<h3>
+								{selectedRole.name}
+								{#if selectedRole.isSystem}
+									<span class="badge">{t('permissions.roles.systemBadge')}</span>
+								{/if}
+							</h3>
+							{#if selectedRole.isSystem}
+								<p class="hint">{t('permissions.role.systemHint')}</p>
+							{/if}
+						</div>
+
+						<div class="form-grid">
+							<label>
+								<span>{t('permissions.role.name')}</span>
+								<input
+									class="input"
+									type="text"
+									bind:value={editName}
+									disabled={selectedRole.isSystem}
+								/>
+							</label>
+							<label>
+								<span>{t('permissions.role.key')}</span>
+								<input class="input" type="text" value={selectedRole.key} disabled />
+							</label>
+							<label class="full">
+								<span>{t('permissions.role.description')}</span>
+								<textarea
+									class="input textarea"
+									rows="2"
+									bind:value={editDescription}
+								></textarea>
+							</label>
+						</div>
+
+						<div class="caps-section">
+							<div class="caps-header">
+								<h4>{t('permissions.role.capabilities')}</h4>
+								<span class="caps-total">{editCapabilities.size} / {CAPABILITY_GROUPS.reduce((n, g) => n + g.items.length, 0)}</span>
+							</div>
+							<p class="hint caps-hint">{t('permissions.role.capabilitiesHint')}</p>
+							<div class="caps-groups">
+								{#each CAPABILITY_GROUPS as group (group.labelKey)}
+									{@const checkedCount = group.items.filter((c) => editCapabilities.has(c)).length}
+									<div class="cap-group" class:has-checked={checkedCount > 0}>
+										<div class="cap-group-header">
+											<span class="cap-group-label">{t(group.labelKey)}</span>
+											<span class="cap-group-count">{checkedCount} / {group.items.length}</span>
+										</div>
+										<div class="cap-items">
+											{#each group.items as cap (cap)}
+												<label class="cap-item" class:checked={editCapabilities.has(cap)}>
+													<Checkbox
+														checked={editCapabilities.has(cap)}
+														onCheckedChange={() => toggleEditCapability(cap)}
+													/>
+													<span>{t(`capability.${cap}`)}</span>
+												</label>
+											{/each}
+										</div>
+									</div>
+								{/each}
+							</div>
+						</div>
+
+						<div class="editor-actions">
+							{#if !selectedRole.isSystem}
+								<button
+									class="btn-danger"
+									onclick={handleDeleteRole}
+									disabled={saving}
+								>
+									{t('permissions.role.delete')}
+								</button>
+							{/if}
+							<div class="spacer"></div>
+							<button class="btn-primary" onclick={handleSaveRole} disabled={saving}>
+								{saving ? t('loading') : t('permissions.role.save')}
+							</button>
+						</div>
+					{/if}
+				</div>
+
 			</div>
 		{/if}
 	{/if}
@@ -591,11 +602,15 @@
 						<h4>{t('permissions.role.capabilities')}</h4>
 						<div class="caps-groups">
 							{#each CAPABILITY_GROUPS as group (group.labelKey)}
-								<div class="cap-group">
-									<div class="cap-group-label">{t(group.labelKey)}</div>
+								{@const checkedCount = group.items.filter((c) => newCapabilities.has(c)).length}
+								<div class="cap-group" class:has-checked={checkedCount > 0}>
+									<div class="cap-group-header">
+										<span class="cap-group-label">{t(group.labelKey)}</span>
+										<span class="cap-group-count">{checkedCount} / {group.items.length}</span>
+									</div>
 									<div class="cap-items">
 										{#each group.items as cap (cap)}
-											<label class="cap-item">
+											<label class="cap-item" class:checked={newCapabilities.has(cap)}>
 												<Checkbox
 													checked={newCapabilities.has(cap)}
 													onCheckedChange={() => toggleNewCapability(cap)}
@@ -680,9 +695,16 @@
 
 	.layout {
 		display: grid;
-		grid-template-columns: 260px 1fr 280px;
+		grid-template-columns: 280px minmax(0, 1fr);
 		gap: 1rem;
 		align-items: start;
+	}
+
+	.sidebar {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+		min-width: 0;
 	}
 
 	@media (max-width: 960px) {
@@ -806,50 +828,101 @@
 
 	.caps-section {
 		border-top: 1px solid var(--color-border, #e2e8f0);
-		padding-top: 0.75rem;
+		padding-top: 1rem;
+	}
+
+	.caps-header {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
 	}
 
 	.caps-section h4 {
-		margin: 0 0 0.5rem;
-		font-size: 0.85rem;
+		margin: 0;
+		font-size: 0.95rem;
 		font-weight: 600;
 	}
 
+	.caps-total,
+	.cap-group-count {
+		font-size: 0.7rem;
+		font-variant-numeric: tabular-nums;
+		color: var(--color-muted-foreground, #64748b);
+		background: var(--color-muted, #f1f5f9);
+		padding: 0.1rem 0.45rem;
+		border-radius: 999px;
+	}
+
+	.caps-hint {
+		margin: 0.25rem 0 0.75rem;
+	}
+
 	.caps-groups {
-		display: flex;
-		flex-direction: column;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 		gap: 0.75rem;
 	}
 
+	.cap-group {
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.625rem;
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.cap-group.has-checked {
+		border-color: color-mix(in oklab, var(--color-primary, #3730a3) 35%, var(--color-border, #e2e8f0));
+	}
+
+	.cap-group-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		background: var(--color-muted, #f8fafc);
+		border-bottom: 1px solid var(--color-border, #e2e8f0);
+	}
+
 	.cap-group-label {
-		font-size: 0.7rem;
+		font-size: 0.72rem;
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.06em;
 		font-weight: 700;
 		color: var(--color-muted-foreground, #64748b);
-		margin-bottom: 0.35rem;
+	}
+
+	.cap-group-header .cap-group-count {
+		background: var(--color-card, #fff);
+		border: 1px solid var(--color-border, #e2e8f0);
 	}
 
 	.cap-items {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 0.25rem 0.75rem;
-	}
-
-	@media (max-width: 720px) {
-		.cap-items {
-			grid-template-columns: 1fr;
-		}
+		display: flex;
+		flex-direction: column;
+		padding: 0.375rem;
 	}
 
 	.cap-item {
 		display: flex;
 		flex-direction: row;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.25rem 0;
+		gap: 0.625rem;
+		padding: 0.45rem 0.5rem;
+		border-radius: 0.375rem;
 		cursor: pointer;
 		font-size: 0.85rem;
+		line-height: 1.3;
+		transition: background 0.1s;
+	}
+
+	.cap-item:hover {
+		background: var(--color-accent, #f1f5f9);
+	}
+
+	.cap-item.checked {
+		font-weight: 500;
 	}
 
 	.editor-actions {
@@ -924,6 +997,29 @@
 	:global(.dark) .role-item.active {
 		background: var(--color-accent, oklch(0.25 0.03 var(--primary-h, 264)));
 		border-color: var(--color-primary, oklch(0.66 0.12 264));
+	}
+
+	:global(.dark) .cap-group,
+	:global(.dark) .cap-group-header {
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
+	}
+
+	:global(.dark) .cap-group-header {
+		background: var(--color-muted, oklch(0.24 0 0));
+	}
+
+	:global(.dark) .cap-group-header .cap-group-count {
+		background: var(--color-card, oklch(0.205 0 0));
+	}
+
+	:global(.dark) .cap-item:hover {
+		background: var(--color-accent, oklch(0.269 0 0));
+	}
+
+	:global(.dark) .caps-total,
+	:global(.dark) .cap-group-count {
+		background: oklch(0.269 0 0);
+		color: oklch(0.708 0 0);
 	}
 
 	:global(.dark) .badge {
