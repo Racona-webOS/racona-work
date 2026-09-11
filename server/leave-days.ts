@@ -235,7 +235,7 @@ export interface LeaveCalendarDay {
 	day: string;
 	employeeId: number;
 	employeeName: string;
-	/** Csak leave.approve joggal van kitöltve; a kollégák nem látják a típust. */
+	/** A jóváhagyó és a saját napjainál a dolgozó látja; a kollégákét nem. */
 	leaveType: string | null;
 	leaveRequestId: number;
 }
@@ -275,9 +275,10 @@ function daySpan(from: string, to: string): number {
 /**
  * A szabadságnaptár egy időszakra (specs/leave-days.md, K5).
  *
- * Aki `leave.request` joggal belép, látja, ki mikor van távol; a típust csak
- * a `leave.approve` jog mutatja (a betegszabadság egészségügyi adat). A függő
- * kérelmek napjait a kérelem időszakából számoljuk a munkanaptárral.
+ * Aki `leave.request` joggal belép, látja, ki mikor van távol; a típust a
+ * `leave.approve` jog mutatja, meg a dolgozó a saját napjainál (a
+ * betegszabadság egészségügyi adat, a kollégák nem látják). A függő kérelmek
+ * napjait a kérelem időszakából számoljuk a munkanaptárral.
  *
  * @param params - A szervezet, az időszak (legfeljebb egy év) és a dolgozószűrő.
  * @param context - Remote futási kontextus.
@@ -301,6 +302,9 @@ export async function getLeaveCalendar(
 
 	await requireCapability(context, organizationId, 'leave.request');
 	const canManage = await hasCapability(context, organizationId, 'leave.approve');
+	// A saját napjainak típusát a dolgozó is látja
+	const ownEmployeeId = await findEmployeeIdOfUser(context.db, await resolveUserId(context), organizationId);
+	const showType = (employeeId: number) => canManage || employeeId === ownEmployeeId;
 
 	const employeeFilter = params.employeeId ? Number(params.employeeId) : null;
 	const conditions = ['e.organization_id = $1'];
@@ -343,7 +347,7 @@ export async function getLeaveCalendar(
 		day: row.day,
 		employeeId: row.employee_id,
 		employeeName: row.employee_name ?? '—',
-		leaveType: canManage ? row.leave_type : null,
+		leaveType: showType(row.employee_id) ? row.leave_type : null,
 		leaveRequestId: row.leave_request_id
 	}));
 
@@ -357,7 +361,7 @@ export async function getLeaveCalendar(
 				day,
 				employeeId: row.employee_id,
 				employeeName: row.employee_name ?? '—',
-				leaveType: canManage ? row.leave_type : null,
+				leaveType: showType(row.employee_id) ? row.leave_type : null,
 				leaveRequestId: row.id
 			});
 		}

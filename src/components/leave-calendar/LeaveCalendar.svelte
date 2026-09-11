@@ -576,11 +576,11 @@
 	function cellTitle(iso: string): string {
 		const lines: string[] = [];
 		for (const d of dayMap.get(iso) ?? []) {
-			lines.push(canManage ? `${d.employeeName} – ${typeLabel(d.leaveType)}` : d.employeeName);
+			lines.push(d.leaveType ? `${d.employeeName} – ${typeLabel(d.leaveType)}` : d.employeeName);
 		}
 		for (const d of pendingMap.get(iso) ?? []) {
 			lines.push(
-				`${d.employeeName} – ${canManage ? typeLabel(d.leaveType) + ', ' : ''}${t('leaveCalendar.pending')}`
+				`${d.employeeName} – ${d.leaveType ? typeLabel(d.leaveType) + ', ' : ''}${t('leaveCalendar.pending')}`
 			);
 		}
 		return lines.join('\n');
@@ -675,8 +675,8 @@
 	{/if}
 
 	<div class="legend">
-		<!-- A jóváhagyó a típust látja (szűrő nélkül is típus szerint színezett a cella), a kolléga csak azt, hogy távol van -->
-		{#if canManage}
+		<!-- A jóváhagyó és a saját nézetben a dolgozó a típust látja, a kolléga csak azt, hogy távol van -->
+		{#if canManage || lockEmployee}
 			{#each LEAVE_TYPES as type (type)}
 				<span class="chip type-{type}">{t(`leaveRequests.type.${type}`)}</span>
 			{/each}
@@ -875,7 +875,7 @@
 				{#each detailsPending as d (d.leaveRequestId + ':' + d.employeeId)}
 					<li>
 						<span class="mark is-pending">{t('leaveCalendar.pending')}</span>
-						<span>{d.employeeName}{canManage && d.leaveType ? ` – ${typeLabel(d.leaveType)}` : ''}</span>
+						<span>{d.employeeName}{d.leaveType ? ` – ${typeLabel(d.leaveType)}` : ''}</span>
 					</li>
 				{/each}
 			</ul>
