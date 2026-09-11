@@ -601,6 +601,31 @@
 				}
 			},
 			{
+				// A kérelemhez ma tartozó napok: a naptárban törölt napok után
+				// kevesebb, mint a kért. Csak jóváhagyott kérelemnél van értéke.
+				accessorKey: 'effectiveDays',
+				enableHiding: true,
+				meta: { title: t('leaveRequests.columns.effectiveDays') },
+				header: ({ column }: any) => renderComponent(DataTableColumnHeader, {
+					get column() { return column; },
+					get title() { return t('leaveRequests.columns.effectiveDays'); },
+					onSort: handleSort
+				}),
+				cell: ({ row }: any) => {
+					const effective = row.original.effectiveDays;
+					const requested = row.original.days;
+					let html = '<span class="text-sm text-muted">—</span>';
+					if (effective !== null && effective !== undefined) {
+						html =
+							effective === requested
+								? `<span class="text-sm">${effective}</span>`
+								: `<span class="badge badge-reduced" title="${t('leaveRequests.effectiveDays.reduced', { removed: requested - effective })}">${effective}</span>`;
+					}
+					const snippet = createRawSnippet(() => ({ render: () => html }));
+					return renderSnippet(snippet, {});
+				}
+			},
+			{
 				accessorKey: 'status',
 				enableHiding: true,
 				meta: { title: t('leaveRequests.columns.status') },
@@ -999,6 +1024,8 @@
 	}
 
 	:global(.badge-pending) { background: #fef3c7; color: #92400e; }
+	:global(.badge-reduced) { background: #ffedd5; color: #9a3412; }
+	:global(.text-muted) { color: var(--muted-foreground, #71717a); }
 	:global(.badge-approved) { background: #dcfce7; color: #166534; }
 	:global(.badge-rejected) { background: #fee2e2; color: #991b1b; }
 

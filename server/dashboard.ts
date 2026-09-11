@@ -112,7 +112,8 @@ export async function getDashboardStats(
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		employeeName: row.employee_name,
-		approverName: row.approver_name
+		approverName: row.approver_name,
+		effectiveDays: null
 	}));
 
 	return {

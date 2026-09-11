@@ -109,6 +109,8 @@
 	"leaveRequests.columns.status": "Status",
 	"leaveRequests.columns.reason": "Reason",
 	"leaveRequests.columns.createdAt": "Recorded",
+	"leaveRequests.columns.effectiveDays": "Effective",
+	"leaveRequests.effectiveDays.reduced": "HR removed {removed} days of this request in the calendar.",
 	"leaveRequests.section.requests": "Requests",
 	"leaveRequests.section.calendar": "Calendar",
 	"leaveCalendar.prev": "Previous month",

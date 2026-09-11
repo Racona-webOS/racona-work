@@ -398,6 +398,8 @@
 					{@const shown = approved.slice(0, MAX_NAMES)}
 					{@const extra = approved.length - shown.length}
 					{@const clickable = editable && isWorkingDay(iso) && pending.length === 0}
+					<!-- A szerep és a tabindex csak kattintható cellán van; a statikus ellenőrző ezt nem látja -->
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<div
 						class="cell"
 						class:is-off={!isWorkingDay(iso)}

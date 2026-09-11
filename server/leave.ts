@@ -69,6 +69,12 @@ export interface LeaveRequest {
 export interface LeaveRequestRow extends LeaveRequest {
 	employeeName: string;
 	approverName: string | null;
+	/**
+	 * A kérelemhez ma tartozó szabadságnapok száma (leave_days). Jóváhagyott
+	 * kérelemnél eltérhet a kért napoktól, ha a HR a naptárban törölt belőle;
+	 * függő és elutasított kérelemnél null.
+	 */
+	effectiveDays: number | null;
 }
 
 /** A keret mellé mentett számítás: az eredmény és a bemenet, amiből készült. */
@@ -199,7 +205,8 @@ export async function getLeaveRequests(
 		endDate: 'lr.end_date',
 		days: 'lr.days',
 		status: 'lr.status',
-		createdAt: 'lr.created_at'
+		createdAt: 'lr.created_at',
+		effectiveDays: '(SELECT COUNT(*) FROM app__racona_work.leave_days ld WHERE ld.leave_request_id = lr.id)'
 	};
 
 	const sortColumn = sortColumnMap[params.sortBy ?? 'createdAt'] ?? 'lr.created_at';
@@ -251,7 +258,8 @@ export async function getLeaveRequests(
 			lr.created_at,
 			lr.updated_at,
 			e_user.full_name AS employee_name,
-			approver_user.full_name AS approver_name
+			approver_user.full_name AS approver_name,
+			(SELECT COUNT(*) FROM app__racona_work.leave_days ld WHERE ld.leave_request_id = lr.id)::int AS effective_days
 		 FROM app__racona_work.leave_requests lr
 		 JOIN app__racona_work.employees e ON lr.employee_id = e.id
 		 JOIN auth.users e_user ON e.user_id = e_user.id
@@ -278,7 +286,8 @@ export async function getLeaveRequests(
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 		employeeName: row.employee_name,
-		approverName: row.approver_name ?? null
+		approverName: row.approver_name ?? null,
+		effectiveDays: row.status === 'approved' ? row.effective_days : null
 	}));
 
 	return {

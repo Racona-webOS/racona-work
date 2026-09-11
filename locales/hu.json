@@ -108,6 +108,8 @@
 	"leaveRequests.columns.status": "Státusz",
 	"leaveRequests.columns.reason": "Indoklás",
 	"leaveRequests.columns.createdAt": "Rögzítve",
+	"leaveRequests.columns.effectiveDays": "Ebből érvényes",
+	"leaveRequests.effectiveDays.reduced": "A HR a naptárban törölt {removed} napot ebből a kérelemből.",
 	"leaveRequests.section.requests": "Kérelmek",
 	"leaveRequests.section.calendar": "Naptár",
 	"leaveCalendar.prev": "Előző hónap",

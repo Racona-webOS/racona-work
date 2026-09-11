@@ -107,6 +107,8 @@ Kérelem (leave_requests)            Napok (leave_days)
 
 **K10. Rögzítés dátuma.** A kérelmek listájában új „Rögzítve” oszlop (`created_at`, dátum és idő), rendezhető. Alapértelmezett rendezés marad a rögzítés szerint csökkenő.
 
+**K10/b. Ebből érvényes.** A kérelmek listájában a kért napok mellett külön oszlop mutatja, hány nap tartozik ma a kérelemhez a `leave_days` táblából. Jóváhagyott kérelemnél, ha kevesebb a kértnél (a HR a naptárban törölt belőle), kiemelve, a tooltip megmondja, hány napot töröltek. Függő és elutasított kérelemnél üres.
+
 **K11. Értesítések.** A dolgozó értesítést kap a naptárból törölt napokról (a napok listájával) és a felvett szakaszokról (időszakonként a munkanapok számával), rendszeren belül és emailben (D16). A műveletet végző HR nem kap értesítést a saját napjairól.
 
 **K12. Migráció.** A meglévő jóváhagyott kérelmek napjai legenerálódnak (D15). A migráció idempotens (`ON CONFLICT DO NOTHING`).
@@ -238,6 +240,7 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 - [x] Szerkesztés a felületen: jelölések, típusválasztó, összegzősáv a szerver előnézetéből, mentés, elvetés, megerősítés szűrőváltásnál (K8, K9)
 - [x] Értesítések és a két új email sablon: `leave_days_removed`, `leave_days_added` (K11, D16)
 - [x] Locale (hu, en)
+- [x] „Ebből érvényes” oszlop a kérelmek listájában (K10/b): a szerver a `leave_days` számát adja (`effectiveDays`), rendezhető
 - [x] Kézi ellenőrzés a dev szerveren: a spec példája három kérelem (péntek és hétfő egy szakasz); nem munkanap, foglalt nap, függő kérelem napja, nem létező nap törlése, tiltott típus, egyszerre felvett és törölt nap, keret túllépése mind hibával áll meg; a kérelem `days` mezője a napok törlése után is változatlan (D1)
 
 **Megvalósítás, eltérések a tervtől**
@@ -250,7 +253,6 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 ### Későbbi ötletek
 
 - Éves nézet és csapatnézet (egy sor dolgozónként, oszlop naponként).
-- A kérelmek listájában „ebből érvényes” napszám, ha eltér a kért napoktól.
 - A dolgozó saját naptárában a függő kérelem visszavonása.
 - Figyelmeztetés a kiküldetéseknél, ha az út szabadságos napra esik (a kiküldetés spec 2. fázisa ide kapcsolódik).
 
