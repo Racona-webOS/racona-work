@@ -65,6 +65,29 @@
 	// --- Naptár: növelve újratölt, ha egy kérelem státusza változott ---
 	let calendarRefresh = $state(0);
 
+	// --- Összecsukható blokkok (a böngészőben megjegyezve) ---
+	type Section = 'requests' | 'calendar';
+	const COLLAPSED_KEY = 'racona-work:leave-requests:collapsed';
+	let collapsed = $state<Record<Section, boolean>>(loadCollapsed());
+
+	function loadCollapsed(): Record<Section, boolean> {
+		try {
+			const saved = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '{}');
+			return { requests: saved.requests === true, calendar: saved.calendar === true };
+		} catch {
+			return { requests: false, calendar: false };
+		}
+	}
+
+	function toggleSection(section: Section) {
+		collapsed[section] = !collapsed[section];
+		try {
+			localStorage.setItem(COLLAPSED_KEY, JSON.stringify(collapsed));
+		} catch {
+			// Tárolás nélkül is működik, csak nem jegyzi meg
+		}
+	}
+
 	// --- Táblázat állapot ---
 	let data = $state<LeaveRequestRow[]>([]);
 	let loading = $state(false);
@@ -539,6 +562,20 @@
 	});
 </script>
 
+{#snippet sectionHeader(section: Section, title: string)}
+	<div class="section-header">
+		<h3 class="section-title">{title}</h3>
+		<button
+			class="collapse-btn"
+			onclick={() => toggleSection(section)}
+			title={collapsed[section] ? t('report.section.expand') : t('report.section.collapse')}
+			aria-expanded={!collapsed[section]}
+		>
+			<svg class="collapse-icon" class:rotated={collapsed[section]} xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+		</button>
+	</div>
+{/snippet}
+
 <div class="rw">
 <section class="page">
 	{#if !hasAccess}
@@ -574,37 +611,45 @@
 			</div>
 		{/if}
 
-		<h3 class="section-title">{t('leaveRequests.section.requests')}</h3>
-
-		{#if DataTable && columns.length > 0}
-			{#key data}
-				<!-- svelte-ignore svelte_component_deprecated -->
-				<svelte:component
-					this={DataTable}
-					{columns}
-					{data}
-					pagination={paginationInfo}
-					{loading}
-					onStateChange={handleStateChange}
-				/>
-			{/key}
-		{:else}
-			<div class="loading-state">
-				<div class="spinner"></div>
-				<span>{t('loading')}</span>
+		<div class="page-block">
+			{@render sectionHeader('requests', t('leaveRequests.section.requests'))}
+			<div hidden={collapsed.requests}>
+				{#if DataTable && columns.length > 0}
+					{#key data}
+						<!-- svelte-ignore svelte_component_deprecated -->
+						<svelte:component
+							this={DataTable}
+							{columns}
+							{data}
+							pagination={paginationInfo}
+							{loading}
+							onStateChange={handleStateChange}
+						/>
+					{/key}
+				{:else}
+					<div class="loading-state">
+						<div class="spinner"></div>
+						<span>{t('loading')}</span>
+					</div>
+				{/if}
 			</div>
-		{/if}
+		</div>
 
 		{#if currentOrganization}
-			<h3 class="section-title">{t('leaveRequests.section.calendar')}</h3>
-			<LeaveCalendar
-				{pluginId}
-				organizationId={currentOrganization.id}
-				canManage={canApprove}
-				ownEmployeeId={myEmployee?.id ?? null}
-				refreshKey={calendarRefresh}
-				onSaved={() => loadData()}
-			/>
+			<div class="page-block">
+				{@render sectionHeader('calendar', t('leaveRequests.section.calendar'))}
+				<!-- Elrejtve, nem kiszedve: a hónap és a jelölések megmaradnak -->
+				<div hidden={collapsed.calendar}>
+					<LeaveCalendar
+						{pluginId}
+						organizationId={currentOrganization.id}
+						canManage={canApprove}
+						ownEmployeeId={myEmployee?.id ?? null}
+						refreshKey={calendarRefresh}
+						onSaved={() => loadData()}
+					/>
+				</div>
+			</div>
 		{/if}
 	{/if}
 </section>
@@ -681,10 +726,57 @@
 		gap: 1.5rem;
 	}
 
+	.page-block {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		min-width: 0;
+	}
+
+	.section-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
 	.section-title {
 		font-size: 1.05rem;
 		font-weight: 600;
-		margin: 0 0 -0.75rem;
+		margin: 0;
+	}
+
+	.collapse-btn {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.75rem;
+		height: 1.75rem;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.375rem;
+		background: transparent;
+		color: var(--color-muted-foreground, #64748b);
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.collapse-btn:hover {
+		background: var(--color-accent, #f1f5f9);
+		color: var(--color-foreground, #0f172a);
+	}
+
+	.collapse-icon {
+		transition: transform 0.2s ease;
+	}
+
+	.collapse-icon.rotated {
+		transform: rotate(180deg);
+	}
+
+	:global(.dark) .collapse-btn:hover {
+		background: var(--color-accent, oklch(0.269 0 0));
+		color: oklch(0.985 0 0);
 	}
 
 

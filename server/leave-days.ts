@@ -279,7 +279,8 @@ function daySpan(from: string, to: string): number {
  * Aki `leave.request` joggal belép, látja, ki mikor van távol; a típust a
  * `leave.approve` jog mutatja, meg a dolgozó a saját napjainál (a
  * betegszabadság egészségügyi adat, a kollégák nem látják). A függő kérelmek
- * napjait a kérelem időszakából számoljuk a munkanaptárral.
+ * napjait a kérelem időszakából számoljuk a munkanaptárral; jóváhagyó jog
+ * nélkül csak a hívó saját függő kérelmeit.
  *
  * @param params - A szervezet, az időszak (legfeljebb egy év) és a dolgozószűrő.
  * @param context - Remote futási kontextus.
@@ -315,6 +316,11 @@ export async function getLeaveCalendar(
 		queryParams.push(employeeFilter);
 	}
 	const where = conditions.join(' AND ');
+	// A kollégák függő kérelmei csak a jóváhagyónak látszanak; a dolgozónak a sajátjai
+	const pendingWhere = canManage
+		? where
+		: `${where} AND lr.employee_id = $${queryParams.length + 1}`;
+	const pendingParams = canManage ? queryParams : [...queryParams, ownEmployeeId ?? 0];
 
 	const [daysResult, pendingResult, overrides, closedYear] = await Promise.all([
 		context.db.query(
@@ -335,10 +341,10 @@ export async function getLeaveCalendar(
 			   FROM ${SCHEMA}.leave_requests lr
 			   JOIN ${SCHEMA}.employees e ON e.id = lr.employee_id
 			   JOIN auth.users u ON u.id = e.user_id
-			  WHERE ${where} AND lr.status = 'pending'
+			  WHERE ${pendingWhere} AND lr.status = 'pending'
 			    AND lr.start_date <= $3::date AND lr.end_date >= $2::date
 			  ORDER BY lr.start_date, u.full_name`,
-			queryParams
+			pendingParams
 		),
 		getWorkCalendarOverrides(context, organizationId, from, to),
 		loadClosedYear(context.db, organizationId)

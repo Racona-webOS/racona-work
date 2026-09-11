@@ -8,8 +8,9 @@
 	Három nézet: havi rács, éves nézet (tizenkét kis havi rács) és csapatnézet
 	(soronként egy dolgozó, oszloponként egy nap). A csapatnézet csak olvasásra.
 
-	A dolgozó alapból ugyanazt látja, mint a HR: mindenki napjait (típus
-	nélkül), olvasásra. Az „Új szabadság” gombbal kérelmező módba vált: a saját
+	A dolgozó alapból mindenki jóváhagyott napjait látja (típus nélkül),
+	olvasásra, dolgozóválasztó nélkül; függő kérelemből csak a sajátjait (a
+	szerver szűr). Az „Új szabadság” gombbal kérelmező módba vált: a saját
 	naptára éves nézetben, ahol kijelöli a kért napokat, a szerver szakaszokra
 	bontja és mutatja a keretét, egy gombbal beküldi (szakaszonként egy függő
 	kérelem). A saját függő kérelmét a részletekből vagy kérelmező módban a
@@ -324,17 +325,19 @@
 	/** A kattintott cella helye a gyökérhez képest. */
 	let detailsAnchor = $state<{ left: number; top: number; width: number; height: number } | null>(null);
 
-	const POPUP_WIDTH = 288;
 	const POPUP_GAP = 8;
+
+	/** A doboz mért szélessége: a tartalomhoz igazodik (CSS-ben min. és max.). */
+	let popupWidth = $state(288);
 
 	/** A doboz helye: a cella jobb oldalán, ha nem fér ki, a bal oldalán. */
 	const popupStyle = $derived.by(() => {
 		if (!detailsAnchor || !rootEl) return '';
 		const rootWidth = rootEl.clientWidth;
 		let left = detailsAnchor.left + detailsAnchor.width + POPUP_GAP;
-		if (left + POPUP_WIDTH > rootWidth) left = detailsAnchor.left - POPUP_WIDTH - POPUP_GAP;
-		if (left < 0) left = Math.max(0, rootWidth - POPUP_WIDTH);
-		return `left: ${Math.round(left)}px; top: ${Math.round(detailsAnchor.top)}px; width: ${POPUP_WIDTH}px;`;
+		if (left + popupWidth > rootWidth) left = detailsAnchor.left - popupWidth - POPUP_GAP;
+		if (left < 0) left = Math.max(0, rootWidth - popupWidth);
+		return `left: ${Math.round(left)}px; top: ${Math.round(detailsAnchor.top)}px;`;
 	});
 
 	function closeDetails() {
@@ -666,74 +669,79 @@
 
 <div class="leave-calendar" bind:this={rootEl}>
 	<div class="toolbar">
-		<div class="month-nav">
-			<button class="btn-secondary" onclick={prevMonth} aria-label={t('leaveCalendar.prev')}>‹</button>
-			<span class="month-label">
-				{view === 'year' ? `${year}.` : `${year}. ${t(`workCalendar.month.${month}`)}`}
-			</span>
-			<button class="btn-secondary" onclick={nextMonth} aria-label={t('leaveCalendar.next')}>›</button>
-			<button class="btn-secondary" onclick={goToday}>{t('leaveCalendar.today')}</button>
-		</div>
+		<div class="toolbar-group">
+			<div class="month-nav">
+				<button class="btn-secondary" onclick={prevMonth} aria-label={t('leaveCalendar.prev')}>‹</button>
+				<span class="month-label">
+					{view === 'year' ? `${year}.` : `${year}. ${t(`workCalendar.month.${month}`)}`}
+				</span>
+				<button class="btn-secondary" onclick={nextMonth} aria-label={t('leaveCalendar.next')}>›</button>
+				<button class="btn-secondary" onclick={goToday}>{t('leaveCalendar.today')}</button>
+			</div>
 
-		{#if canEnterRequestMode}
-			{#if requestMode}
-				<button class="btn-secondary" onclick={exitRequestMode}>{t('leaveCalendar.backToOverview')}</button>
-			{:else}
-				<button class="btn-primary" onclick={enterRequestMode}>+ {t('leaveCalendar.newLeave')}</button>
-			{/if}
-		{/if}
-
-		<div class="view-toggle" role="group">
-			<button class="chip-btn" class:active={view === 'month'} onclick={() => setView('month')}>
-				{t('leaveCalendar.view.month')}
-			</button>
-			<button class="chip-btn" class:active={view === 'year'} onclick={() => setView('year')}>
-				{t('leaveCalendar.view.year')}
-			</button>
-			{#if !lockEmployee}
-				<button class="chip-btn" class:active={view === 'team'} onclick={() => setView('team')}>
-					{t('leaveCalendar.view.team')}
+			<div class="view-toggle" role="group">
+				<button class="chip-btn" class:active={view === 'month'} onclick={() => setView('month')}>
+					{t('leaveCalendar.view.month')}
 				</button>
-			{/if}
+				<button class="chip-btn" class:active={view === 'year'} onclick={() => setView('year')}>
+					{t('leaveCalendar.view.year')}
+				</button>
+				{#if !lockEmployee}
+					<button class="chip-btn" class:active={view === 'team'} onclick={() => setView('team')}>
+						{t('leaveCalendar.view.team')}
+					</button>
+				{/if}
+			</div>
 		</div>
 
-		{#if !lockEmployee}
-			<label class="filter">
-				<span>{t('leaveCalendar.filter.label')}</span>
-				<select
-					class="form-input"
-					value={selectedEmployeeId === null ? '' : String(selectedEmployeeId)}
-					onchange={onEmployeeChange}
-				>
-					<option value="">{t('leaveCalendar.filter.all')}</option>
-					{#each employees as emp (emp.id)}
-						<option value={String(emp.id)}>{emp.userName}</option>
-					{/each}
-				</select>
-			</label>
-		{/if}
+		<div class="toolbar-group">
+			<!-- Dolgozót csak a jóváhagyó választ; a dolgozó mindenkit lát, vagy kérelmező módban a sajátját -->
+			{#if canManage}
+				<label class="filter">
+					<span>{t('leaveCalendar.filter.label')}</span>
+					<select
+						class="form-input"
+						value={selectedEmployeeId === null ? '' : String(selectedEmployeeId)}
+						onchange={onEmployeeChange}
+					>
+						<option value="">{t('leaveCalendar.filter.all')}</option>
+						{#each employees as emp (emp.id)}
+							<option value={String(emp.id)}>{emp.userName}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
 
-		{#if canRequest}
-			<label class="filter">
-				<span>{t('leaveCalendar.requestType')}</span>
-				<select class="form-input" bind:value={requestType} disabled={saving}>
-					{#each REQUEST_CALENDAR_LEAVE_TYPES as type (type)}
-						<option value={type}>{t(`leaveRequests.type.${type}`)}</option>
-					{/each}
-				</select>
-			</label>
-		{/if}
+			{#if canRequest}
+				<label class="filter">
+					<span>{t('leaveCalendar.requestType')}</span>
+					<select class="form-input" bind:value={requestType} disabled={saving}>
+						{#each REQUEST_CALENDAR_LEAVE_TYPES as type (type)}
+							<option value={type}>{t(`leaveRequests.type.${type}`)}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
 
-		{#if editable}
-			<label class="filter">
-				<span>{t('leaveCalendar.addType')}</span>
-				<select class="form-input" bind:value={addType} disabled={toAdd.size > 0 && saving}>
-					{#each CALENDAR_LEAVE_TYPES as type (type)}
-						<option value={type}>{t(`leaveRequests.type.${type}`)}</option>
-					{/each}
-				</select>
-			</label>
-		{/if}
+			{#if editable}
+				<label class="filter">
+					<span>{t('leaveCalendar.addType')}</span>
+					<select class="form-input" bind:value={addType} disabled={toAdd.size > 0 && saving}>
+						{#each CALENDAR_LEAVE_TYPES as type (type)}
+							<option value={type}>{t(`leaveRequests.type.${type}`)}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
+
+			{#if canEnterRequestMode}
+				{#if requestMode}
+					<button class="btn-secondary" onclick={exitRequestMode}>{t('leaveCalendar.backToOverview')}</button>
+				{:else}
+					<button class="btn-primary" onclick={enterRequestMode}>+ {t('leaveCalendar.newLeave')}</button>
+				{/if}
+			{/if}
+		</div>
 	</div>
 
 	{#if (editable || canRequest) && needsChild}
@@ -974,7 +982,13 @@
 	{/if}
 
 	{#if detailsDay && detailsAnchor && detailsApproved.length + detailsPending.length > 0}
-		<div class="details-popup" style={popupStyle} role="dialog" aria-label={formatDayLong(detailsDay)}>
+		<div
+			class="details-popup"
+			style={popupStyle}
+			role="dialog"
+			aria-label={formatDayLong(detailsDay)}
+			bind:offsetWidth={popupWidth}
+		>
 			<div class="details-head">
 				<strong>{formatDayLong(detailsDay)}</strong>
 				<button class="details-close" onclick={closeDetails} aria-label={t('leaveCalendar.details.close')}>×</button>
@@ -983,13 +997,13 @@
 				{#each detailsApproved as d (d.leaveRequestId + ':' + d.employeeId)}
 					<li>
 						<span class="mark {typeClass(d.leaveType)}">{typeLabel(d.leaveType)}</span>
-						<span>{d.employeeName}</span>
+						<span class="details-name">{d.employeeName}</span>
 					</li>
 				{/each}
 				{#each detailsPending as d (d.leaveRequestId + ':' + d.employeeId)}
 					<li>
 						<span class="mark is-pending">{t('leaveCalendar.pending')}</span>
-						<span>{d.employeeName}{d.leaveType ? ` – ${typeLabel(d.leaveType)}` : ''}</span>
+						<span class="details-name">{d.employeeName}{d.leaveType ? ` – ${typeLabel(d.leaveType)}` : ''}</span>
 						{#if ownEmployeeId && d.employeeId === ownEmployeeId}
 							<button class="link-btn" onclick={() => withdrawRequest(d.leaveRequestId)} disabled={withdrawing}>
 								{t('leaveRequests.withdraw')}
@@ -1075,6 +1089,19 @@
 		justify-content: space-between;
 		gap: 1rem;
 		flex-wrap: wrap;
+	}
+
+	.toolbar-group {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		flex-wrap: wrap;
+	}
+
+	/* Keskeny helyen új sorba tördel, de ott is jobbra marad */
+	.toolbar-group:last-child {
+		margin-left: auto;
+		justify-content: flex-end;
 	}
 
 	.month-nav {
@@ -1448,10 +1475,16 @@
 		background: var(--color-background, #fff);
 		box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
 		font-size: 0.875rem;
+		/* A tartalomhoz nő (név, típus, visszavonás egy sorban), a naptárnál nem szélesebb */
+		width: max-content;
+		min-width: 18rem;
+		max-width: min(32rem, 100%);
+		box-sizing: border-box;
 	}
 
 	.link-btn {
-		margin-left: auto;
+		justify-self: end;
+		white-space: nowrap;
 		border: none;
 		background: transparent;
 		color: #991b1b;
@@ -1485,25 +1518,33 @@
 		gap: 1rem;
 	}
 
+	/* Közös oszlopok minden sorra: jelölés, név, művelet */
 	.details-list {
 		list-style: none;
 		margin: 0;
 		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		align-items: center;
+		gap: 0.35rem 0.75rem;
 	}
 
 	.details-list li {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
+		display: contents;
 	}
 
 	.details-list .mark {
-		display: inline-block;
+		grid-column: 1;
 		min-width: 7rem;
 		text-align: center;
+	}
+
+	.details-name {
+		grid-column: 2;
+	}
+
+	.details-list .link-btn {
+		grid-column: 3;
 	}
 
 	:global(.dark) .details-popup {
