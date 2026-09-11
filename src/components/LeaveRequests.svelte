@@ -19,7 +19,7 @@
 		LeaveAllowances,
 		ChildLeaveStatus
 	} from '../../server/functions.js';
-	import { CHILD_LEAVE_TYPES, LEAVE_TYPES } from '../../server/leave-types.js';
+	import { CHILD_LEAVE_TYPES, HR_ONLY_LEAVE_TYPES, LEAVE_TYPES } from '../../server/leave-types.js';
 	import type { LeaveType } from '../../server/leave-types.js';
 	import { getOrganizationStore, createOrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
@@ -833,7 +833,8 @@
 			<label class="form-label">
 				{t('leaveRequests.form.type')} *
 				<select class="form-input" bind:value={newReqType}>
-					{#each LEAVE_TYPES as type (type)}
+					<!-- A céges kötelező szabadságot csak a jóváhagyó rögzítheti -->
+					{#each LEAVE_TYPES.filter((tp) => canApprove || !HR_ONLY_LEAVE_TYPES.has(tp)) as type (type)}
 						<option value={type}>{t(`leaveRequests.type.${type}`)}</option>
 					{/each}
 				</select>

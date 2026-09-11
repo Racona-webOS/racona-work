@@ -54,6 +54,8 @@ Ma a szabadság egyetlen igazságforrása a szabadságkérelem (`leave_requests`
 | D13 | Ki látja a naptárat? | Aki `leave.request` joggal belép az oldalra, látja, ki mikor van távol (név, típus nélkül). A típust és a szerkesztést csak a `leave.approve` jog adja. A betegszabadság egészségügyi adat, ezért a kollégák nem látják a típust. | javasolt |
 | D14 | Kérelem törlése | A HR mostani „Törlés” művelete marad: a kérelem és a napjai (CASCADE) törlődnek, a dolgozó értesítést kap. Ez az egyetlen eset, amikor egy beadott kérelem eltűnik. | javasolt |
 | D15 | Migráció | A meglévő `approved` kérelmek napjait SQL generálja a munkanaptár figyelembevételével. Ha két kérelem átfed, a korábban beadott nyer, a másik napjai kimaradnak (naplózva). A `used_days` a migráció végén újraszámolódik. | javasolt |
+| D17 | Céges kötelező szabadság | Új típus (`company_mandatory`), pl. a két ünnep közötti napok vagy a nyári leállás. A munkáltató által kiadott éves szabadság (Mt. 122. §), ezért **az éves keretet terheli**, mint az éves szabadság. Csak a jóváhagyó rögzítheti (kérelemként és a naptárból is), a dolgozó nem adhatja be. | javasolt |
+| D18 | Év lezárása | A HR (`leave.balance.manage`) lezárhat egy évet: arra és a korábbi évekre nem lehet szabadságot beadni, jóváhagyni, törölni vagy a naptárban módosítani. A beállítás a legutolsó lezárt év (`settings:leave_closed_year:org_<id>`); jövő év nem zárható; az újranyitás egy évvel visszalép. A függő kérelem visszavonása lezárt évben is lehet. | javasolt |
 | D16 | Értesítés a naptáras mentésről | Mentésenként egy-egy összefoglaló: a törölt napokról és a felvett szakaszokról, rendszeren belül és emailben. Nem kérelmenként, hogy három szakasz ne legyen három email. Ha a HR a saját napjait szerkeszti, nem kap értesítést (mint ma). | javasolt |
 
 ## 4. Folyamat
@@ -115,6 +117,10 @@ Kérelem (leave_requests)            Napok (leave_days)
 **K10/b. Ebből érvényes.** A kérelmek listájában a kért napok mellett külön oszlop mutatja, hány nap tartozik ma a kérelemhez a `leave_days` táblából. Jóváhagyott kérelemnél, ha kevesebb a kértnél (a HR a naptárban törölt belőle), kiemelve, a tooltip megmondja, hány napot töröltek. Függő és elutasított kérelemnél üres.
 
 **K12/b. Függő kérelem visszavonása.** A dolgozó a saját függő kérelmét visszavonhatja: a saját naptárban a kérelem napjára kattintva (megerősítés után), vagy a kérelmek listájának műveletéből. A kérelem `withdrawn` státuszba kerül, nem törlődik. Aki a beadásról értesült, rendszeren belüli értesítést kap a visszavonásról; email nincs.
+
+**K13. Év lezárása.** A munkanaptár oldalon a megjelenített évhez „{év} lezárása” gomb (`leave.balance.manage`), megerősítéssel. Lezárt évnél „Lezárt év” jelvény és magyarázat; a legutolsó lezárt év újranyitható. A szerver a kérelem beadásakor, jóváhagyásakor, törlésekor és a naptáras mentésnél ellenőrzi; a szabadságnaptár a lezárt évek napjait nem engedi jelölni és jelzi a lezárást.
+
+**K14. Áthelyezett napok szinkronja.** A munkanaptár figyelmeztet, ha az évben az áthelyezett munkanapok és a máskor ledolgozott szabadnapok száma nem egyezik. Csak jelzés, nem tilt.
 
 **K11. Értesítések.** A dolgozó értesítést kap a naptárból törölt napokról (a napok listájával) és a felvett szakaszokról (időszakonként a munkanapok számával), rendszeren belül és emailben (D16). A műveletet végző HR nem kap értesítést a saját napjairól.
 
@@ -248,6 +254,9 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 - [x] Értesítések és a két új email sablon: `leave_days_removed`, `leave_days_added` (K11, D16)
 - [x] Locale (hu, en)
 - [x] Függő kérelem visszavonása a saját naptárban és a listában (K12/b): `withdrawLeaveRequest`, `withdrawn` státusz
+- [x] Céges kötelező szabadság típus, az éves keretet terheli, csak a jóváhagyó rögzítheti (D17)
+- [x] Év lezárása: `leave-closing.ts`, ellenőrzés a beadásnál, jóváhagyásnál, törlésnél és a naptáras mentésnél, gomb a munkanaptáron (K13, D18)
+- [x] Áthelyezett napok szinkron-figyelmeztetése a munkanaptáron (K14); a „Ledolgozós munkanap” felirat „Áthelyezett munkanap” lett
 - [x] Napi részletek felugró dobozban kattintásra a havi és az éves nézetben (K6/c)
 - [x] Éves nézet és csapatnézet (K6/b); a naptár lekérdezése egy évre is engedélyezett
 - [x] „Ebből érvényes” oszlop a kérelmek listájában (K10/b): a szerver a `leave_days` számát adja (`effectiveDays`), rendezhető

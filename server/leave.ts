@@ -19,7 +19,8 @@ import {
 import { validateChildLeave } from './leave-allowances.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
 import { logBalanceChange } from './leave-history.js';
-import { CHILD_LEAVE_TYPES, isLeaveType } from './leave-types.js';
+import { CHILD_LEAVE_TYPES, HR_ONLY_LEAVE_TYPES, consumesAnnualBalance, isLeaveType } from './leave-types.js';
+import { assertDaysOpen } from './leave-closing.js';
 import type { CarryOverUsage, EntitlementInput, EntitlementResult } from './leave-entitlement.js';
 import { enrichCarryOver } from './leave-carry-over.js';
 import {
@@ -349,9 +350,17 @@ export async function createLeaveRequest(
 		throw new Error('A záró dátum nem lehet korábbi a kezdő dátumnál.');
 	}
 
+	// A céges kötelező szabadságot csak a jóváhagyó rögzítheti
+	if (HR_ONLY_LEAVE_TYPES.has(leaveType)) {
+		await requireCapability(context, organizationId, 'leave.approve');
+	}
+
 	const calendar = await getWorkCalendarOverrides(context, organizationId, startDate, endDate);
 	const workingDays = listWorkingDays(startDate, endDate, calendar);
 	const days = workingDays.length;
+
+	// Lezárt évre nem lehet rögzíteni
+	await assertDaysOpen(context.db, organizationId, workingDays);
 
 	// Egy dolgozónak egy napon egy szabadsága lehet: jóváhagyott nap és függő
 	// kérelem sem fedhet át (specs/leave-days.md, K2).
@@ -370,8 +379,8 @@ export async function createLeaveRequest(
 		);
 	}
 
-	// Szabadságkeret ellenőrzés (csak éves szabadságnál), a napok éve szerint
-	if (leaveType === 'annual') {
+	// Szabadságkeret ellenőrzés (a keretet terhelő típusoknál), a napok éve szerint
+	if (consumesAnnualBalance(leaveType)) {
 		await assertAnnualBalance(context.db, employeeId, workingDays, 'request');
 	}
 
@@ -475,10 +484,13 @@ export async function approveLeaveRequest(
 	// Egy dolgozónak egy napon egy szabadsága lehet (specs/leave-days.md, K1)
 	await assertDaysFree(context.db, req.employee_id, workingDays);
 
-	// Éves szabadságnál a kerettel is újra egyeztetni kell: ha a naptár változása
-	// miatt több napra jön ki, előfordulhat, hogy már nem fér bele. Évenként,
-	// mert az évet átlépő kérelem két keretet terhel.
-	if (req.leave_type === 'annual') {
+	// Lezárt évre nem lehet jóváhagyni
+	await assertDaysOpen(context.db, req.organization_id, workingDays);
+
+	// A keretet terhelő típusnál a kerettel is újra egyeztetni kell: ha a naptár
+	// változása miatt több napra jön ki, előfordulhat, hogy már nem fér bele.
+	// Évenként, mert az évet átlépő kérelem két keretet terhel.
+	if (consumesAnnualBalance(req.leave_type)) {
 		await assertAnnualBalance(context.db, req.employee_id, workingDays, 'approve');
 	}
 
@@ -526,7 +538,7 @@ export async function approveLeaveRequest(
 			leaveType: req.leave_type,
 			days: workingDays
 		});
-		if (req.leave_type === 'annual') {
+		if (consumesAnnualBalance(req.leave_type)) {
 			await syncAnnualUsedDays(client, req.employee_id, [...groupDaysByYear(workingDays).keys()]);
 		}
 		await client.query('COMMIT');
@@ -747,11 +759,16 @@ export async function deleteLeaveRequest(
 
 	await requireCapability(context, req.organization_id, 'leave.approve');
 
+	// Lezárt év jóváhagyott szabadsága nem törölhető
+	if (req.status === 'approved') {
+		await assertDaysOpen(context.db, req.organization_id, [toIsoDay(req.start_date), toIsoDay(req.end_date)]);
+	}
+
 	// A napok a CASCADE miatt a kérelemmel együtt törlődnek
 	await context.db.query(`DELETE FROM app__racona_work.leave_requests WHERE id = $1`, [params.id]);
 
 	// Az éves keret felhasználása a megmaradt napokból (az évet átlépő kérelem két évet érint)
-	if (req.status === 'approved' && req.leave_type === 'annual') {
+	if (req.status === 'approved' && consumesAnnualBalance(req.leave_type)) {
 		const startYear = Number(toIsoDay(req.start_date).slice(0, 4));
 		const endYear = Number(toIsoDay(req.end_date).slice(0, 4));
 		const years: number[] = [];

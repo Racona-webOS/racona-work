@@ -15,7 +15,7 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
  * A naptárban felvehető típusok (specs/leave-days.md, D9). A gyerekhez kötött
  * apasági és szülői szabadság kimarad, azt kérelemként kell rögzíteni.
  */
-export const CALENDAR_LEAVE_TYPES: readonly LeaveType[] = ['annual', 'sick', 'unpaid', 'other'];
+export const CALENDAR_LEAVE_TYPES: readonly LeaveType[] = ['annual', 'company_mandatory', 'sick', 'unpaid', 'other'];
 
 /** Egy összefüggő szabadságszakasz a naptárban felvett napokból. */
 export interface LeaveRun {

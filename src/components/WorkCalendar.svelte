@@ -28,8 +28,14 @@
 	let currentOrganization = $state<import('../../server/functions.js').Organization | null>(null);
 	let hasAccess = $state(false);
 
-	function t(key: string): string {
-		return sdk?.i18n?.t(key) ?? key;
+	function t(key: string, vars?: Record<string, string | number>): string {
+		let result: string = sdk?.i18n?.t(key) ?? key;
+		if (vars) {
+			for (const [k, v] of Object.entries(vars)) {
+				result = result.replace(`{${k}}`, String(v));
+			}
+		}
+		return result;
 	}
 
 	// --- Állapot -------------------------------------------------------------
@@ -38,6 +44,64 @@
 	let days = $state<CalendarDay[]>([]);
 	let loading = $state(true);
 	let generating = $state(false);
+
+	// --- Áthelyezett napok szinkronja --------------------------------------
+	// Ahány szabadnapot máskor dolgoznak le, annyi áthelyezett munkanapnak kell
+	// lennie az évben; ha eltér, valami hiányzik a naptárból.
+	const relocatedWorkDays = $derived(days.filter((d) => d.kind === 'relocated_work_day').length);
+	const relocatedRestDays = $derived(days.filter((d) => d.kind === 'relocated_rest_day').length);
+	const relocatedOutOfSync = $derived(relocatedWorkDays !== relocatedRestDays);
+
+	// --- Év lezárása --------------------------------------------------------
+	// A lezárt évre és a korábbiakra nem lehet szabadságot rögzíteni; a HR
+	// (leave.balance.manage) zárja le és nyitja újra.
+	let closedYear = $state<number | null>(null);
+	let canClose = $state(false);
+	let closing = $state(false);
+	const currentYear = new Date().getFullYear();
+	const yearClosed = $derived(closedYear !== null && year <= closedYear);
+
+	async function loadClosedYear() {
+		if (!currentOrganization) return;
+		try {
+			const r = await sdk?.remote?.call('getLeaveClosedYear', { organizationId: currentOrganization.id });
+			closedYear = r?.closedYear ?? null;
+		} catch {
+			closedYear = null;
+		}
+	}
+
+	async function closeYear() {
+		if (!currentOrganization || !window.confirm(t('workCalendar.closing.confirm', { year }))) return;
+		closing = true;
+		try {
+			const r = await sdk?.remote?.call('setLeaveClosedYear', { organizationId: currentOrganization.id, year });
+			closedYear = r?.closedYear ?? null;
+			sdk?.ui?.toast(t('settings.saveSuccess'), 'success');
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
+		} finally {
+			closing = false;
+		}
+	}
+
+	async function reopenYear() {
+		if (!currentOrganization || !window.confirm(t('workCalendar.closing.reopenConfirm', { year }))) return;
+		closing = true;
+		try {
+			// Az újranyitás az előző évig húzza vissza a lezárást
+			const r = await sdk?.remote?.call('setLeaveClosedYear', {
+				organizationId: currentOrganization.id,
+				year: year - 1 >= 1970 ? year - 1 : null
+			});
+			closedYear = r?.closedYear ?? null;
+			sdk?.ui?.toast(t('settings.saveSuccess'), 'success');
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
+		} finally {
+			closing = false;
+		}
+	}
 
 	// Szerkesztő modal
 	let editorOpen = $state(false);
@@ -216,7 +280,11 @@
 				hasAccess = orgStore.hasAccess;
 			}
 		}
-		if (sdk?.remote && currentOrganization) loadData();
+		if (orgStore) canClose = orgStore.can('leave.balance.manage');
+		if (sdk?.remote && currentOrganization) {
+			loadData();
+			loadClosedYear();
+		}
 	});
 
 	$effect(() => {
@@ -256,10 +324,34 @@
 					<span class="year-label">{year}</span>
 					<button class="btn-secondary" onclick={() => (year += 1)} aria-label="következő év">›</button>
 				</div>
-				<button class="btn-primary" onclick={generateHolidays} disabled={generating || loading}>
-					{generating ? t('loading') : t('workCalendar.generate')}
-				</button>
+				<div class="toolbar-actions">
+					{#if yearClosed}
+						<span class="chip is-closed">{t('workCalendar.closing.closed')}</span>
+						{#if canClose && year === closedYear}
+							<button class="btn-secondary" onclick={reopenYear} disabled={closing}>
+								{t('workCalendar.closing.reopenButton', { year })}
+							</button>
+						{/if}
+					{:else if canClose && year <= currentYear}
+						<button class="btn-secondary" onclick={closeYear} disabled={closing}>
+							{t('workCalendar.closing.closeButton', { year })}
+						</button>
+					{/if}
+					<button class="btn-primary" onclick={generateHolidays} disabled={generating || loading}>
+						{generating ? t('loading') : t('workCalendar.generate')}
+					</button>
+				</div>
 			</div>
+
+			{#if yearClosed}
+				<p class="notice">{t('workCalendar.closing.hint', { year })}</p>
+			{/if}
+
+			{#if !loading && relocatedOutOfSync}
+				<p class="notice is-warning">
+					{t('workCalendar.syncWarning', { work: relocatedWorkDays, rest: relocatedRestDays })}
+				</p>
+			{/if}
 
 			<div class="legend">
 				<span class="chip is-public-holiday">{t('workCalendar.kind.public_holiday')}</span>
@@ -455,6 +547,31 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+	}
+
+	.toolbar-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.chip.is-closed {
+		background: #e4e4e7;
+		color: #3f3f46;
+	}
+
+	.notice {
+		margin: 0 0 1rem;
+		padding: 0.6rem 0.9rem;
+		border-radius: 0.375rem;
+		background: var(--muted, #f4f4f5);
+		font-size: 0.875rem;
+	}
+
+	.notice.is-warning {
+		background: #fef3c7;
+		color: #92400e;
 	}
 
 	.year-label {

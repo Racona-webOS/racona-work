@@ -11,6 +11,7 @@ import type { RemoteContext } from './context.js';
 import { requireCapability } from './permissions.js';
 import { currentYear, todayInBudapest } from './dates.js';
 import { carryOverUsage } from './leave-entitlement.js';
+import { BALANCE_LEAVE_TYPES } from './leave-types.js';
 import type { CarryOverStatus } from './leave-entitlement.js';
 import { BALANCE_COLUMNS, mapBalanceRow } from './leave.js';
 import type { LeaveBalance } from './leave.js';
@@ -48,9 +49,13 @@ export async function enrichCarryOver(
 		   FROM ${SCHEMA}.leave_days
 		  WHERE employee_id = ANY($1::int[])
 		    AND EXTRACT(YEAR FROM day)::int = ANY($2::int[])
-		    AND leave_type = 'annual'
+		    AND leave_type = ANY($3::text[])
 		  ORDER BY day`,
-		[[...new Set(targets.map((b) => b.employeeId))], [...new Set(targets.map((b) => b.year))]]
+		[
+			[...new Set(targets.map((b) => b.employeeId))],
+			[...new Set(targets.map((b) => b.year))],
+			[...BALANCE_LEAVE_TYPES]
+		]
 	);
 	const requestsBy = new Map<string, { startDate: string; days: number }[]>();
 	for (const row of r.rows) {

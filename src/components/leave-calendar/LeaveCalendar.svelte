@@ -305,10 +305,16 @@
 	 * Kattintható-e a nap: szerkesztésben az üres munkanap és a meglévő nap;
 	 * egyébként az, amin van bejegyzés (részletek, saját nézetben visszavonás).
 	 */
+	/** A nap lezárt évre esik-e (a szerver is ellenőrzi, ez csak a felület). */
+	function isClosed(iso: string): boolean {
+		const closedYear = data?.closedYear ?? null;
+		return closedYear !== null && Number(iso.slice(0, 4)) <= closedYear;
+	}
+
 	function isClickable(iso: string): boolean {
 		const approved = dayMap.get(iso)?.length ?? 0;
 		const pending = pendingMap.get(iso)?.length ?? 0;
-		if (editable) return isWorkingDay(iso) && pending === 0;
+		if (editable) return isWorkingDay(iso) && pending === 0 && !isClosed(iso);
 		return approved + pending > 0;
 	}
 
@@ -321,7 +327,7 @@
 			openDetails(iso, cell);
 			return;
 		}
-		if (!isWorkingDay(iso)) return;
+		if (!isWorkingDay(iso) || isClosed(iso)) return;
 		if ((pendingMap.get(iso) ?? []).length > 0) return;
 		const hasApproved = (dayMap.get(iso) ?? []).length > 0;
 		if (hasApproved) toRemove = toggled(toRemove, iso);
@@ -576,7 +582,12 @@
 	</div>
 
 	{#if editable}
-		<p class="hint">{view === 'team' ? t('leaveCalendar.team.readOnly') : t('leaveCalendar.editHint')}</p>
+		<p class="hint">
+			{view === 'team' ? t('leaveCalendar.team.readOnly') : t('leaveCalendar.editHint')}
+			{#if data?.closedYear !== null && data?.closedYear !== undefined}
+				{t('leaveCalendar.closedHint', { year: data.closedYear })}
+			{/if}
+		</p>
 	{:else if canWithdraw}
 		<p class="hint">{t('leaveCalendar.withdrawHint')} {t('leaveCalendar.detailsHint')}</p>
 	{:else}
@@ -1192,6 +1203,7 @@
 	}
 
 	.type-annual { background: #dcfce7; color: #166534; }
+	.type-company_mandatory { background: #ccfbf1; color: #115e59; }
 	.type-sick { background: #fee2e2; color: #991b1b; }
 	.type-paternity,
 	.type-parental { background: #ede9fe; color: #5b21b6; }

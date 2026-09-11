@@ -16,8 +16,9 @@ import { hasCapability, requireCapability } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
 import { notifyLeaveDaysAdded, notifyLeaveDaysRemoved } from './leave-notifications.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
-import { isLeaveType } from './leave-types.js';
+import { BALANCE_LEAVE_TYPES, consumesAnnualBalance, isLeaveType } from './leave-types.js';
 import type { LeaveType } from './leave-types.js';
+import { isDayClosed, loadClosedYear } from './leave-closing.js';
 import {
 	CALENDAR_LEAVE_TYPES,
 	groupDaysByYear,
@@ -151,12 +152,12 @@ export async function syncAnnualUsedDays(
 		            SELECT COUNT(*)
 		              FROM ${SCHEMA}.leave_days ld
 		             WHERE ld.employee_id = b.employee_id
-		               AND ld.leave_type = 'annual'
+		               AND ld.leave_type = ANY($3::text[])
 		               AND EXTRACT(YEAR FROM ld.day)::int = b.year
 		        ),
 		        updated_at = NOW()
 		  WHERE b.employee_id = $1 AND b.year = ANY($2::int[])`,
-		[employeeId, unique]
+		[employeeId, unique, [...BALANCE_LEAVE_TYPES]]
 	);
 }
 
@@ -254,6 +255,8 @@ export interface LeaveCalendar {
 	calendar: { day: string; isWorkingDay: boolean }[];
 	/** A hívó látja-e a típust és szerkesztheti-e a naptárat (leave.approve). */
 	canManage: boolean;
+	/** A legutolsó lezárt év; eddig (és ez előtt) nem lehet módosítani. */
+	closedYear: number | null;
 }
 
 /** Legfeljebb ennyi nap kérhető le egyszerre (egy év, az éves nézethez). */
@@ -303,7 +306,7 @@ export async function getLeaveCalendar(
 	}
 	const where = conditions.join(' AND ');
 
-	const [daysResult, pendingResult, overrides] = await Promise.all([
+	const [daysResult, pendingResult, overrides, closedYear] = await Promise.all([
 		context.db.query(
 			`SELECT to_char(ld.day, 'YYYY-MM-DD') AS day, ld.employee_id, ld.leave_type, ld.leave_request_id,
 			        u.full_name AS employee_name
@@ -327,7 +330,8 @@ export async function getLeaveCalendar(
 			  ORDER BY lr.start_date, u.full_name`,
 			queryParams
 		),
-		getWorkCalendarOverrides(context, organizationId, from, to)
+		getWorkCalendarOverrides(context, organizationId, from, to),
+		loadClosedYear(context.db, organizationId)
 	]);
 
 	const days: LeaveCalendarDay[] = daysResult.rows.map((row: any) => ({
@@ -360,7 +364,8 @@ export async function getLeaveCalendar(
 		days,
 		pending,
 		calendar: [...overrides].map(([day, isWorking]) => ({ day, isWorkingDay: isWorking })),
-		canManage
+		canManage,
+		closedYear
 	};
 }
 
@@ -466,6 +471,13 @@ async function planCalendarChanges(
 			: new Map<string, boolean>();
 	const working = (day: string) => isWorkingDay(day, overrides);
 
+	// Lezárt évet nem lehet módosítani
+	const closedYear = await loadClosedYear(db, input.organizationId);
+	const closedDays = all.filter((d) => isDayClosed(d, closedYear));
+	if (closedDays.length > 0) {
+		errors.push(`A(z) ${closedYear}. évig az évek le vannak zárva, ott nem lehet módosítani: ${closedDays.join(', ')}.`);
+	}
+
 	// Felvétel: munkanap, szabad, és nincs rá függő kérelem
 	const notWorking = input.addDays.filter((d) => !working(d));
 	if (notWorking.length > 0) {
@@ -511,8 +523,12 @@ async function planCalendarChanges(
 
 	// Éves keret évenként: a törölt éves napok visszakerülnek, a felvettek terhelnek (D11)
 	const balances: CalendarBalanceEffect[] = [];
-	const addedAnnual = input.leaveType === 'annual' ? groupDaysByYear(input.addDays) : new Map<number, string[]>();
-	const removedAnnual = groupDaysByYear(removeDays.filter((r) => r.leaveType === 'annual').map((r) => r.day));
+	const addedAnnual = consumesAnnualBalance(input.leaveType)
+		? groupDaysByYear(input.addDays)
+		: new Map<number, string[]>();
+	const removedAnnual = groupDaysByYear(
+		removeDays.filter((r) => consumesAnnualBalance(r.leaveType)).map((r) => r.day)
+	);
 	const years = [...new Set([...addedAnnual.keys(), ...removedAnnual.keys()])].sort();
 	for (const year of years) {
 		const r = await db.query(
