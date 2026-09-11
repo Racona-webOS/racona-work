@@ -661,13 +661,22 @@
 			{/if}
 		</p>
 	{:else if canRequest}
-		<p class="hint">
-			{t('leaveCalendar.requestHint')}
-			{t('leaveCalendar.withdrawHint')}
-			{#if data?.closedYear !== null && data?.closedYear !== undefined}
-				{t('leaveCalendar.closedHint', { year: data.closedYear })}
-			{/if}
-		</p>
+		<div class="guide">
+			<strong class="guide-title">{t('leaveCalendar.guide.title')}</strong>
+			<ol class="guide-steps">
+				<li>{t('leaveCalendar.guide.step1')}</li>
+				<li>{t('leaveCalendar.guide.step2')}</li>
+				<li>{t('leaveCalendar.guide.step3')}</li>
+				<li>{t('leaveCalendar.guide.step4')}</li>
+			</ol>
+			<p class="guide-note">
+				{t('leaveCalendar.withdrawHint')}
+				{t('leaveCalendar.guide.childNote')}
+				{#if data?.closedYear !== null && data?.closedYear !== undefined}
+					{t('leaveCalendar.closedHint', { year: data.closedYear })}
+				{/if}
+			</p>
+		</div>
 	{:else if canWithdraw}
 		<p class="hint">{t('leaveCalendar.withdrawHint')} {t('leaveCalendar.detailsHint')}</p>
 	{:else}
@@ -1368,6 +1377,46 @@
 	:global(.dark) .details-popup {
 		background: var(--color-card, oklch(0.2 0 0));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
+	}
+
+	.guide {
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+		padding: 0.9rem 1.1rem;
+		border-radius: 0.5rem;
+		border: 1px solid #bfdbfe;
+		background: #eff6ff;
+		color: #1e3a8a;
+		font-size: 0.9rem;
+	}
+
+	.guide-title {
+		font-size: 1rem;
+	}
+
+	.guide-steps {
+		margin: 0;
+		padding-left: 1.4rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.guide-note {
+		margin: 0.2rem 0 0;
+		font-size: 0.8rem;
+		color: #1e40af;
+	}
+
+	:global(.dark) .guide {
+		background: oklch(0.25 0.05 260);
+		border-color: oklch(0.35 0.08 260);
+		color: #dbeafe;
+	}
+
+	:global(.dark) .guide-note {
+		color: #bfdbfe;
 	}
 
 	.hint {

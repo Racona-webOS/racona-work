@@ -747,9 +747,12 @@
 						: t('leaveRequests.subtitle.self')}
 				</p>
 			</div>
-			<button class="btn-primary" onclick={openNewRequestModal}>
-				+ {t('leaveRequests.newRequest')}
-			</button>
+			<!-- A dolgozó a naptárból ad be kérelmet; az űrlap a jóváhagyóé (más nevében, gyerekhez kötött típusok) -->
+			{#if canApprove}
+				<button class="btn-primary" onclick={openNewRequestModal}>
+					+ {t('leaveRequests.newRequest')}
+				</button>
+			{/if}
 		</div>
 
 		{#if canApprove}
