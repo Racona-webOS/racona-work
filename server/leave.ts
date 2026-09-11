@@ -12,6 +12,7 @@ import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { requireCapability, requireSelfOrCapability } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
 import {
+	notifyLeaveDeleted,
 	notifyLeaveRequestCreated,
 	notifyLeaveRequestDecision,
 	notifyLeaveRequestWithdrawn
@@ -780,19 +781,18 @@ export async function deleteLeaveRequest(
 		await recalculateEmployeeBalances(context, req.employee_id);
 	}
 
-	await notifyLeaveRequestDecision(
-		context,
-		{
-			id: req.id,
-			employeeId: req.employee_id,
-			organizationId: req.organization_id,
-			leaveType: req.leave_type,
-			startDate: toIsoDay(req.start_date),
-			endDate: toIsoDay(req.end_date),
-			days: req.days
-		},
-		'deleted'
-	);
+	// Jóváhagyott szabadság törlése más szöveggel megy, mint egy függő kérelemé
+	const notice = {
+		id: req.id,
+		employeeId: req.employee_id,
+		organizationId: req.organization_id,
+		leaveType: req.leave_type,
+		startDate: toIsoDay(req.start_date),
+		endDate: toIsoDay(req.end_date),
+		days: req.days
+	};
+	if (req.status === 'approved') await notifyLeaveDeleted(context, notice);
+	else await notifyLeaveRequestDecision(context, notice, 'deleted');
 }
 
 /**

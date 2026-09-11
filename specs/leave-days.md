@@ -216,7 +216,9 @@ A `leave-notifications.ts` két új eseménnyel bővül, a mostani mintával (be
 | Napok törölve a naptárból | a dolgozó | „Szabadságnapok törölve”, a napok felsorolása | `leave_days_removed` (új): a napok listája, a típus, a szervezet |
 | Napok felvéve a naptárból | a dolgozó | „Szabadság rögzítve”, szakaszonként az időszak és a munkanapok száma | `leave_days_added` (új): a szakaszok listája |
 
-A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_status` sablonnal marad. Az új sablonok a meglévők szerkezetét követik (`requiredData`, `optionalData`, `locales.hu` és `en`, HTML és szöveges változat, a nevek HTML-escape-elve).
+| Jóváhagyott szabadság törölve (a HR a listából) | a dolgozó | „Jóváhagyott szabadság törölve” | `leave_deleted` (új): típus, időszak, munkanapok |
+
+A kérelem jóváhagyása és elutasítása, valamint a még függő kérelem törlése a `leave_request_status` sablonnal marad. **Szóhasználat:** a „szabadságkérelem” a még el nem bírált igény; ami jóváhagyott, az „szabadság”, a naptárban kezelt egységek a „szabadságnapok”. A levelek tegezők, „Kedves X!” megszólítással, a végén „Ha kérdésed van, keresd a HR-t.” Az új sablonok a meglévők szerkezetét követik (`requiredData`, `optionalData`, `locales.hu` és `en`, HTML és szöveges változat, a nevek HTML-escape-elve).
 
 ## 10. Fázisok és feladatok
 

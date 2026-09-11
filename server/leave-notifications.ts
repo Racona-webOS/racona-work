@@ -3,7 +3,8 @@
  *
  * Események:
  *   - új kérelem → a szervezet beállításaiban megjelölt dolgozók kapják (8.8)
- *   - elbírálás / törlés → a kérelmet beadó dolgozó kapja (8.9)
+ *   - elbírálás, függő kérelem törlése → a kérelmet beadó dolgozó kapja (8.9)
+ *   - jóváhagyott szabadság törlése → a dolgozó kapja (külön szöveg: az már nem kérelem)
  *   - naptáras mentés (napok törölve, szabadság rögzítve) → a dolgozó kapja
  *   - visszavonás → a beadásról értesített dolgozók kapják (csak rendszeren belül)
  *
@@ -52,8 +53,10 @@ const DECISION_TEXTS: Record<
 		color: '#dc2626',
 		type: 'warning'
 	},
+	// Csak függő (még el nem bírált) kérelem törlésénél; a jóváhagyott
+	// szabadság törlése a notifyLeaveDeleted külön szövegével megy.
 	deleted: {
-		title: { hu: 'Szabadság törölve', en: 'Leave deleted' },
+		title: { hu: 'Szabadságkérelem törölve', en: 'Leave request deleted' },
 		label: { hu: 'törölve', en: 'deleted' },
 		sentence: { hu: 'törölték', en: 'has been deleted' },
 		color: '#71717a',
@@ -440,6 +443,53 @@ export async function notifyLeaveRequestWithdrawn(
 		});
 	} catch (err) {
 		console.error('[Work] Szabadságkérelem visszavonás értesítés sikertelen:', err);
+	}
+}
+
+/**
+ * Jóváhagyott szabadság törlése: értesítés a dolgozónak. Külön szöveg, mert
+ * a jóváhagyott szabadság már nem kérelem.
+ *
+ * @param context - Remote hívás kontextus.
+ * @param request - A törölt (korábban jóváhagyott) kérelem.
+ */
+export async function notifyLeaveDeleted(
+	context: RemoteContext,
+	request: LeaveNotificationRequest
+): Promise<void> {
+	try {
+		const employee = await loadEmployee(context, request.employeeId);
+		if (!employee || employee.userId === (await resolveActorUserId(context))) return;
+
+		const leaveType = leaveTypeLabel(request.leaveType);
+		const period = formatPeriod(request.startDate, request.endDate);
+
+		await sendInApp(context, {
+			userIds: [employee.userId],
+			title: { hu: 'Jóváhagyott szabadság törölve', en: 'Approved leave deleted' },
+			message: {
+				hu: `${leaveType.hu}, ${period.hu} (${request.days} munkanap)`,
+				en: `${leaveType.en}, ${period.en} (${workingDaysEn(request.days)})`
+			},
+			type: 'warning',
+			data: { leaveRequestId: request.id, organizationId: request.organizationId }
+		});
+
+		const organizationName = await loadOrganizationName(context, request.organizationId);
+		const lines = {
+			hu: [`Típus: ${leaveType.hu}`, `Időszak: ${period.hu}`, `Munkanapok: ${request.days}`],
+			en: [`Type: ${leaveType.en}`, `Period: ${period.en}`, `Working days: ${request.days}`]
+		};
+		await sendEmails(context, [employee], 'leave_deleted', (recipient) => ({
+			recipientName: recipient.name,
+			recipientNameHtml: escapeHtml(recipient.name),
+			organizationName,
+			organizationNameHtml: escapeHtml(organizationName),
+			itemsHtml: itemsHtml(lines[EMAIL_LOCALE]),
+			itemsText: lines[EMAIL_LOCALE].map((l) => `  ${l}`).join('\n')
+		}));
+	} catch (err) {
+		console.error('[Work] Jóváhagyott szabadság törlése értesítés sikertelen:', err);
 	}
 }
 
