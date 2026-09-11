@@ -9,7 +9,8 @@
 	(soronként egy dolgozó, oszloponként egy nap). A csapatnézet csak olvasásra.
 
 	Saját nézetben a dolgozó a függő kérelme napjára kattintva visszavonhatja
-	a kérelmet (megerősítés után).
+	a kérelmet (megerősítés után). Szerkesztés nélkül a napra kattintva a rács
+	alatt részletkártya mutatja a nap összes bejegyzését (a tooltip helyett).
 
 	Szerkesztés (leave.approve joggal, kiválasztott dolgozóval, havi és éves
 	nézetben): üres munkanapra
@@ -229,12 +230,50 @@
 		}
 	}
 
+	// --- Részletek ------------------------------------------------------------
+
+	/** A kiválasztott nap, aminek a bejegyzései a rács alatt látszanak. */
+	let detailsDay = $state<string | null>(null);
+
+	const detailsApproved = $derived(detailsDay ? (dayMap.get(detailsDay) ?? []) : []);
+	const detailsPending = $derived(detailsDay ? (pendingMap.get(detailsDay) ?? []) : []);
+
+	function formatDayLong(iso: string): string {
+		return new Date(`${iso}T00:00:00Z`).toLocaleDateString('hu-HU', {
+			timeZone: 'UTC',
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric',
+			weekday: 'long'
+		});
+	}
+
+	function openDetails(iso: string) {
+		const count = (dayMap.get(iso)?.length ?? 0) + (pendingMap.get(iso)?.length ?? 0);
+		detailsDay = count > 0 && detailsDay !== iso ? iso : null;
+	}
+
+	/**
+	 * Kattintható-e a nap: szerkesztésben az üres munkanap és a meglévő nap;
+	 * egyébként az, amin van bejegyzés (részletek, saját nézetben visszavonás).
+	 */
+	function isClickable(iso: string): boolean {
+		const approved = dayMap.get(iso)?.length ?? 0;
+		const pending = pendingMap.get(iso)?.length ?? 0;
+		if (editable) return isWorkingDay(iso) && pending === 0;
+		return approved + pending > 0;
+	}
+
 	function toggleDay(iso: string) {
-		if (canWithdraw) {
+		if (canWithdraw && (pendingMap.get(iso) ?? []).some((d) => d.employeeId === employeeId)) {
 			withdrawPending(iso);
 			return;
 		}
-		if (!editable || !isWorkingDay(iso)) return;
+		if (!editable) {
+			openDetails(iso);
+			return;
+		}
+		if (!isWorkingDay(iso)) return;
 		if ((pendingMap.get(iso) ?? []).length > 0) return;
 		const hasApproved = (dayMap.get(iso) ?? []).length > 0;
 		if (hasApproved) toRemove = toggled(toRemove, iso);
@@ -322,6 +361,7 @@
 		if (!sdk?.remote || !organizationId) return;
 		loading = true;
 		error = null;
+		detailsDay = null;
 		try {
 			data = await sdk.remote.call('getLeaveCalendar', {
 				organizationId,
@@ -488,7 +528,9 @@
 	{#if editable}
 		<p class="hint">{view === 'team' ? t('leaveCalendar.team.readOnly') : t('leaveCalendar.editHint')}</p>
 	{:else if canWithdraw}
-		<p class="hint">{t('leaveCalendar.withdrawHint')}</p>
+		<p class="hint">{t('leaveCalendar.withdrawHint')} {t('leaveCalendar.detailsHint')}</p>
+	{:else}
+		<p class="hint">{t('leaveCalendar.detailsHint')}</p>
 	{/if}
 
 	<div class="legend">
@@ -528,9 +570,7 @@
 					{@const pending = pendingMap.get(iso) ?? []}
 					{@const shown = approved.slice(0, MAX_NAMES)}
 					{@const extra = approved.length - shown.length}
-					{@const clickable = canWithdraw
-						? pending.length > 0
-						: editable && isWorkingDay(iso) && pending.length === 0}
+					{@const clickable = isClickable(iso)}
 					<!-- A szerep és a tabindex csak kattintható cellán van; a statikus ellenőrző ezt nem látja -->
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<div
@@ -540,6 +580,7 @@
 						class:is-clickable={clickable}
 						class:is-to-add={toAdd.has(iso)}
 						class:is-to-remove={toRemove.has(iso)}
+						class:is-selected={iso === detailsDay}
 						title={cellTitle(iso)}
 						role={clickable ? 'button' : undefined}
 						tabindex={clickable ? 0 : undefined}
@@ -599,9 +640,7 @@
 						{:else}
 							{@const approved = dayMap.get(iso) ?? []}
 							{@const pending = pendingMap.get(iso) ?? []}
-							{@const clickable = canWithdraw
-								? pending.length > 0
-								: editable && isWorkingDay(iso) && pending.length === 0}
+							{@const clickable = isClickable(iso)}
 							<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 							<div
 								class="mini {filterEmployeeId && approved.length > 0 ? typeClass(approved[0].leaveType) : ''}"
@@ -610,6 +649,7 @@
 								class:is-clickable={clickable}
 								class:is-to-add={toAdd.has(iso)}
 								class:is-to-remove={toRemove.has(iso)}
+								class:is-selected={iso === detailsDay}
 								class:has-pending={pending.length > 0 && approved.length === 0}
 								class:has-count={!filterEmployeeId && approved.length > 0}
 								title={cellTitle(iso)}
@@ -674,6 +714,29 @@
 			</tbody>
 		</table>
 	</div>
+	{/if}
+
+	{#if detailsDay && detailsApproved.length + detailsPending.length > 0}
+		<div class="details">
+			<div class="details-head">
+				<strong>{formatDayLong(detailsDay)}</strong>
+				<button class="btn-secondary" onclick={() => (detailsDay = null)}>{t('leaveCalendar.details.close')}</button>
+			</div>
+			<ul class="details-list">
+				{#each detailsApproved as d (d.leaveRequestId + ':' + d.employeeId)}
+					<li>
+						<span class="mark {typeClass(d.leaveType)}">{typeLabel(d.leaveType)}</span>
+						<span>{d.employeeName}</span>
+					</li>
+				{/each}
+				{#each detailsPending as d (d.leaveRequestId + ':' + d.employeeId)}
+					<li>
+						<span class="mark is-pending">{t('leaveCalendar.pending')}</span>
+						<span>{d.employeeName}{canManage && d.leaveType ? ` – ${typeLabel(d.leaveType)}` : ''}</span>
+					</li>
+				{/each}
+			</ul>
+		</div>
 	{/if}
 
 	{#if !loading && data && !hasAnyLeave && !hasChanges}
@@ -1094,6 +1157,55 @@
 	.chip.is-off {
 		background: var(--muted, #f4f4f5);
 		color: var(--muted-foreground, #71717a);
+	}
+
+	.cell.is-selected,
+	.mini.is-selected {
+		box-shadow: 0 0 0 2px var(--color-primary, #3730a3);
+	}
+
+	.details {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 0.75rem 1rem;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.5rem;
+		background: var(--color-background, #fff);
+		font-size: 0.875rem;
+	}
+
+	.details-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+
+	.details-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+
+	.details-list li {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.details-list .mark {
+		display: inline-block;
+		min-width: 7rem;
+		text-align: center;
+	}
+
+	:global(.dark) .details {
+		background: var(--color-card, oklch(0.2 0 0));
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}
 
 	.hint {

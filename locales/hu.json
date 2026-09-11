@@ -152,6 +152,8 @@
 	"leaveCalendar.withdrawHint": "A függő kérelmed napjára kattintva visszavonhatod a kérelmet.",
 	"leaveCalendar.withdrawConfirm": "Visszavonod a {period} időszakra beadott kérelmet?",
 	"leaveCalendar.withdrawn": "A kérelem visszavonva.",
+	"leaveCalendar.detailsHint": "Egy napra kattintva a rács alatt megjelennek a nap részletei.",
+	"leaveCalendar.details.close": "Bezárás",
 	"leaveRequests.type.annual": "Éves szabadság",
 	"leaveRequests.type.sick": "Betegszabadság",
 	"leaveRequests.type.unpaid": "Fizetés nélküli",
