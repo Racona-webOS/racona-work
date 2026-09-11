@@ -6,207 +6,29 @@
  * a keretek felhasználásához, az áthozott napokhoz, a betegszabadsághoz, a
  * dashboardhoz és a naptárhoz.
  *
- * A fájl első fele tiszta (adatbázis nélküli) segédfüggvény — a kliens is
- * importálhatja, és a tests/leave-days.test.ts teszteli. A második fele az
- * adatbázis-műveletek, amiket a leave.ts hív. Részletek: specs/leave-days.md
+ * A tiszta segédek (munkanapok, szakaszolás) a leave-day-utils.ts fájlban
+ * vannak, hogy a kliens is használhassa őket. Részletek: specs/leave-days.md
  */
 
 import type { RemoteContext } from './context.js';
+import { resolveUserId } from './context.js';
 import { hasCapability, requireCapability } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
+import { notifyLeaveDaysAdded, notifyLeaveDaysRemoved } from './leave-notifications.js';
+import { recalculateEmployeeBalances } from './leave-profile.js';
+import { isLeaveType } from './leave-types.js';
+import type { LeaveType } from './leave-types.js';
+import {
+	CALENDAR_LEAVE_TYPES,
+	groupDaysByYear,
+	groupIntoRuns,
+	isWorkingDay,
+	listWorkingDays,
+	normalizeDays
+} from './leave-day-utils.js';
+import type { LeaveRun } from './leave-day-utils.js';
 
-// ---------------------------------------------------------------------------
-// Tiszta segédfüggvények
-// ---------------------------------------------------------------------------
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
-
-/** Egy összefüggő szabadságszakasz a naptárban felvett napokból. */
-export interface LeaveRun {
-	/** Az első felvett nap (YYYY-MM-DD). */
-	startDate: string;
-	/** Az utolsó felvett nap (YYYY-MM-DD). */
-	endDate: string;
-	/** A szakasz napjai növekvő sorrendben. */
-	days: string[];
-}
-
-/** Naptári napok szerint összefüggő időszak. */
-export interface DayPeriod {
-	from: string;
-	to: string;
-}
-
-function dayMs(isoDay: string): number {
-	const [y, m, d] = isoDay.split('-').map(Number);
-	return Date.UTC(y, m - 1, d);
-}
-
-function msToIsoDay(ms: number): string {
-	return new Date(ms).toISOString().slice(0, 10);
-}
-
-/**
- * A nap után következő nap.
- *
- * @param isoDay - A nap YYYY-MM-DD formában.
- * @returns A következő nap YYYY-MM-DD formában.
- */
-export function nextDay(isoDay: string): string {
-	return msToIsoDay(dayMs(isoDay) + DAY_MS);
-}
-
-/**
- * Munkanap-e a nap: a munkanaptári kivétel dönt, ha van; egyébként a hétvége
- * nem munkanap.
- *
- * @param isoDay - A nap YYYY-MM-DD formában.
- * @param overrides - Nap → munkanap-e leképezés a munkanaptárból.
- * @returns Igaz, ha munkanap.
- */
-export function isWorkingDay(isoDay: string, overrides?: Map<string, boolean>): boolean {
-	const override = overrides?.get(isoDay);
-	if (override !== undefined) return override;
-	const dow = new Date(dayMs(isoDay)).getUTCDay();
-	return dow !== 0 && dow !== 6;
-}
-
-/**
- * Egy időszak munkanapjai.
- *
- * Alapszabály: a hétvége nem munkanap. Az `overrides` ezt felülírja naponként —
- * innen jönnek a munkaszüneti napok (hétköznap, mégsem munkanap) és az
- * áthelyezett munkanapok (szombat, mégis munkanap). UTC alapú iteráció, hogy a
- * téli-nyári időszámítás ne okozzon eltolódást.
- *
- * @param startDate - Kezdő dátum (YYYY-MM-DD).
- * @param endDate - Záró dátum (YYYY-MM-DD).
- * @param overrides - Nap → munkanap-e leképezés; hiányzó napra a hétvége-szabály dönt.
- * @returns A munkanapok növekvő sorrendben; üres, ha a kezdő nap a záró után van.
- * @throws Ha a dátum formátuma nem YYYY-MM-DD.
- */
-export function listWorkingDays(
-	startDate: string,
-	endDate: string,
-	overrides?: Map<string, boolean>
-): string[] {
-	if (!ISO_DAY.test(startDate) || !ISO_DAY.test(endDate)) {
-		throw new Error('Érvénytelen dátumformátum. Elvárt formátum: YYYY-MM-DD');
-	}
-	const startMs = dayMs(startDate);
-	const endMs = dayMs(endDate);
-	if (isNaN(startMs) || isNaN(endMs)) {
-		throw new Error('Érvénytelen dátumformátum. Elvárt formátum: YYYY-MM-DD');
-	}
-
-	const days: string[] = [];
-	for (let ms = startMs; ms <= endMs; ms += DAY_MS) {
-		const iso = msToIsoDay(ms);
-		if (isWorkingDay(iso, overrides)) days.push(iso);
-	}
-	return days;
-}
-
-/**
- * Rendezett, ismétlés nélküli naplista.
- *
- * @param days - Napok YYYY-MM-DD formában, tetszőleges sorrendben.
- * @returns Növekvő sorrend, minden nap egyszer.
- * @throws Ha valamelyik nap formátuma nem YYYY-MM-DD.
- */
-export function normalizeDays(days: string[]): string[] {
-	for (const day of days) {
-		if (typeof day !== 'string' || !ISO_DAY.test(day) || msToIsoDay(dayMs(day)) !== day) {
-			throw new Error(`Érvénytelen nap: ${String(day)}`);
-		}
-	}
-	return [...new Set(days)].sort();
-}
-
-/**
- * A felvett napok összefüggő szakaszokra bontása (specs/leave-days.md, D7).
- *
- * Két felvett nap egy szakaszban van, ha köztük csak nem munkanap áll: a
- * hétvége és a munkaszüneti nap nem szakít. Péntek és a következő hétfő így egy
- * szakasz, ahogy egy kézzel beadott kérelemnél is. Egy kihagyott munkanap új
- * szakaszt kezd.
- *
- * @param days - A felvett napok, tetszőleges sorrendben, ismétléssel is.
- * @param isWorking - Munkanap-e a nap (a hívó adja a munkanaptárral).
- * @returns A szakaszok növekvő sorrendben.
- */
-export function groupIntoRuns(days: string[], isWorking: (isoDay: string) => boolean): LeaveRun[] {
-	const sorted = normalizeDays(days);
-	const runs: LeaveRun[] = [];
-	let current: LeaveRun | null = null;
-
-	for (const day of sorted) {
-		if (current && !hasWorkingDayBetween(current.endDate, day, isWorking)) {
-			current.endDate = day;
-			current.days.push(day);
-		} else {
-			current = { startDate: day, endDate: day, days: [day] };
-			runs.push(current);
-		}
-	}
-	return runs;
-}
-
-/** Van-e munkanap két nap között (a két napot nem számítva). */
-function hasWorkingDayBetween(
-	from: string,
-	to: string,
-	isWorking: (isoDay: string) => boolean
-): boolean {
-	for (let ms = dayMs(from) + DAY_MS; ms < dayMs(to); ms += DAY_MS) {
-		if (isWorking(msToIsoDay(ms))) return true;
-	}
-	return false;
-}
-
-/**
- * Naptári napok szerint összefüggő időszakok a napokból.
- *
- * A fizetés nélküli szabadság napjait így adjuk át a keretszámításnak, ami
- * időszakokkal dolgozik (a naptári napokat számolja, a hétvégével együtt).
- * A hétvége itt szakít: egy hétfő–péntek és a rá következő hétfő–péntek két
- * időszak, mert a köztes hétvége nem szabadságnap.
- *
- * @param days - Napok YYYY-MM-DD formában, tetszőleges sorrendben.
- * @returns Az időszakok növekvő sorrendben.
- */
-export function daysToPeriods(days: string[]): DayPeriod[] {
-	const sorted = normalizeDays(days);
-	const periods: DayPeriod[] = [];
-	let current: DayPeriod | null = null;
-
-	for (const day of sorted) {
-		if (current && nextDay(current.to) === day) {
-			current.to = day;
-		} else {
-			current = { from: day, to: day };
-			periods.push(current);
-		}
-	}
-	return periods;
-}
-
-/**
- * Napok évenként csoportosítva (az éves keret az adott év napjait terheli).
- *
- * @param days - Napok YYYY-MM-DD formában.
- * @returns Év → napok.
- */
-export function groupDaysByYear(days: string[]): Map<number, string[]> {
-	const byYear = new Map<number, string[]>();
-	for (const day of days) {
-		const year = Number(day.slice(0, 4));
-		if (!byYear.has(year)) byYear.set(year, []);
-		byYear.get(year)!.push(day);
-	}
-	return byYear;
-}
+export * from './leave-day-utils.js';
 
 // ---------------------------------------------------------------------------
 // Adatbázis-műveletek (a leave.ts hívja; a functions.ts NEM exportálja újra)
@@ -227,7 +49,9 @@ const SCHEMA = 'app__racona_work';
  */
 export function toIsoDay(value: string | Date): string {
 	if (value instanceof Date) {
-		return msToIsoDay(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+		return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()))
+			.toISOString()
+			.slice(0, 10);
 	}
 	return String(value).slice(0, 10);
 }
@@ -435,6 +259,11 @@ export interface LeaveCalendar {
 /** Legfeljebb ennyi nap kérhető le egyszerre (két hónap). */
 const MAX_CALENDAR_DAYS = 62;
 
+/** Naptári napok száma a két nap között, mindkettőt beleértve. */
+function daySpan(from: string, to: string): number {
+	return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1;
+}
+
 /**
  * A szabadságnaptár egy időszakra (specs/leave-days.md, K5).
  *
@@ -458,7 +287,7 @@ export async function getLeaveCalendar(
 	if (from !== params.from || to !== params.to) {
 		throw new Error('A záró dátum nem lehet korábbi a kezdő dátumnál.');
 	}
-	if ((dayMs(to) - dayMs(from)) / DAY_MS + 1 > MAX_CALENDAR_DAYS) {
+	if (daySpan(from, to) > MAX_CALENDAR_DAYS) {
 		throw new Error(`Egyszerre legfeljebb ${MAX_CALENDAR_DAYS} nap kérhető le.`);
 	}
 
@@ -533,4 +362,293 @@ export async function getLeaveCalendar(
 		calendar: [...overrides].map(([day, isWorking]) => ({ day, isWorkingDay: isWorking })),
 		canManage
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Szerkesztés a naptárban: előnézet és mentés
+// ---------------------------------------------------------------------------
+
+export interface LeaveCalendarChangeParams {
+	organizationId: number;
+	employeeId: number;
+	/** A felvett napok típusa (CALENDAR_LEAVE_TYPES). */
+	leaveType: string;
+	addDays: string[];
+	removeDays: string[];
+}
+
+/** Egy év éves kerete a módosítás előtt és után. */
+export interface CalendarBalanceEffect {
+	year: number;
+	hasBalance: boolean;
+	remainingBefore: number;
+	remainingAfter: number;
+}
+
+/** Az előnézet: mi történne mentéskor. */
+export interface LeaveCalendarChangePlan {
+	/** A felvett napokból készülő kérelmek. */
+	runs: LeaveRun[];
+	/** A törlendő napok a típusukkal. */
+	removeDays: { day: string; leaveType: string }[];
+	/** Az érintett évek éves kerete (csak ha éves szabadság érintett). */
+	balances: CalendarBalanceEffect[];
+	/** Ami miatt a mentés nem futna le. Üres, ha minden rendben. */
+	errors: string[];
+}
+
+export interface LeaveCalendarSaveResult {
+	createdRequests: { id: number; startDate: string; endDate: string; days: number }[];
+	removedDays: string[];
+}
+
+interface CalendarChangeInput {
+	organizationId: number;
+	employeeId: number;
+	leaveType: LeaveType;
+	addDays: string[];
+	removeDays: string[];
+}
+
+function parseChangeParams(params: LeaveCalendarChangeParams): CalendarChangeInput {
+	if (!params.organizationId || params.organizationId <= 0) {
+		throw new Error('Érvénytelen szervezet azonosító');
+	}
+	if (!params.employeeId || params.employeeId <= 0) {
+		throw new Error('Válassz dolgozót a naptár szerkesztéséhez.');
+	}
+	if (!isLeaveType(params.leaveType) || !CALENDAR_LEAVE_TYPES.includes(params.leaveType)) {
+		throw new Error('Ez a típus a naptárból nem rögzíthető, add be kérelemként.');
+	}
+	const addDays = normalizeDays(Array.isArray(params.addDays) ? params.addDays : []);
+	const removeDays = normalizeDays(Array.isArray(params.removeDays) ? params.removeDays : []);
+	const both = addDays.filter((d) => removeDays.includes(d));
+	if (both.length > 0) {
+		throw new Error(`Egy nap nem lehet egyszerre felvéve és törölve: ${both.join(', ')}.`);
+	}
+	return {
+		organizationId: params.organizationId,
+		employeeId: params.employeeId,
+		leaveType: params.leaveType,
+		addDays,
+		removeDays
+	};
+}
+
+async function assertEmployeeInOrganization(
+	db: Queryable,
+	employeeId: number,
+	organizationId: number
+): Promise<void> {
+	const r = await db.query(
+		`SELECT 1 FROM ${SCHEMA}.employees WHERE id = $1 AND organization_id = $2`,
+		[employeeId, organizationId]
+	);
+	if (r.rows.length === 0) throw new Error('A dolgozó nem található ebben a szervezetben');
+}
+
+/**
+ * A módosítás terve és ellenőrzése (specs/leave-days.md, 4. fejezet, D7–D11).
+ *
+ * Nem dob hibát a tartalmi problémákra, hanem az `errors` listába gyűjti,
+ * hogy az előnézet mindet megmutathassa. A mentés az első hibán megáll.
+ */
+async function planCalendarChanges(
+	db: Queryable,
+	context: RemoteContext,
+	input: CalendarChangeInput
+): Promise<LeaveCalendarChangePlan> {
+	const errors: string[] = [];
+	const all = [...input.addDays, ...input.removeDays].sort();
+	const overrides =
+		all.length > 0
+			? await getWorkCalendarOverrides(context, input.organizationId, all[0], all[all.length - 1])
+			: new Map<string, boolean>();
+	const working = (day: string) => isWorkingDay(day, overrides);
+
+	// Felvétel: munkanap, szabad, és nincs rá függő kérelem
+	const notWorking = input.addDays.filter((d) => !working(d));
+	if (notWorking.length > 0) {
+		errors.push(`Nem munkanapra nem vehető fel szabadság: ${notWorking.join(', ')}.`);
+	}
+	const taken = await findTakenDays(db, input.employeeId, input.addDays);
+	if (taken.length > 0) {
+		errors.push(`Ezeken a napokon már van szabadság: ${taken.join(', ')}.`);
+	}
+	if (input.addDays.length > 0) {
+		const pending = await db.query(
+			`SELECT to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date
+			   FROM ${SCHEMA}.leave_requests
+			  WHERE employee_id = $1 AND status = 'pending'
+			    AND start_date <= $3::date AND end_date >= $2::date
+			  ORDER BY start_date`,
+			[input.employeeId, input.addDays[0], input.addDays[input.addDays.length - 1]]
+		);
+		const blocked = input.addDays.filter((d) =>
+			pending.rows.some((r: any) => r.start_date <= d && d <= r.end_date)
+		);
+		if (blocked.length > 0) {
+			errors.push(`Ezekre a napokra függő kérelem van, előbb azt kell elbírálni: ${blocked.join(', ')}.`);
+		}
+	}
+
+	// Törlés: a nap létezik és a dolgozóé
+	const existing =
+		input.removeDays.length > 0
+			? await db.query(
+					`SELECT to_char(day, 'YYYY-MM-DD') AS day, leave_type
+					   FROM ${SCHEMA}.leave_days
+					  WHERE employee_id = $1 AND day = ANY($2::date[])
+					  ORDER BY day`,
+					[input.employeeId, input.removeDays]
+				)
+			: { rows: [] as any[] };
+	const removeDays = existing.rows.map((r: any) => ({ day: r.day as string, leaveType: r.leave_type as string }));
+	const missing = input.removeDays.filter((d) => !removeDays.some((r) => r.day === d));
+	if (missing.length > 0) {
+		errors.push(`Ezeken a napokon nincs törölhető szabadság: ${missing.join(', ')}.`);
+	}
+
+	// Éves keret évenként: a törölt éves napok visszakerülnek, a felvettek terhelnek (D11)
+	const balances: CalendarBalanceEffect[] = [];
+	const addedAnnual = input.leaveType === 'annual' ? groupDaysByYear(input.addDays) : new Map<number, string[]>();
+	const removedAnnual = groupDaysByYear(removeDays.filter((r) => r.leaveType === 'annual').map((r) => r.day));
+	const years = [...new Set([...addedAnnual.keys(), ...removedAnnual.keys()])].sort();
+	for (const year of years) {
+		const r = await db.query(
+			`SELECT remaining_days FROM ${SCHEMA}.leave_balances WHERE employee_id = $1 AND year = $2`,
+			[input.employeeId, year]
+		);
+		const hasBalance = r.rows.length > 0;
+		const before: number = hasBalance ? r.rows[0].remaining_days : 0;
+		const after = before + (removedAnnual.get(year)?.length ?? 0) - (addedAnnual.get(year)?.length ?? 0);
+		balances.push({ year, hasBalance, remainingBefore: before, remainingAfter: after });
+		if ((addedAnnual.get(year)?.length ?? 0) > 0) {
+			if (!hasBalance) {
+				errors.push(`Nincs szabadságkeret beállítva a(z) ${year}. évre.`);
+			} else if (after < 0) {
+				errors.push(
+					`A(z) ${year}. évi keretbe nem fér bele: ${addedAnnual.get(year)!.length} nap kellene, ${before + (removedAnnual.get(year)?.length ?? 0)} nap van.`
+				);
+			}
+		}
+	}
+
+	return { runs: groupIntoRuns(input.addDays, working), removeDays, balances, errors };
+}
+
+/**
+ * Mentés nélkül megmutatja, mi történne (K8 összegzősáv): a szakaszok, a
+ * törlendő napok, az érintett keretek és a hibák.
+ */
+export async function previewLeaveCalendarSave(
+	params: LeaveCalendarChangeParams,
+	context: RemoteContext
+): Promise<LeaveCalendarChangePlan> {
+	const input = parseChangeParams(params);
+	await requireCapability(context, input.organizationId, 'leave.approve');
+	await assertEmployeeInOrganization(context.db, input.employeeId, input.organizationId);
+	return planCalendarChanges(context.db, context, input);
+}
+
+/**
+ * A naptáras módosítások mentése egy tranzakcióban (specs/leave-days.md, 4. fejezet).
+ *
+ * A törölt napok eltűnnek a leave_days táblából, a kérelmük nem változik (D1).
+ * A felvett napokból szakaszonként egy, rögtön jóváhagyott kérelem készül (D7, D8).
+ * Ha bármelyik ellenőrzés elbukik, semmi nem mentődik (D10). A végén a dolgozó
+ * értesítést kap (D16).
+ */
+export async function saveLeaveCalendar(
+	params: LeaveCalendarChangeParams,
+	context: RemoteContext
+): Promise<LeaveCalendarSaveResult> {
+	const input = parseChangeParams(params);
+	if (input.addDays.length === 0 && input.removeDays.length === 0) {
+		throw new Error('Nincs mentenivaló módosítás.');
+	}
+	await requireCapability(context, input.organizationId, 'leave.approve');
+	await assertEmployeeInOrganization(context.db, input.employeeId, input.organizationId);
+	const userId = await resolveUserId(context);
+	const approverEmployeeId = await findEmployeeIdOfUser(context.db, userId, input.organizationId);
+
+	const client = await context.db.connect();
+	let plan: LeaveCalendarChangePlan;
+	const created: LeaveCalendarSaveResult['createdRequests'] = [];
+	try {
+		await client.query('BEGIN');
+		// A dolgozó sorának zárolása: két egyszerre futó mentés egymás után ellenőriz
+		await client.query(`SELECT id FROM ${SCHEMA}.employees WHERE id = $1 FOR UPDATE`, [input.employeeId]);
+
+		plan = await planCalendarChanges(client, context, input);
+		if (plan.errors.length > 0) throw new Error(plan.errors.join(' '));
+
+		if (plan.removeDays.length > 0) {
+			await client.query(
+				`DELETE FROM ${SCHEMA}.leave_days WHERE employee_id = $1 AND day = ANY($2::date[])`,
+				[input.employeeId, plan.removeDays.map((r) => r.day)]
+			);
+		}
+
+		for (const run of plan.runs) {
+			const inserted = await client.query(
+				`INSERT INTO ${SCHEMA}.leave_requests
+					(employee_id, organization_id, leave_type, start_date, end_date, days, status, reason,
+					 approved_by, child_id, created_at, updated_at)
+				 VALUES ($1, $2, $3, $4, $5, $6, 'approved', NULL, $7, NULL, NOW(), NOW())
+				 RETURNING id`,
+				[
+					input.employeeId,
+					input.organizationId,
+					input.leaveType,
+					run.startDate,
+					run.endDate,
+					run.days.length,
+					approverEmployeeId
+				]
+			);
+			const requestId: number = inserted.rows[0].id;
+			await insertLeaveDays(client, {
+				employeeId: input.employeeId,
+				organizationId: input.organizationId,
+				leaveRequestId: requestId,
+				leaveType: input.leaveType,
+				days: run.days
+			});
+			created.push({ id: requestId, startDate: run.startDate, endDate: run.endDate, days: run.days.length });
+		}
+
+		const touchedYears = plan.balances.map((b) => b.year);
+		if (touchedYears.length > 0) {
+			await syncAnnualUsedDays(client, input.employeeId, touchedYears);
+		}
+		await client.query('COMMIT');
+	} catch (err) {
+		await client.query('ROLLBACK');
+		throw err;
+	} finally {
+		client.release();
+	}
+
+	// A fizetés nélküli szabadság nem munkában töltött idő: csökkenti az éves keretet
+	const unpaidTouched =
+		(input.leaveType === 'unpaid' && plan.runs.length > 0) ||
+		plan.removeDays.some((r) => r.leaveType === 'unpaid');
+	if (unpaidTouched) {
+		await recalculateEmployeeBalances(context, input.employeeId);
+	}
+
+	await notifyLeaveDaysRemoved(context, {
+		employeeId: input.employeeId,
+		organizationId: input.organizationId,
+		days: plan.removeDays
+	});
+	await notifyLeaveDaysAdded(context, {
+		employeeId: input.employeeId,
+		organizationId: input.organizationId,
+		leaveType: input.leaveType,
+		periods: created
+	});
+
+	return { createdRequests: created, removedDays: plan.removeDays.map((r) => r.day) };
 }

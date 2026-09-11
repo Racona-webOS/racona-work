@@ -106,8 +106,17 @@ export type {
 
 // --- Szabadságnapok és naptár ---------------------------------------------
 
-export { getLeaveCalendar } from './leave-days.js';
-export type { LeaveCalendar, LeaveCalendarDay, LeaveCalendarPendingDay, LeaveRun } from './leave-days.js';
+export { getLeaveCalendar, previewLeaveCalendarSave, saveLeaveCalendar } from './leave-days.js';
+export type {
+	LeaveCalendar,
+	LeaveCalendarDay,
+	LeaveCalendarPendingDay,
+	LeaveCalendarChangeParams,
+	LeaveCalendarChangePlan,
+	LeaveCalendarSaveResult,
+	CalendarBalanceEffect,
+	LeaveRun
+} from './leave-days.js';
 
 // --- Szabadságkeret-számítás ------------------------------------------------
 

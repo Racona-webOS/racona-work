@@ -746,6 +746,7 @@
 				employeeId={viewMode === 'mine' ? (myEmployee?.id ?? null) : null}
 				lockEmployee={viewMode === 'mine'}
 				refreshKey={calendarRefresh}
+				onSaved={() => loadData()}
 			/>
 		{/if}
 	{/if}

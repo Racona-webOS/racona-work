@@ -1,5 +1,5 @@
 /**
- * A szabadságnapok tiszta segédfüggvényeinek tesztjei (server/leave-days.ts).
+ * A szabadságnapok tiszta segédfüggvényeinek tesztjei (server/leave-day-utils.ts).
  *
  * Nem a server/ alatt él, mert az a mappa teljes egészében bekerül a csomagba.
  * Futtatás: bun test
@@ -14,7 +14,7 @@ import {
 	listWorkingDays,
 	nextDay,
 	normalizeDays
-} from '../server/leave-days.ts';
+} from '../server/leave-day-utils.ts';
 
 // 2026. június 1. hétfő; június 6–7. hétvége
 const weekendRule = (day: string) => isWorkingDay(day);

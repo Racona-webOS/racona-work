@@ -1,9 +1,10 @@
 /**
  * Szabadságkérelem értesítések — rendszeren belüli értesítés és email.
  *
- * Két esemény van:
+ * Események:
  *   - új kérelem → a szervezet beállításaiban megjelölt dolgozók kapják (8.8)
  *   - elbírálás / törlés → a kérelmet beadó dolgozó kapja (8.9)
+ *   - naptáras mentés (napok törölve, szabadság rögzítve) → a dolgozó kapja
  *
  * Minden küldés best-effort: a hibát naplózzuk, de a kérelem művelete nem
  * gördül vissza, és a hívó nem kap hibát. A műveletet végző felhasználó nem
@@ -359,6 +360,143 @@ function reasonBlockHtml(reason: string): string {
 		`<p style="margin: 8px 0 0; font-size: 14px; color: #18181b;"><strong>${label}:</strong> ` +
 		`${escapeHtml(reason).replace(/\n/g, '<br>')}</p>`
 	);
+}
+
+// --- Naptáras mentés ----------------------------------------------------------
+// Mentésenként egy-egy összefoglaló a törölt napokról és a felvett szakaszokról
+// (specs/leave-days.md, D16). A HR nem kap értesítést a saját napjairól.
+
+export interface LeaveDaysRemovedNotice {
+	employeeId: number;
+	organizationId: number;
+	/** A törölt napok a típusukkal (YYYY-MM-DD). */
+	days: { day: string; leaveType: string }[];
+}
+
+export interface LeaveDaysAddedNotice {
+	employeeId: number;
+	organizationId: number;
+	leaveType: string;
+	/** A létrehozott kérelmek időszakai. */
+	periods: { startDate: string; endDate: string; days: number }[];
+}
+
+/**
+ * A HR a naptárból törölte a dolgozó napjait: értesítés a dolgozónak.
+ *
+ * @param context - Remote hívás kontextus.
+ * @param notice - A törölt napok.
+ */
+export async function notifyLeaveDaysRemoved(
+	context: RemoteContext,
+	notice: LeaveDaysRemovedNotice
+): Promise<void> {
+	if (notice.days.length === 0) return;
+	try {
+		const employee = await loadEmployee(context, notice.employeeId);
+		if (!employee || employee.userId === (await resolveActorUserId(context))) return;
+
+		// Típusonként csoportosítva, hogy a lista rövid és olvasható legyen
+		const byType = new Map<string, string[]>();
+		for (const d of notice.days) {
+			if (!byType.has(d.leaveType)) byType.set(d.leaveType, []);
+			byType.get(d.leaveType)!.push(d.day);
+		}
+		const lines: LocalizedText[] = [...byType].map(([type, days]) => {
+			const label = leaveTypeLabel(type);
+			return {
+				hu: `${label.hu}: ${days.map((d) => formatDay(d, 'hu-HU')).join(', ')}`,
+				en: `${label.en}: ${days.map((d) => formatDay(d, 'en-GB')).join(', ')}`
+			};
+		});
+		const count = notice.days.length;
+
+		await sendInApp(context, {
+			userIds: [employee.userId],
+			title: { hu: 'Szabadságnapok törölve', en: 'Leave days removed' },
+			message: {
+				hu: `${count} nap törölve a naptárból. ${lines.map((l) => l.hu).join(' ')}`,
+				en: `${count} ${count === 1 ? 'day' : 'days'} removed from the calendar. ${lines.map((l) => l.en).join(' ')}`
+			},
+			type: 'warning',
+			data: { employeeId: notice.employeeId, organizationId: notice.organizationId }
+		});
+
+		const organizationName = await loadOrganizationName(context, notice.organizationId);
+		await sendEmails(context, [employee], 'leave_days_removed', (recipient) => ({
+			recipientName: recipient.name,
+			recipientNameHtml: escapeHtml(recipient.name),
+			organizationName,
+			organizationNameHtml: escapeHtml(organizationName),
+			dayCount: count,
+			itemsHtml: itemsHtml(lines.map((l) => l[EMAIL_LOCALE])),
+			itemsText: lines.map((l) => `  ${l[EMAIL_LOCALE]}`).join('\n')
+		}));
+	} catch (err) {
+		console.error('[Work] Szabadságnapok törlése értesítés sikertelen:', err);
+	}
+}
+
+/**
+ * A HR a naptárból szabadságot rögzített a dolgozónak: értesítés a dolgozónak.
+ *
+ * @param context - Remote hívás kontextus.
+ * @param notice - A létrehozott időszakok.
+ */
+export async function notifyLeaveDaysAdded(
+	context: RemoteContext,
+	notice: LeaveDaysAddedNotice
+): Promise<void> {
+	if (notice.periods.length === 0) return;
+	try {
+		const employee = await loadEmployee(context, notice.employeeId);
+		if (!employee || employee.userId === (await resolveActorUserId(context))) return;
+
+		const leaveType = leaveTypeLabel(notice.leaveType);
+		const count = notice.periods.reduce((sum, p) => sum + p.days, 0);
+		const lines: LocalizedText[] = notice.periods.map((p) => {
+			const period = formatPeriod(p.startDate, p.endDate);
+			return {
+				hu: `${period.hu} (${p.days} munkanap)`,
+				en: `${period.en} (${workingDaysEn(p.days)})`
+			};
+		});
+
+		await sendInApp(context, {
+			userIds: [employee.userId],
+			title: { hu: 'Szabadság rögzítve', en: 'Leave recorded' },
+			message: {
+				hu: `${leaveType.hu}: ${lines.map((l) => l.hu).join(', ')}`,
+				en: `${leaveType.en}: ${lines.map((l) => l.en).join(', ')}`
+			},
+			type: 'success',
+			data: { employeeId: notice.employeeId, organizationId: notice.organizationId }
+		});
+
+		const organizationName = await loadOrganizationName(context, notice.organizationId);
+		await sendEmails(context, [employee], 'leave_days_added', (recipient) => ({
+			recipientName: recipient.name,
+			recipientNameHtml: escapeHtml(recipient.name),
+			organizationName,
+			organizationNameHtml: escapeHtml(organizationName),
+			leaveTypeLabel: leaveType[EMAIL_LOCALE],
+			dayCount: count,
+			itemsHtml: itemsHtml(lines.map((l) => l[EMAIL_LOCALE])),
+			itemsText: lines.map((l) => `  ${l[EMAIL_LOCALE]}`).join('\n')
+		}));
+	} catch (err) {
+		console.error('[Work] Szabadság rögzítése értesítés sikertelen:', err);
+	}
+}
+
+/** Felsorolás az emailbe; a sorok saját formázásból jönnek, de a nevek miatt escape-elünk. */
+function itemsHtml(lines: string[]): string {
+	return lines
+		.map(
+			(line) =>
+				`<p style="margin: 0 0 4px; font-size: 14px; color: #18181b;">${escapeHtml(line)}</p>`
+		)
+		.join('');
 }
 
 // --- Dolgozói adatbejelentések ------------------------------------------------

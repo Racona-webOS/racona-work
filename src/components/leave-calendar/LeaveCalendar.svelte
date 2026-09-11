@@ -3,19 +3,28 @@
 
 	Szűrő nélkül minden cellában a távol lévők neve; kiválasztott dolgozóval
 	csak az ő napjai, típusonként színezve (a típust csak a leave.approve jog
-	mutatja). A függő kérelmek halványan jelennek meg. Csak olvasásra; a
-	szerkesztés a 3. fázis (specs/leave-days.md).
+	mutatja). A függő kérelmek halványan jelennek meg.
+
+	Szerkesztés (leave.approve joggal, kiválasztott dolgozóval): üres munkanapra
+	kattintva a nap felveendő, meglévőre kattintva törlendő. A jelölések a
+	Mentés gombra futnak le egy tranzakcióban; az összegzősáv a szerver
+	előnézetéből mutatja a szakaszokat és a keretet (specs/leave-days.md).
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 	import type {
 		EmployeeRow,
 		LeaveCalendar,
 		LeaveCalendarDay,
 		LeaveCalendarPendingDay,
+		LeaveCalendarChangePlan,
+		LeaveCalendarSaveResult,
 		PaginatedResult
 	} from '../../../server/functions.js';
 	import { LEAVE_TYPES } from '../../../server/leave-types.js';
+	import type { LeaveType } from '../../../server/leave-types.js';
+	import { CALENDAR_LEAVE_TYPES } from '../../../server/leave-day-utils.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import { isWeekend, monthGrid, monthRange } from '../../lib/calendar-grid.js';
 
@@ -25,7 +34,8 @@
 		canManage = false,
 		employeeId = null,
 		lockEmployee = false,
-		refreshKey = 0
+		refreshKey = 0,
+		onSaved
 	}: {
 		pluginId?: string;
 		organizationId: number;
@@ -37,6 +47,8 @@
 		lockEmployee?: boolean;
 		/** Növelve újratölt (kérelem jóváhagyása, törlése után). */
 		refreshKey?: number;
+		/** Sikeres naptáras mentés után (a kérelmek listája frissülhet). */
+		onSaved?: () => void;
 	} = $props();
 
 	const sdk = $derived(resolveSdk(pluginId));
@@ -93,6 +105,116 @@
 	}
 
 	const hasAnyLeave = $derived((data?.days.length ?? 0) + (data?.pending.length ?? 0) > 0);
+
+	// --- Szerkesztés ---------------------------------------------------------
+
+	/** Csak a jóváhagyó szerkeszthet, és csak kiválasztott dolgozóval. */
+	const editable = $derived(canManage && !lockEmployee && !!filterEmployeeId && data?.canManage === true);
+
+	let addType = $state<LeaveType>('annual');
+	const toAdd = new SvelteSet<string>();
+	const toRemove = new SvelteSet<string>();
+	const hasChanges = $derived(toAdd.size + toRemove.size > 0);
+
+	let plan = $state<LeaveCalendarChangePlan | null>(null);
+	let planLoading = $state(false);
+	let saving = $state(false);
+
+	const addedDays = $derived(plan?.runs.reduce((sum, r) => sum + r.days.length, 0) ?? toAdd.size);
+
+	function clearChanges() {
+		toAdd.clear();
+		toRemove.clear();
+		plan = null;
+	}
+
+	function toggleDay(iso: string) {
+		if (!editable || !isWorkingDay(iso)) return;
+		if ((pendingMap.get(iso) ?? []).length > 0) return;
+		const hasApproved = (dayMap.get(iso) ?? []).length > 0;
+		if (hasApproved) {
+			if (toRemove.has(iso)) toRemove.delete(iso);
+			else toRemove.add(iso);
+		} else {
+			if (toAdd.has(iso)) toAdd.delete(iso);
+			else toAdd.add(iso);
+		}
+	}
+
+	// Előnézet a szerverről, rövid késleltetéssel, hogy gyors kattintgatásnál ne
+	// menjen minden lépésre hívás
+	let planTimer: ReturnType<typeof setTimeout> | null = null;
+	$effect(() => {
+		const employee = filterEmployeeId;
+		const type = addType;
+		const add = [...toAdd];
+		const remove = [...toRemove];
+		if (planTimer) clearTimeout(planTimer);
+		if (!editable || !employee || add.length + remove.length === 0) {
+			plan = null;
+			planLoading = false;
+			return;
+		}
+		planLoading = true;
+		planTimer = setTimeout(async () => {
+			try {
+				const result: LeaveCalendarChangePlan = await sdk.remote.call('previewLeaveCalendarSave', {
+					organizationId,
+					employeeId: employee,
+					leaveType: type,
+					addDays: add,
+					removeDays: remove
+				});
+				// Csak akkor vesszük át, ha közben nem változott a jelölés
+				if (add.length === toAdd.size && remove.length === toRemove.size) plan = result;
+			} catch (err: any) {
+				plan = { runs: [], removeDays: [], balances: [], errors: [err?.message ?? t('error.loadFailed')] };
+			} finally {
+				planLoading = false;
+			}
+		}, 250);
+	});
+
+	async function save() {
+		if (!editable || !filterEmployeeId || !hasChanges || saving) return;
+		saving = true;
+		try {
+			const result: LeaveCalendarSaveResult = await sdk.remote.call('saveLeaveCalendar', {
+				organizationId,
+				employeeId: filterEmployeeId,
+				leaveType: addType,
+				addDays: [...toAdd],
+				removeDays: [...toRemove]
+			});
+			sdk?.ui?.toast(
+				t('leaveCalendar.saved', {
+					added: result.createdRequests.reduce((sum, r) => sum + r.days, 0),
+					requests: result.createdRequests.length,
+					removed: result.removedDays.length
+				}),
+				'success'
+			);
+			clearChanges();
+			await loadCalendar();
+			onSaved?.();
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
+		} finally {
+			saving = false;
+		}
+	}
+
+	/** Szűrőváltás mentetlen jelöléssel: megerősítés, különben marad a régi. */
+	function onEmployeeChange(event: Event) {
+		const select = event.currentTarget as HTMLSelectElement;
+		const next = select.value === '' ? null : Number(select.value);
+		if (hasChanges && !window.confirm(t('leaveCalendar.discardConfirm'))) {
+			select.value = selectedEmployeeId === null ? '' : String(selectedEmployeeId);
+			return;
+		}
+		clearChanges();
+		selectedEmployeeId = next;
+	}
 
 	// --- Adatok --------------------------------------------------------------
 
@@ -211,15 +333,34 @@
 		{#if !lockEmployee}
 			<label class="filter">
 				<span>{t('leaveCalendar.filter.label')}</span>
-				<select class="form-input" bind:value={selectedEmployeeId}>
-					<option value={null}>{t('leaveCalendar.filter.all')}</option>
+				<select
+					class="form-input"
+					value={selectedEmployeeId === null ? '' : String(selectedEmployeeId)}
+					onchange={onEmployeeChange}
+				>
+					<option value="">{t('leaveCalendar.filter.all')}</option>
 					{#each employees as emp (emp.id)}
-						<option value={emp.id}>{emp.userName}</option>
+						<option value={String(emp.id)}>{emp.userName}</option>
+					{/each}
+				</select>
+			</label>
+		{/if}
+
+		{#if editable}
+			<label class="filter">
+				<span>{t('leaveCalendar.addType')}</span>
+				<select class="form-input" bind:value={addType} disabled={toAdd.size > 0 && saving}>
+					{#each CALENDAR_LEAVE_TYPES as type (type)}
+						<option value={type}>{t(`leaveRequests.type.${type}`)}</option>
 					{/each}
 				</select>
 			</label>
 		{/if}
 	</div>
+
+	{#if editable}
+		<p class="hint">{t('leaveCalendar.editHint')}</p>
+	{/if}
 
 	<div class="legend">
 		{#if canManage && filterEmployeeId}
@@ -231,6 +372,10 @@
 		{/if}
 		<span class="chip is-pending">{t('leaveCalendar.legend.pending')}</span>
 		<span class="chip is-off">{t('leaveCalendar.legend.nonWorking')}</span>
+		{#if editable}
+			<span class="chip mark-add">{t('leaveCalendar.legend.toAdd')}</span>
+			<span class="chip mark-remove">{t('leaveCalendar.legend.toRemove')}</span>
+		{/if}
 	</div>
 
 	{#if error}
@@ -252,20 +397,38 @@
 					{@const pending = pendingMap.get(iso) ?? []}
 					{@const shown = approved.slice(0, MAX_NAMES)}
 					{@const extra = approved.length - shown.length}
+					{@const clickable = editable && isWorkingDay(iso) && pending.length === 0}
 					<div
 						class="cell"
 						class:is-off={!isWorkingDay(iso)}
 						class:is-today={iso === today}
+						class:is-clickable={clickable}
+						class:is-to-add={toAdd.has(iso)}
+						class:is-to-remove={toRemove.has(iso)}
 						title={cellTitle(iso)}
+						role={clickable ? 'button' : undefined}
+						tabindex={clickable ? 0 : undefined}
+						onclick={() => toggleDay(iso)}
+						onkeydown={(e) => {
+							if (clickable && (e.key === 'Enter' || e.key === ' ')) {
+								e.preventDefault();
+								toggleDay(iso);
+							}
+						}}
 					>
 						<span class="day-number">{Number(iso.slice(8, 10))}</span>
 						{#if filterEmployeeId}
 							{#each approved as d (d.leaveRequestId + ':' + d.day)}
-								<span class="mark {typeClass(d.leaveType)}">{typeLabel(d.leaveType)}</span>
+								<span class="mark {typeClass(d.leaveType)}" class:mark-remove={toRemove.has(iso)}>
+									{typeLabel(d.leaveType)}
+								</span>
 							{/each}
 							{#each pending as d (d.leaveRequestId + ':' + d.day)}
 								<span class="mark is-pending">{t('leaveCalendar.pending')}</span>
 							{/each}
+							{#if toAdd.has(iso)}
+								<span class="mark mark-add">{t(`leaveRequests.type.${addType}`)}</span>
+							{/if}
 						{:else}
 							{#each shown as d (d.leaveRequestId + ':' + d.day)}
 								<span class="mark {typeClass(d.leaveType)}">{d.employeeName}</span>
@@ -285,8 +448,52 @@
 		</div>
 	</div>
 
-	{#if !loading && data && !hasAnyLeave}
+	{#if !loading && data && !hasAnyLeave && !hasChanges}
 		<p class="empty-state">{t('leaveCalendar.empty')}</p>
+	{/if}
+
+	{#if editable && hasChanges}
+		<div class="summary" class:is-loading={planLoading}>
+			<div class="summary-text">
+				{#if toAdd.size > 0}
+					<span>
+						{t('leaveCalendar.summary.add', {
+							days: addedDays,
+							requests: plan?.runs.length ?? '…'
+						})}
+					</span>
+				{/if}
+				{#if toRemove.size > 0}
+					<span>{t('leaveCalendar.summary.remove', { days: toRemove.size })}</span>
+				{/if}
+				{#each plan?.balances ?? [] as b (b.year)}
+					<span class:is-negative={b.remainingAfter < 0}>
+						{b.hasBalance
+							? t('leaveCalendar.summary.balance', {
+									year: b.year,
+									before: b.remainingBefore,
+									after: b.remainingAfter
+								})
+							: t('leaveCalendar.summary.noBalance', { year: b.year })}
+					</span>
+				{/each}
+				{#each plan?.errors ?? [] as message (message)}
+					<span class="is-error">{message}</span>
+				{/each}
+			</div>
+			<div class="summary-actions">
+				<button class="btn-secondary" onclick={clearChanges} disabled={saving}>
+					{t('leaveCalendar.discard')}
+				</button>
+				<button
+					class="btn-primary"
+					onclick={save}
+					disabled={saving || planLoading || (plan?.errors.length ?? 0) > 0}
+				>
+					{saving ? t('loading') : t('leaveCalendar.save')}
+				</button>
+			</div>
+		</div>
 	{/if}
 </div>
 
@@ -459,6 +666,108 @@
 	.chip.is-off {
 		background: var(--muted, #f4f4f5);
 		color: var(--muted-foreground, #71717a);
+	}
+
+	.hint {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--muted-foreground, #71717a);
+	}
+
+	.cell.is-clickable {
+		cursor: pointer;
+	}
+
+	.cell.is-clickable:hover {
+		border-color: var(--color-primary, #3730a3);
+	}
+
+	.cell.is-to-add {
+		border: 2px dashed #16a34a;
+	}
+
+	.cell.is-to-remove {
+		border: 2px dashed #dc2626;
+	}
+
+	.mark.mark-add {
+		background: transparent;
+		border: 1px dashed #16a34a;
+		color: #166534;
+	}
+
+	.mark.mark-remove {
+		text-decoration: line-through;
+		opacity: 0.6;
+	}
+
+	.chip.mark-add {
+		border: 1px dashed #16a34a;
+		color: #166534;
+	}
+
+	.chip.mark-remove {
+		border: 1px dashed #dc2626;
+		color: #991b1b;
+		text-decoration: line-through;
+	}
+
+	.summary {
+		position: sticky;
+		bottom: 0.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		flex-wrap: wrap;
+		padding: 0.75rem 1rem;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.5rem;
+		background: var(--color-background, #fff);
+		box-shadow: 0 4px 16px rgb(0 0 0 / 8%);
+		font-size: 0.875rem;
+		transition: opacity 0.15s;
+	}
+
+	.summary.is-loading {
+		opacity: 0.7;
+	}
+
+	.summary-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.summary-text .is-negative,
+	.summary-text .is-error {
+		color: #991b1b;
+	}
+
+	.summary-actions {
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.btn-primary {
+		padding: 0.3rem 0.9rem;
+		border: 1px solid var(--color-primary, #3730a3);
+		border-radius: 0.375rem;
+		background: var(--color-primary, #3730a3);
+		color: #fff;
+		cursor: pointer;
+		font-size: 0.875rem;
+	}
+
+	.btn-primary:disabled,
+	.btn-secondary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	:global(.dark) .summary {
+		background: var(--color-card, oklch(0.2 0 0));
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}
 
 	.empty-state {

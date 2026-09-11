@@ -1,6 +1,6 @@
 # Szabadságnapok és szabadságnaptár
 
-> Státusz: 1–2. fázis kész · Utolsó módosítás: 2026-09-11
+> Státusz: 1–3. fázis kész · Utolsó módosítás: 2026-09-11
 
 Ma a szabadság egyetlen igazságforrása a szabadságkérelem (`leave_requests`): egy intervallum és egy `days` szám. Ebből nem lehet utólag egy napot kivenni, és a HR nem látja napokra bontva, ki mikor van szabadságon. A cél, hogy a kérelem **beadott, utólag nem módosuló meta sor** maradjon, a tényleges szabadság viszont **napszinten** legyen tárolva. A napok táblája lesz az igazságforrás a szabadságok mutatásához, a keretek terheléséhez és a naptárhoz. A nyilvántartó oldalon a kérelmek listája alá naptárnézet kerül, amiben a HR napokat vehet fel és törölhet.
 
@@ -160,7 +160,7 @@ CREATE INDEX IF NOT EXISTS idx_leave_days_employee_type_day
 |---|---|---|
 | `getLeaveCalendar({ organizationId, from, to, employeeId? })` | `leave.request` | A `[from, to]` időszak napjai: `{ day, employeeId, employeeName, leaveType, leaveRequestId }[]`; a `leaveType` csak `leave.approve` joggal van kitöltve (D13). Külön `pending` lista a függő kérelmek munkanapjaival. Legfeljebb 62 nap egy hívásban. |
 | `saveLeaveCalendar({ organizationId, employeeId, leaveType, addDays, removeDays })` | `leave.approve` | A 4. fejezet folyamata. Visszaad: `{ createdRequests: { id, startDate, endDate, days }[], removedDays: string[] }`. A `leaveType` csak a D9 szerinti típus lehet. |
-| `previewLeaveCalendarSave({ organizationId, employeeId, leaveType, addDays, removeDays })` | `leave.approve` | Mentés nélkül: a szakaszok és évenként a keret a módosítás után (K8 összegzősáv). Nem kötelező az 1. fázisban; a kliens a szakaszokat maga is kiszámolhatja a naptár nem-munkanap adataiból. |
+| `previewLeaveCalendarSave({ organizationId, employeeId, leaveType, addDays, removeDays })` | `leave.approve` | Mentés nélkül: a szakaszok, a törlendő napok, évenként a keret a módosítás után, és a hibák listája (K8 összegzősáv). |
 
 **Módosuló meglévő függvények:**
 
@@ -231,13 +231,21 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 - [x] Locale (hu, en)
 - [x] Kézi ellenőrzés a dev felületen: mindenki nézet, dolgozószűrő típus szerinti jelmagyarázattal, hónapléptetés, függő kérelem napjai
 
-### 3. fázis: szerkesztés a naptárban
+### 3. fázis: szerkesztés a naptárban ✅
 
-- [ ] `saveLeaveCalendar` tranzakcióban (4. fejezet, D7–D12)
-- [ ] Szerkesztés a felületen: jelölések, összegzősáv, mentés, elvetés, megerősítés szűrőváltásnál (K8, K9)
-- [ ] Értesítések és a két új email sablon (K11, D16)
-- [ ] Locale
-- [ ] Kézi ellenőrzés a dev adatbázison: átfedő kérelem jóváhagyása, keret túllépése mentéskor, évet átlépő kérelem két kerete
+- [x] `saveLeaveCalendar` tranzakcióban (4. fejezet, D7–D12): a dolgozó sorának zárolása, ellenőrzés, törlés, szakaszonként jóváhagyott kérelem, keret szinkron
+- [x] `previewLeaveCalendarSave`: a szakaszok, a törlendő napok, az érintett keretek és a hibák mentés nélkül (az összegzősávhoz)
+- [x] Szerkesztés a felületen: jelölések, típusválasztó, összegzősáv a szerver előnézetéből, mentés, elvetés, megerősítés szűrőváltásnál (K8, K9)
+- [x] Értesítések és a két új email sablon: `leave_days_removed`, `leave_days_added` (K11, D16)
+- [x] Locale (hu, en)
+- [x] Kézi ellenőrzés a dev szerveren: a spec példája három kérelem (péntek és hétfő egy szakasz); nem munkanap, foglalt nap, függő kérelem napja, nem létező nap törlése, tiltott típus, egyszerre felvett és törölt nap, keret túllépése mind hibával áll meg; a kérelem `days` mezője a napok törlése után is változatlan (D1)
+
+**Megvalósítás, eltérések a tervtől**
+
+- A tiszta segédek (`listWorkingDays`, `groupIntoRuns`, `daysToPeriods`, `CALENDAR_LEAVE_TYPES`) a `server/leave-day-utils.ts` fájlba kerültek, mert a `leave-days.ts` szerver modulokat importál, és a kliens csak a tiszta részt húzhatja be. A `leave-days.ts` újraexportálja őket.
+- Az összegzősáv szakaszait és keretét a szerver előnézete adja (`previewLeaveCalendarSave`), nem a kliens számolja: így a keret ellenőrzése egy helyen van, és a HR-nek nem kell `leave.balance.manage` jog a keret megjelenítéséhez.
+- A mentés a dolgozó sorát zárolja (`FOR UPDATE`), hogy két egyszerre futó mentés egymás után ellenőrizzen.
+- A megerősítés szűrőváltásnál a böngésző natív `confirm` ablakával történik.
 
 ### Későbbi ötletek
 
