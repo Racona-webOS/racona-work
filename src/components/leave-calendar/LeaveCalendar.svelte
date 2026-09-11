@@ -19,7 +19,6 @@
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { SvelteSet } from 'svelte/reactivity';
 	import type {
 		EmployeeRow,
 		LeaveCalendar,
@@ -167,9 +166,20 @@
 	const editable = $derived(canManage && !lockEmployee && !!filterEmployeeId && data?.canManage === true);
 
 	let addType = $state<LeaveType>('annual');
-	const toAdd = new SvelteSet<string>();
-	const toRemove = new SvelteSet<string>();
+	// Sima Set, minden változásnál újra létrehozva. A svelte/reactivity SvelteSet
+	// nem használható: a build csak a 'svelte' és a 'svelte/internal/client'
+	// csomagot veszi a core közös runtime-jából, a svelte/reactivity a csomagba
+	// kerülne a saját runtime-másolatával, és a jelölések nem frissítenék a felületet.
+	let toAdd = $state<Set<string>>(new Set());
+	let toRemove = $state<Set<string>>(new Set());
 	const hasChanges = $derived(toAdd.size + toRemove.size > 0);
+
+	function toggled(set: Set<string>, iso: string): Set<string> {
+		const next = new Set(set);
+		if (next.has(iso)) next.delete(iso);
+		else next.add(iso);
+		return next;
+	}
 
 	let plan = $state<LeaveCalendarChangePlan | null>(null);
 	let planLoading = $state(false);
@@ -178,8 +188,8 @@
 	const addedDays = $derived(plan?.runs.reduce((sum, r) => sum + r.days.length, 0) ?? toAdd.size);
 
 	function clearChanges() {
-		toAdd.clear();
-		toRemove.clear();
+		toAdd = new Set();
+		toRemove = new Set();
 		plan = null;
 	}
 
@@ -227,13 +237,8 @@
 		if (!editable || !isWorkingDay(iso)) return;
 		if ((pendingMap.get(iso) ?? []).length > 0) return;
 		const hasApproved = (dayMap.get(iso) ?? []).length > 0;
-		if (hasApproved) {
-			if (toRemove.has(iso)) toRemove.delete(iso);
-			else toRemove.add(iso);
-		} else {
-			if (toAdd.has(iso)) toAdd.delete(iso);
-			else toAdd.add(iso);
-		}
+		if (hasApproved) toRemove = toggled(toRemove, iso);
+		else toAdd = toggled(toAdd, iso);
 	}
 
 	// Előnézet a szerverről, rövid késleltetéssel, hogy gyors kattintgatásnál ne

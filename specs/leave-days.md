@@ -256,6 +256,7 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 - Az összegzősáv szakaszait és keretét a szerver előnézete adja (`previewLeaveCalendarSave`), nem a kliens számolja: így a keret ellenőrzése egy helyen van, és a HR-nek nem kell `leave.balance.manage` jog a keret megjelenítéséhez.
 - A mentés a dolgozó sorát zárolja (`FOR UPDATE`), hogy két egyszerre futó mentés egymás után ellenőrizzen.
 - A megerősítés szűrőváltásnál a böngésző natív `confirm` ablakával történik.
+- A jelölések sima `Set`-ben élnek, minden változásnál újra létrehozva. A `svelte/reactivity` (`SvelteSet`) nem használható a pluginban: a build csak a `svelte` és a `svelte/internal/client` csomagot veszi a core közös runtime-jából, a `svelte/reactivity` a csomagba kerülne a saját runtime-másolatával, és a jelölések nem frissítenék a felületet (dev módban egy runtime van, ott nem látszik).
 
 ### Későbbi ötletek
 

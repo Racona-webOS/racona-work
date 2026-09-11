@@ -641,10 +641,15 @@
 					const requested = row.original.days;
 					let html = '<span class="text-sm text-muted">—</span>';
 					if (effective !== null && effective !== undefined) {
-						html =
-							effective === requested
-								? `<span class="text-sm">${effective}</span>`
-								: `<span class="badge badge-reduced" title="${t('leaveRequests.effectiveDays.reduced', { removed: requested - effective })}">${effective}</span>`;
+						if (effective === requested) {
+							html = `<span class="text-sm">${effective}</span>`;
+						} else if (effective < requested) {
+							html = `<span class="badge badge-reduced" title="${t('leaveRequests.effectiveDays.reduced', { removed: requested - effective })}">${effective}</span>`;
+						} else {
+							// Több nap, mint a kért: a napok a jóváhagyás utáni munkanaptárral
+							// készültek (pl. a visszatöltő migráció), a kért szám a beadáskori
+							html = `<span class="badge badge-reduced" title="${t('leaveRequests.effectiveDays.increased', { extra: effective - requested, requested })}">${effective}</span>`;
+						}
 					}
 					const snippet = createRawSnippet(() => ({ render: () => html }));
 					return renderSnippet(snippet, {});

@@ -111,6 +111,7 @@
 	"leaveRequests.columns.createdAt": "Recorded",
 	"leaveRequests.columns.effectiveDays": "Effective",
 	"leaveRequests.effectiveDays.reduced": "HR removed {removed} days of this request in the calendar.",
+	"leaveRequests.effectiveDays.increased": "The request now has {extra} more leave days than the {requested} working days counted at submission: the work calendar has changed since.",
 	"leaveRequests.section.requests": "Requests",
 	"leaveRequests.section.calendar": "Calendar",
 	"leaveCalendar.prev": "Previous month",

@@ -110,6 +110,7 @@
 	"leaveRequests.columns.createdAt": "Rögzítve",
 	"leaveRequests.columns.effectiveDays": "Ebből érvényes",
 	"leaveRequests.effectiveDays.reduced": "A HR a naptárban törölt {removed} napot ebből a kérelemből.",
+	"leaveRequests.effectiveDays.increased": "A kérelemhez ma {extra} nappal több szabadságnap tartozik, mint a beadáskor számolt {requested} munkanap: a munkanaptár azóta változott.",
 	"leaveRequests.section.requests": "Kérelmek",
 	"leaveRequests.section.calendar": "Naptár",
 	"leaveCalendar.prev": "Előző hónap",
