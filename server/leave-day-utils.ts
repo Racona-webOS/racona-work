@@ -12,16 +12,31 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * A naptárban felvehető típusok (specs/leave-days.md, D9). A gyerekhez kötött
- * apasági és szülői szabadság kimarad, azt kérelemként kell rögzíteni.
+ * A HR a naptárban ezeket rögzítheti (specs/leave-days.md, D9): minden típust;
+ * az apasági és a szülői szabadsághoz gyereket is választ.
  */
-export const CALENDAR_LEAVE_TYPES: readonly LeaveType[] = ['annual', 'company_mandatory', 'sick', 'unpaid', 'other'];
+export const CALENDAR_LEAVE_TYPES: readonly LeaveType[] = [
+	'annual',
+	'company_mandatory',
+	'sick',
+	'paternity',
+	'parental',
+	'unpaid',
+	'other'
+];
 
 /**
- * A dolgozó a saját naptárából ezeket kérheti (specs/leave-days.md, K15). A
- * gyerekhez kötött típusok az űrlapon maradnak, a céges kötelező a HR-é.
+ * A dolgozó a saját naptárából ezeket kérheti (specs/leave-days.md, K15): a
+ * céges kötelező szabadság kivételével mindent; a gyerekes típushoz gyereket választ.
  */
-export const REQUEST_CALENDAR_LEAVE_TYPES: readonly LeaveType[] = ['annual', 'sick', 'unpaid', 'other'];
+export const REQUEST_CALENDAR_LEAVE_TYPES: readonly LeaveType[] = [
+	'annual',
+	'sick',
+	'paternity',
+	'parental',
+	'unpaid',
+	'other'
+];
 
 /** Egy összefüggő szabadságszakasz a naptárban felvett napokból. */
 export interface LeaveRun {

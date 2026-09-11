@@ -30,9 +30,11 @@
 		LeaveCalendarChangePlan,
 		LeaveCalendarSaveResult,
 		LeaveRequestBatchResult,
+		LeaveAllowances,
+		ChildLeaveStatus,
 		PaginatedResult
 	} from '../../../server/functions.js';
-	import { LEAVE_TYPES } from '../../../server/leave-types.js';
+	import { CHILD_LEAVE_TYPES, LEAVE_TYPES } from '../../../server/leave-types.js';
 	import type { LeaveType } from '../../../server/leave-types.js';
 	import { CALENDAR_LEAVE_TYPES, REQUEST_CALENDAR_LEAVE_TYPES } from '../../../server/leave-day-utils.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
@@ -182,6 +184,44 @@
 	/** A jelölések típusa: a HR felvételnél vagy a dolgozó kérelménél. */
 	const activeType = $derived(editable ? addType : requestType);
 
+	// --- Gyerekhez kötött típusok és indoklás ------------------------------
+
+	/** Apasági és szülői szabadságnál: melyik gyerek után. */
+	let childId = $state<number | null>(null);
+	let allowances = $state<LeaveAllowances | null>(null);
+	const needsChild = $derived(CHILD_LEAVE_TYPES.has(activeType));
+	const childOptions = $derived<ChildLeaveStatus[]>(
+		activeType === 'paternity'
+			? (allowances?.paternity.filter((c) => c.active) ?? [])
+			: activeType === 'parental'
+				? (allowances?.parental ?? [])
+				: []
+	);
+
+	/** A kérelmek indoklása (nem kötelező). */
+	let reason = $state('');
+
+	function childLabel(child: ChildLeaveStatus): string {
+		return child.label || formatDay(child.birthDate);
+	}
+
+	// A gyerekek a dolgozó adatlapjáról, csak ha kell; típus- vagy dolgozóváltáskor újra
+	$effect(() => {
+		const employee = filterEmployeeId;
+		const type = activeType;
+		childId = null;
+		if (!CHILD_LEAVE_TYPES.has(type) || !employee || !sdk?.remote) {
+			allowances = null;
+			return;
+		}
+		sdk.remote
+			.call('getLeaveAllowances', { employeeId: employee, year })
+			.then((result: LeaveAllowances) => {
+				if (filterEmployeeId === employee && activeType === type) allowances = result;
+			})
+			.catch(() => (allowances = null));
+	});
+
 	let addType = $state<LeaveType>('annual');
 	// Sima Set, minden változásnál újra létrehozva. A svelte/reactivity SvelteSet
 	// nem használható: a build csak a 'svelte' és a 'svelte/internal/client'
@@ -208,6 +248,7 @@
 		toAdd = new Set();
 		toRemove = new Set();
 		plan = null;
+		reason = '';
 	}
 
 	// --- Saját függő kérelem visszavonása -----------------------------------
@@ -364,6 +405,7 @@
 	$effect(() => {
 		const employee = filterEmployeeId;
 		const type = activeType;
+		const child = childId;
 		const mode = editable ? 'save' : canRequest ? 'request' : null;
 		const add = [...toAdd];
 		const remove = [...toRemove];
@@ -383,13 +425,15 @@
 								employeeId: employee,
 								leaveType: type,
 								addDays: add,
-								removeDays: remove
+								removeDays: remove,
+								childId: child
 							})
 						: await sdk.remote.call('previewLeaveRequestBatch', {
 								organizationId,
 								employeeId: employee,
 								leaveType: type,
-								days: add
+								days: add,
+								childId: child
 							});
 				// Csak akkor vesszük át, ha közben nem változott a jelölés
 				if (add.length === toAdd.size && remove.length === toRemove.size) plan = result;
@@ -410,7 +454,9 @@
 				employeeId: filterEmployeeId,
 				leaveType: addType,
 				addDays: [...toAdd],
-				removeDays: [...toRemove]
+				removeDays: [...toRemove],
+				childId,
+				reason: reason.trim() || null
 			});
 			sdk?.ui?.toast(
 				t('leaveCalendar.saved', {
@@ -439,7 +485,9 @@
 				organizationId,
 				employeeId,
 				leaveType: requestType,
-				days: [...toAdd]
+				days: [...toAdd],
+				childId,
+				reason: reason.trim() || null
 			});
 			sdk?.ui?.toast(
 				t('leaveCalendar.submitted', {
@@ -652,6 +700,25 @@
 			</label>
 		{/if}
 	</div>
+
+	{#if (editable || canRequest) && needsChild}
+		<div class="child-row">
+			<label class="filter">
+				<span>{t('leaveCalendar.child')}</span>
+				<select class="form-input" bind:value={childId} disabled={saving}>
+					<option value={null}>{t('leaveCalendar.childSelect')}</option>
+					{#each childOptions as child (child.childId)}
+						<option value={child.childId}>
+							{childLabel(child)} · {t('leaveCalendar.childRemaining', { days: child.remainingDays })}
+						</option>
+					{/each}
+				</select>
+			</label>
+			{#if allowances && childOptions.length === 0}
+				<span class="hint">{t('leaveCalendar.noChild')}</span>
+			{/if}
+		</div>
+	{/if}
 
 	{#if editable}
 		<p class="hint">
@@ -925,6 +992,14 @@
 				{/each}
 			</div>
 			<div class="summary-actions">
+				<input
+					class="form-input reason-input"
+					type="text"
+					maxlength="500"
+					placeholder={t('leaveCalendar.reason')}
+					bind:value={reason}
+					disabled={saving}
+				/>
 				<button class="btn-secondary" onclick={clearChanges} disabled={saving}>
 					{t('leaveCalendar.discard')}
 				</button>
@@ -1498,6 +1573,22 @@
 	.summary-actions {
 		display: flex;
 		gap: 0.5rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+
+	.reason-input {
+		min-width: 16rem;
+		cursor: text;
+		background-image: none;
+		padding-right: 0.75rem;
+	}
+
+	.child-row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
 	}
 
 	.btn-primary {

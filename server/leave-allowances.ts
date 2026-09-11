@@ -213,6 +213,8 @@ export async function validateChildLeave(
 		days: number;
 		countPending: boolean;
 		excludeRequestId?: number;
+		/** Hány új részletet jelent a kérelem (a naptárból több szakasz is jöhet); alapból 1. */
+		newParts?: number;
 	}
 ): Promise<void> {
 	if (!request.childId) {
@@ -258,7 +260,7 @@ export async function validateChildLeave(
 		if (request.endDate > deadline) {
 			throw new Error(`Az apasági szabadságot ${deadline}-ig lehet kivenni (Mt. 118. §).`);
 		}
-		if (usage.parts >= PATERNITY_MAX_PARTS) {
+		if (usage.parts + (request.newParts ?? 1) > PATERNITY_MAX_PARTS) {
 			throw new Error('Az apasági szabadságot legfeljebb két részletben lehet kivenni.');
 		}
 		if (taken + request.days > PATERNITY_DAYS) {

@@ -20,7 +20,8 @@ import {
 	notifyLeaveRequestsCreated
 } from './leave-notifications.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
-import { BALANCE_LEAVE_TYPES, consumesAnnualBalance, isLeaveType } from './leave-types.js';
+import { BALANCE_LEAVE_TYPES, CHILD_LEAVE_TYPES, consumesAnnualBalance, isLeaveType } from './leave-types.js';
+import { validateChildLeave } from './leave-allowances.js';
 import type { LeaveType } from './leave-types.js';
 import { isDayClosed, loadClosedYear } from './leave-closing.js';
 import {
@@ -389,6 +390,10 @@ export interface LeaveCalendarChangeParams {
 	leaveType: string;
 	addDays: string[];
 	removeDays: string[];
+	/** Apasági és szülői szabadságnál kötelező: melyik gyerek után. */
+	childId?: number | null;
+	/** A létrejövő kérelmek indoklása (nem kötelező). */
+	reason?: string | null;
 }
 
 /** Egy év éves kerete a módosítás előtt és után. */
@@ -422,6 +427,43 @@ interface CalendarChangeInput {
 	leaveType: LeaveType;
 	addDays: string[];
 	removeDays: string[];
+	childId: number | null;
+	reason: string | null;
+}
+
+/** A gyerek azonosítója csak gyerekhez kötött típusnál számít. */
+function parseChildId(leaveType: LeaveType, value: unknown): number | null {
+	if (!CHILD_LEAVE_TYPES.has(leaveType)) return null;
+	const id = Number(value);
+	return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/**
+ * Apasági és szülői szabadság: a gyerek, a határidő és a keret ellenőrzése a
+ * szakaszok együttesére; a hibát a tervbe gyűjti.
+ */
+async function collectChildLeaveErrors(
+	context: RemoteContext,
+	input: { employeeId: number; leaveType: LeaveType; childId: number | null },
+	runs: LeaveRun[],
+	countPending: boolean,
+	errors: string[]
+): Promise<void> {
+	if (!CHILD_LEAVE_TYPES.has(input.leaveType) || runs.length === 0) return;
+	try {
+		await validateChildLeave(context, {
+			employeeId: input.employeeId,
+			childId: input.childId,
+			leaveType: input.leaveType as 'paternity' | 'parental',
+			startDate: runs[0].startDate,
+			endDate: runs[runs.length - 1].endDate,
+			days: runs.reduce((sum, r) => sum + r.days.length, 0),
+			countPending,
+			newParts: runs.length
+		});
+	} catch (err) {
+		errors.push(err instanceof Error ? err.message : String(err));
+	}
 }
 
 function parseChangeParams(params: LeaveCalendarChangeParams): CalendarChangeInput {
@@ -445,7 +487,9 @@ function parseChangeParams(params: LeaveCalendarChangeParams): CalendarChangeInp
 		employeeId: params.employeeId,
 		leaveType: params.leaveType,
 		addDays,
-		removeDays
+		removeDays,
+		childId: parseChildId(params.leaveType, params.childId),
+		reason: params.reason?.trim() || null
 	};
 }
 
@@ -559,7 +603,11 @@ async function planCalendarChanges(
 		}
 	}
 
-	return { runs: groupIntoRuns(input.addDays, working), removeDays, balances, errors };
+	const runs = groupIntoRuns(input.addDays, working);
+	// Jóváhagyottként kerül be: a függő kérelmek nem számítanak (mint a jóváhagyásnál)
+	await collectChildLeaveErrors(context, input, runs, false, errors);
+
+	return { runs, removeDays, balances, errors };
 }
 
 /**
@@ -620,7 +668,7 @@ export async function saveLeaveCalendar(
 				`INSERT INTO ${SCHEMA}.leave_requests
 					(employee_id, organization_id, leave_type, start_date, end_date, days, status, reason,
 					 approved_by, child_id, created_at, updated_at)
-				 VALUES ($1, $2, $3, $4, $5, $6, 'approved', NULL, $7, NULL, NOW(), NOW())
+				 VALUES ($1, $2, $3, $4, $5, $6, 'approved', $8, $7, $9, NOW(), NOW())
 				 RETURNING id`,
 				[
 					input.employeeId,
@@ -629,7 +677,9 @@ export async function saveLeaveCalendar(
 					run.startDate,
 					run.endDate,
 					run.days.length,
-					approverEmployeeId
+					approverEmployeeId,
+					input.reason,
+					input.childId
 				]
 			);
 			const requestId: number = inserted.rows[0].id;
@@ -689,6 +739,8 @@ export interface LeaveRequestBatchParams {
 	leaveType: string;
 	days: string[];
 	reason?: string | null;
+	/** Apasági és szülői szabadságnál kötelező: melyik gyerek után. */
+	childId?: number | null;
 }
 
 export interface LeaveRequestBatchResult {
@@ -701,6 +753,7 @@ interface RequestBatchInput {
 	leaveType: LeaveType;
 	days: string[];
 	reason: string | null;
+	childId: number | null;
 }
 
 function parseBatchParams(params: LeaveRequestBatchParams): RequestBatchInput {
@@ -718,7 +771,8 @@ function parseBatchParams(params: LeaveRequestBatchParams): RequestBatchInput {
 		employeeId: params.employeeId,
 		leaveType: params.leaveType,
 		days: normalizeDays(Array.isArray(params.days) ? params.days : []),
-		reason: params.reason?.trim() || null
+		reason: params.reason?.trim() || null,
+		childId: parseChildId(params.leaveType, params.childId)
 	};
 }
 
@@ -810,7 +864,11 @@ async function planRequestBatch(
 		}
 	}
 
-	return { runs: groupIntoRuns(days, working), removeDays: [], balances, errors };
+	const runs = groupIntoRuns(days, working);
+	// Beadáskor a függő kérelmek is foglalnak (mint az űrlapon)
+	await collectChildLeaveErrors(context, input, runs, true, errors);
+
+	return { runs, removeDays: [], balances, errors };
 }
 
 /**
@@ -851,7 +909,7 @@ export async function submitLeaveRequestBatch(
 				`INSERT INTO ${SCHEMA}.leave_requests
 					(employee_id, organization_id, leave_type, start_date, end_date, days, status, reason, child_id,
 					 created_at, updated_at)
-				 VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, NULL, NOW(), NOW())
+				 VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, NOW(), NOW())
 				 RETURNING id`,
 				[
 					input.employeeId,
@@ -860,7 +918,8 @@ export async function submitLeaveRequestBatch(
 					run.startDate,
 					run.endDate,
 					run.days.length,
-					input.reason
+					input.reason,
+					input.childId
 				]
 			);
 			created.push({

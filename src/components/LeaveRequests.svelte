@@ -15,12 +15,9 @@
 		LeaveRequestRow,
 		LeaveBalance,
 		EmployeeRow,
-		PaginatedResult,
-		LeaveAllowances,
-		ChildLeaveStatus
+		PaginatedResult
 	} from '../../server/functions.js';
-	import { CHILD_LEAVE_TYPES, HR_ONLY_LEAVE_TYPES, LEAVE_TYPES } from '../../server/leave-types.js';
-	import type { LeaveType } from '../../server/leave-types.js';
+	import { LEAVE_TYPES } from '../../server/leave-types.js';
 	import { getOrganizationStore, createOrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
@@ -64,7 +61,6 @@
 	const renderComponent = $derived(sdk?.components?.renderComponent);
 	const renderSnippet = $derived(sdk?.components?.renderSnippet);
 	const createActionsColumn = $derived(sdk?.components?.createActionsColumn);
-	const DatePickerComponent = $derived(sdk?.components?.DatePicker ?? null);
 
 	// --- Naptár: növelve újratölt, ha egy kérelem státusza változott ---
 	let calendarRefresh = $state(0);
@@ -75,76 +71,6 @@
 	let paginationInfo = $state({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
 	let tableState = $state({ page: 1, pageSize: 20, sortBy: 'createdAt', sortOrder: 'desc' as 'asc' | 'desc' });
 	let columns = $state<any[]>([]);
-
-	// --- Új kérelem modal ---
-	let showNewRequestModal = $state(false);
-	let employees = $state<EmployeeRow[]>([]);
-	let employeesLoading = $state(false);
-	let newReqEmployeeId = $state<number | null>(null);
-	let newReqType = $state<LeaveType>('annual');
-	let newReqStartDate = $state('');
-	let newReqEndDate = $state('');
-	let newReqChildId = $state<number | null>(null);
-
-	// Betegszabadság-, apasági és szülői keret a kiválasztott dolgozóra — csak
-	// tájékoztat és a gyerekválasztót tölti; a szabályokat a szerver ellenőrzi.
-	let allowances = $state<LeaveAllowances | null>(null);
-	const allowanceYear = $derived(
-		newReqStartDate ? Number(newReqStartDate.slice(0, 4)) : new Date().getFullYear()
-	);
-	const childOptions = $derived<ChildLeaveStatus[]>(
-		newReqType === 'paternity'
-			? (allowances?.paternity.filter((c) => c.active) ?? [])
-			: newReqType === 'parental'
-				? (allowances?.parental ?? [])
-				: []
-	);
-	const selectedChild = $derived(childOptions.find((c) => c.childId === newReqChildId) ?? null);
-	/** Ennyi nap lépné túl a betegszabadság keretét — az már táppénzes keresőképtelenség. */
-	const sickOverflow = $derived(
-		allowances && previewDays !== null
-			? Math.max(
-					0,
-					allowances.sick.usedDays + allowances.sick.pendingDays + previewDays - allowances.sick.totalDays
-				)
-			: 0
-	);
-
-	$effect(() => {
-		const employeeId = newReqEmployeeId;
-		const type = newReqType;
-		const year = allowanceYear;
-		if (!showNewRequestModal || !employeeId || (type !== 'sick' && !CHILD_LEAVE_TYPES.has(type))) {
-			allowances = null;
-			return;
-		}
-		sdk?.remote
-			?.call('getLeaveAllowances', { employeeId, year })
-			.then((result: LeaveAllowances) => {
-				if (newReqEmployeeId === employeeId && allowanceYear === year) allowances = result;
-			})
-			.catch(() => (allowances = null));
-	});
-
-	// Típus- vagy dolgozóváltáskor a gyerekválasztás nem örökölhető
-	$effect(() => {
-		newReqType;
-		newReqEmployeeId;
-		newReqChildId = null;
-	});
-
-	function childLabel(child: ChildLeaveStatus): string {
-		return child.label || formatDate(child.birthDate);
-	}
-
-	// Élő munkanap-számláló: a szerver számol, hogy a kiírt és a ténylegesen
-	// levont napok ne csúszhassanak el (ugyanaz a munkanaptár, ugyanaz a logika).
-	let previewDays = $state<number | null>(null);
-	let previewLoading = $state(false);
-	let previewTimer: ReturnType<typeof setTimeout> | null = null;
-	let newReqReason = $state('');
-	let newReqLoading = $state(false);
-	let newReqError = $state<string | null>(null);
 
 	// --- Szabadságkeret modal ---
 	let showBalanceModal = $state(false);
@@ -276,126 +202,6 @@
 			loadData();
 		} catch (err: any) {
 			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
-		}
-	}
-
-	async function openNewRequestModal() {
-		showNewRequestModal = true;
-		newReqType = 'annual';
-		newReqChildId = null;
-		newReqStartDate = '';
-		newReqEndDate = '';
-		newReqReason = '';
-		newReqError = null;
-		if (!currentOrganization) return;
-
-		// Self-service: saját employee-t töltünk be, nem listát.
-		if (!canApprove) {
-			if (myEmployee) {
-				newReqEmployeeId = myEmployee.id;
-				employees = [];
-			} else {
-				newReqError = t('dashboard.self.noEmployee');
-			}
-			return;
-		}
-
-		// Manager: dolgozó-választóhoz lista kell.
-		newReqEmployeeId = null;
-		employeesLoading = true;
-		try {
-			const result: PaginatedResult<EmployeeRow> = await sdk?.remote?.call('getEmployees', {
-				organizationId: currentOrganization.id,
-				pageSize: 200,
-				status: 'active'
-			});
-			employees = result?.data ?? [];
-		} catch {
-			employees = [];
-		} finally {
-			employeesLoading = false;
-		}
-	}
-
-	/**
-	 * A kiválasztott időszak munkanapjainak lekérése, 300 ms késleltetéssel.
-	 * A dátumválasztó gyors kattintgatása így nem indít hívást minden lépésre.
-	 */
-	function schedulePreview() {
-		if (previewTimer) clearTimeout(previewTimer);
-
-		if (!newReqStartDate || !newReqEndDate || !currentOrganization) {
-			previewDays = null;
-			previewLoading = false;
-			return;
-		}
-		if (newReqStartDate > newReqEndDate) {
-			previewDays = null;
-			previewLoading = false;
-			return;
-		}
-
-		previewLoading = true;
-		previewTimer = setTimeout(async () => {
-			try {
-				const result = await sdk?.remote?.call('previewLeaveDays', {
-					organizationId: currentOrganization!.id,
-					startDate: newReqStartDate,
-					endDate: newReqEndDate
-				});
-				previewDays = result?.days ?? null;
-			} catch {
-				// A számláló csak tájékoztat — hiba esetén elrejtjük, a beadást nem blokkolja
-				previewDays = null;
-			} finally {
-				previewLoading = false;
-			}
-		}, 300);
-	}
-
-	$effect(() => {
-		newReqStartDate;
-		newReqEndDate;
-		schedulePreview();
-	});
-
-	async function submitNewRequest() {
-		if (!newReqEmployeeId || !newReqStartDate || !newReqEndDate) {
-			newReqError = t('form.required');
-			return;
-		}
-		if (CHILD_LEAVE_TYPES.has(newReqType) && !newReqChildId) {
-			newReqError = t('leaveRequests.form.childRequired');
-			return;
-		}
-		if (!currentOrganization) {
-			newReqError = 'Nincs kiválasztott szervezet';
-			return;
-		}
-		newReqLoading = true;
-		newReqError = null;
-		try {
-			// Az értesítendőknek (8.8) a szerver küld értesítést és emailt
-			await sdk?.remote?.call('createLeaveRequest', {
-				employeeId: newReqEmployeeId,
-				organizationId: currentOrganization.id,
-				leaveType: newReqType,
-				startDate: newReqStartDate,
-				endDate: newReqEndDate,
-				reason: newReqReason || undefined,
-				childId: CHILD_LEAVE_TYPES.has(newReqType) ? newReqChildId : undefined
-			});
-
-			sdk?.ui?.toast(t('leaveRequests.newRequest') + ' ✓', 'success');
-			calendarRefresh += 1;
-			showNewRequestModal = false;
-			loadData();
-		} catch (err: any) {
-			const msg: string = err?.message ?? t('error.saveFailed');
-			// REMOTE_ERROR: prefix eltávolítása
-			newReqError = msg.replace(/^[A-Z_]+:\s*/, '');
-		} finally {
-			newReqLoading = false;
 		}
 	}
 
@@ -747,12 +553,6 @@
 						: t('leaveRequests.subtitle.self')}
 				</p>
 			</div>
-			<!-- A dolgozó a naptárból ad be kérelmet; az űrlap a jóváhagyóé (más nevében, gyerekhez kötött típusok) -->
-			{#if canApprove}
-				<button class="btn-primary" onclick={openNewRequestModal}>
-					+ {t('leaveRequests.newRequest')}
-				</button>
-			{/if}
 		</div>
 
 		{#if canApprove}
@@ -810,129 +610,6 @@
 	{/if}
 </section>
 </div>
-
-<!-- Új kérelem modal -->
-{#if showNewRequestModal}
-	<div class="modal-overlay" role="dialog" aria-modal="true">
-		<div class="modal">
-			<h3>{t('leaveRequests.newRequest')}</h3>
-
-			{#if canApprove}
-				<label class="form-label">
-					{t('leaveRequests.form.employee')} *
-					{#if employeesLoading}
-						<div class="loading-inline"><div class="spinner-sm"></div></div>
-					{:else}
-						<select class="form-input" bind:value={newReqEmployeeId}>
-							<option value={null}>{t('form.selectEmployee')}</option>
-							{#each employees as emp (emp.id)}
-								<option value={emp.id}>{emp.userName} ({emp.userEmail})</option>
-							{/each}
-						</select>
-					{/if}
-				</label>
-			{/if}
-
-			<label class="form-label">
-				{t('leaveRequests.form.type')} *
-				<select class="form-input" bind:value={newReqType}>
-					<!-- A céges kötelező szabadságot csak a jóváhagyó rögzítheti -->
-					{#each LEAVE_TYPES.filter((tp) => canApprove || !HR_ONLY_LEAVE_TYPES.has(tp)) as type (type)}
-						<option value={type}>{t(`leaveRequests.type.${type}`)}</option>
-					{/each}
-				</select>
-			</label>
-
-			{#if CHILD_LEAVE_TYPES.has(newReqType)}
-				<label class="form-label">
-					{t('leaveRequests.form.child')} *
-					{#if childOptions.length === 0}
-						<span class="form-hint">
-							{newReqType === 'paternity'
-								? t('leaveRequests.form.noPaternityChild')
-								: t('leaveRequests.form.noParentalChild')}
-						</span>
-					{:else}
-						<select class="form-input" bind:value={newReqChildId}>
-							<option value={null}>{t('leaveRequests.form.selectChild')}</option>
-							{#each childOptions as child (child.childId)}
-								<option value={child.childId}>
-									{childLabel(child)} — {t('leaveRequests.form.childRemaining', { days: child.remainingDays })}
-								</option>
-							{/each}
-						</select>
-					{/if}
-					{#if selectedChild}
-						<span class="form-hint">
-							{t('leaveRequests.form.childDeadline', { deadline: formatDate(selectedChild.deadline) })}
-							{#if selectedChild.eligibleFrom}
-								· {t('leaveRequests.form.parentalEligibleFrom', { date: formatDate(selectedChild.eligibleFrom) })}
-							{/if}
-						</span>
-					{/if}
-				</label>
-			{/if}
-
-			<div class="form-row">
-				<label class="form-label">
-					{t('leaveRequests.form.startDate')} *
-					{#if DatePickerComponent}
-						<DatePickerComponent bind:value={newReqStartDate} locale="hu-HU" placeholder="Kezdő dátum..." />
-					{:else}
-						<input class="form-input" type="date" bind:value={newReqStartDate} />
-					{/if}
-				</label>
-				<label class="form-label">
-					{t('leaveRequests.form.endDate')} *
-					{#if DatePickerComponent}
-						<DatePickerComponent bind:value={newReqEndDate} locale="hu-HU" placeholder="Záró dátum..." />
-					{:else}
-						<input class="form-input" type="date" bind:value={newReqEndDate} />
-					{/if}
-				</label>
-			</div>
-
-			{#if previewLoading}
-				<p class="day-preview is-loading">{t('leaveRequests.form.daysCalculating')}</p>
-			{:else if previewDays !== null}
-				<p class="day-preview">
-					{previewDays === 0
-						? t('leaveRequests.form.daysZero')
-						: `${t('leaveRequests.form.daysPrefix')} ${previewDays} ${t('leaveRequests.form.daysSuffix')}`}
-				</p>
-			{/if}
-
-			{#if newReqType === 'sick' && allowances}
-				<p class="form-hint">
-					{t('leaveRequests.form.sickStatus', {
-						year: allowances.sick.year,
-						used: allowances.sick.usedDays + allowances.sick.pendingDays,
-						total: allowances.sick.totalDays
-					})}
-				</p>
-				{#if sickOverflow > 0}
-					<p class="form-hint warn">{t('leaveRequests.form.sickOverflow', { days: sickOverflow })}</p>
-				{/if}
-			{/if}
-
-			<label class="form-label">
-				{t('leaveRequests.form.reason')}
-				<textarea class="form-input form-textarea" bind:value={newReqReason} rows="3"></textarea>
-			</label>
-
-			{#if newReqError}
-				<p class="form-error">{newReqError}</p>
-			{/if}
-
-			<div class="modal-footer">
-				<button class="btn-secondary" onclick={() => (showNewRequestModal = false)}>{t('form.cancel')}</button>
-				<button class="btn-primary" onclick={submitNewRequest} disabled={newReqLoading}>
-					{newReqLoading ? t('loading') : t('leaveRequests.form.submit')}
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <!-- Szabadságkeret modal -->
 {#if showBalanceModal}
@@ -994,30 +671,9 @@
 <style>
 	@import '../styles/shared.css';
 
-	.day-preview {
-		margin: 0.25rem 0 0.75rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--primary, #2563eb);
-	}
 
-	.form-hint {
-		display: block;
-		margin: 0;
-		font-size: 0.8rem;
-		font-weight: 400;
-		color: var(--color-muted-foreground, #64748b);
-	}
 
-	.form-hint.warn {
-		margin-top: 0.25rem;
-		color: #b45309;
-	}
 
-	.day-preview.is-loading {
-		color: var(--muted-foreground, #71717a);
-		font-weight: 400;
-	}
 
 	.page {
 		padding: 2rem;
@@ -1032,20 +688,7 @@
 		margin: 0 0 -0.75rem;
 	}
 
-	.loading-inline {
-		display: flex;
-		align-items: center;
-		padding: 0.4rem 0;
-	}
 
-	.spinner-sm {
-		width: 1rem;
-		height: 1rem;
-		border: 2px solid var(--color-border, #e2e8f0);
-		border-top-color: var(--color-primary, #3730a3);
-		border-radius: 50%;
-		animation: rw-spin 0.7s linear infinite;
-	}
 
 	/* Badge */
 	:global(.badge) {
@@ -1135,16 +778,7 @@
 		outline-offset: 1px;
 	}
 
-	.form-textarea {
-		resize: vertical;
-		min-height: 4rem;
-	}
 
-	.form-error {
-		color: #dc2626;
-		font-size: 0.8rem;
-		margin: 0;
-	}
 
 	/* Szabadságkeret táblázat */
 	.balance-table {
