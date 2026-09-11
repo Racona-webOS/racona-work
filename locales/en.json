@@ -108,6 +108,8 @@
 	"leaveRequests.columns.days": "Days",
 	"leaveRequests.columns.status": "Status",
 	"leaveRequests.columns.reason": "Reason",
+	"leaveRequests.columns.createdAt": "Recorded",
+	"leaveRequests.section.requests": "Requests",
 	"leaveRequests.status.pending": "Pending",
 	"leaveRequests.status.approved": "Approved",
 	"leaveRequests.status.rejected": "Rejected",

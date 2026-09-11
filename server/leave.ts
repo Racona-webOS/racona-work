@@ -2,7 +2,9 @@
  * Szabadság nyilvántartó — szerver oldali függvények.
  *
  * Szabadságkérelmek (leave_requests) és éves egyenlegek (leave_balances).
- * A munkanap-számítás tiszta segédfüggvényként itt él (calculateWorkingDays).
+ * A kérelem beadott, utólag nem módosuló meta sor; a jóváhagyott szabadság
+ * napjai a leave_days táblába kerülnek (leave-days.ts), és a keret
+ * felhasználása onnan számolódik. Részletek: specs/leave-days.md
  */
 
 import type { RemoteContext } from './context.js';
@@ -16,6 +18,16 @@ import { logBalanceChange } from './leave-history.js';
 import { CHILD_LEAVE_TYPES, isLeaveType } from './leave-types.js';
 import type { CarryOverUsage, EntitlementInput, EntitlementResult } from './leave-entitlement.js';
 import { enrichCarryOver } from './leave-carry-over.js';
+import {
+	assertAnnualBalance,
+	assertDaysFree,
+	findEmployeeIdOfUser,
+	groupDaysByYear,
+	insertLeaveDays,
+	listWorkingDays,
+	syncAnnualUsedDays,
+	toIsoDay
+} from './leave-days.js';
 import type { PaginatedResult } from './types.js';
 
 export interface LeaveRequestListParams {
@@ -116,29 +128,9 @@ export function mapBalanceRow(row: any): LeaveBalance {
 }
 
 /**
- * A pg DATE oszlopot Date-ként is visszaadhatja — egységes ISO napra hozzuk.
- *
- * @param value - A nyers dátumérték az adatbázisból.
- * @returns A nap YYYY-MM-DD formában.
- */
-function toIsoDay(value: string | Date): string {
-	if (value instanceof Date) {
-		return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()))
-			.toISOString()
-			.slice(0, 10);
-	}
-	return String(value).slice(0, 10);
-}
-
-/**
  * Munkanapok számítása két dátum között.
  *
- * Alapszabály: a hétvége nem munkanap. Az `overrides` ezt felülírja naponként —
- * innen jönnek a munkaszüneti napok (hétköznap, mégsem munkanap) és az
- * áthelyezett munkanapok (szombat, mégis munkanap).
- *
- * Tiszta (pure) segédfüggvény: a naptárat a hívó tölti be és adja át, hogy a
- * függvény tesztelhető maradjon — Property 6 validálja.
+ * A munkanapok listáját a leave-days.ts adja (listWorkingDays); ez a hossza.
  *
  * @param startDate - Kezdő dátum (YYYY-MM-DD).
  * @param endDate - Záró dátum (YYYY-MM-DD).
@@ -150,46 +142,7 @@ export function calculateWorkingDays(
 	endDate: string,
 	overrides?: Map<string, boolean>
 ): number {
-	const dateFormatRegex = /^\d{4}-\d{2}-\d{2}$/;
-	if (!dateFormatRegex.test(startDate) || !dateFormatRegex.test(endDate)) {
-		throw new Error('Érvénytelen dátumformátum. Elvárt formátum: YYYY-MM-DD');
-	}
-
-	const start = new Date(startDate);
-	const end = new Date(endDate);
-
-	if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-		throw new Error('Érvénytelen dátumformátum. Elvárt formátum: YYYY-MM-DD');
-	}
-
-	if (start > end) {
-		return 0;
-	}
-
-	let workingDays = 0;
-	// UTC alapú iteráció, hogy DST ne okozzon eltolódást
-	let currentMs = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
-	const endMs = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
-
-	while (currentMs <= endMs) {
-		const current = new Date(currentMs);
-		const isoDay = current.toISOString().slice(0, 10);
-		const override = overrides?.get(isoDay);
-
-		if (override !== undefined) {
-			// A naptári kivétel felülírja a hétvége-szabályt mindkét irányban
-			if (override) workingDays++;
-		} else {
-			const dayOfWeek = current.getUTCDay();
-			// 0 = vasárnap, 6 = szombat
-			if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-				workingDays++;
-			}
-		}
-		currentMs += 24 * 60 * 60 * 1000;
-	}
-
-	return workingDays;
+	return listWorkingDays(startDate, endDate, overrides).length;
 }
 
 /**
@@ -384,29 +337,29 @@ export async function createLeaveRequest(
 	}
 
 	const calendar = await getWorkCalendarOverrides(context, organizationId, startDate, endDate);
-	const days = calculateWorkingDays(startDate, endDate, calendar);
+	const workingDays = listWorkingDays(startDate, endDate, calendar);
+	const days = workingDays.length;
 
-	// Szabadságkeret ellenőrzés (csak éves szabadságnál)
-	if (leaveType === 'annual') {
-		const year = start.getFullYear();
-		const balanceResult = await context.db.query(
-			`SELECT remaining_days FROM app__racona_work.leave_balances
-			 WHERE employee_id = $1 AND year = $2`,
-			[employeeId, year]
+	// Egy dolgozónak egy napon egy szabadsága lehet: jóváhagyott nap és függő
+	// kérelem sem fedhet át (specs/leave-days.md, K2).
+	await assertDaysFree(context.db, employeeId, workingDays);
+	const pendingOverlap = await context.db.query(
+		`SELECT to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date
+		   FROM app__racona_work.leave_requests
+		  WHERE employee_id = $1 AND status = 'pending' AND start_date <= $3::date AND end_date >= $2::date
+		  ORDER BY start_date LIMIT 1`,
+		[employeeId, startDate, endDate]
+	);
+	if (pendingOverlap.rows.length > 0) {
+		const other = pendingOverlap.rows[0];
+		throw new Error(
+			`A dolgozónak már van függő kérelme erre az időszakra (${other.start_date} – ${other.end_date}).`
 		);
+	}
 
-		if (balanceResult.rows.length === 0) {
-			throw new Error(
-				`Nincs szabadságkeret beállítva a(z) ${year}. évre. Kérjük, állítsa be a keretet először.`
-			);
-		}
-
-		const remainingDays: number = balanceResult.rows[0].remaining_days;
-		if (days > remainingDays) {
-			throw new Error(
-				`Nincs elegendő szabad keret. Kért napok: ${days}, fennmaradó napok: ${remainingDays}.`
-			);
-		}
+	// Szabadságkeret ellenőrzés (csak éves szabadságnál), a napok éve szerint
+	if (leaveType === 'annual') {
+		await assertAnnualBalance(context.db, employeeId, workingDays, 'request');
 	}
 
 	// Apasági és szülői szabadság: határidő és keret a gyerek szerint
@@ -503,31 +456,17 @@ export async function approveLeaveRequest(
 		startDay,
 		endDay
 	);
-	const days = calculateWorkingDays(startDay, endDay, calendar);
+	const workingDays = listWorkingDays(startDay, endDay, calendar);
+	const days = workingDays.length;
+
+	// Egy dolgozónak egy napon egy szabadsága lehet (specs/leave-days.md, K1)
+	await assertDaysFree(context.db, req.employee_id, workingDays);
 
 	// Éves szabadságnál a kerettel is újra egyeztetni kell: ha a naptár változása
-	// miatt több napra jön ki, előfordulhat, hogy már nem fér bele.
+	// miatt több napra jön ki, előfordulhat, hogy már nem fér bele. Évenként,
+	// mert az évet átlépő kérelem két keretet terhel.
 	if (req.leave_type === 'annual') {
-		const year = new Date(startDay).getFullYear();
-		const balanceResult = await context.db.query(
-			`SELECT remaining_days FROM app__racona_work.leave_balances
-			 WHERE employee_id = $1 AND year = $2`,
-			[req.employee_id, year]
-		);
-
-		if (balanceResult.rows.length === 0) {
-			throw new Error(
-				`Nincs szabadságkeret beállítva a(z) ${year}. évre, a kérelem nem hagyható jóvá.`
-			);
-		}
-
-		const remainingDays: number = balanceResult.rows[0].remaining_days;
-		if (days > remainingDays) {
-			throw new Error(
-				`A kérelem a munkanaptár szerint ${days} munkanap, a fennmaradó keret viszont ` +
-					`${remainingDays} nap. A kérelem így nem hagyható jóvá.`
-			);
-		}
+		await assertAnnualBalance(context.db, req.employee_id, workingDays, 'approve');
 	}
 
 	// Apasági és szülői szabadság: a beadás óta jóváhagyott kérelmekkel együtt is beleférjen
@@ -544,23 +483,46 @@ export async function approveLeaveRequest(
 		});
 	}
 
-	const updateResult = await context.db.query(
-		`UPDATE app__racona_work.leave_requests
-		 SET status = 'approved', days = $2, updated_at = NOW()
-		 WHERE id = $1
-		 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by, child_id, created_at, updated_at`,
-		[params.id, days]
+	// A jóváhagyó dolgozói sora (core admin nem feltétlenül dolgozó: akkor null)
+	const approverEmployeeId = await findEmployeeIdOfUser(
+		context.db,
+		await resolveUserId(context),
+		req.organization_id
 	);
 
-	// leave_balances.used_days frissítése (csak éves szabadságnál)
-	if (req.leave_type === 'annual') {
-		const year = new Date(startDay).getFullYear();
-		await context.db.query(
-			`UPDATE app__racona_work.leave_balances
-			 SET used_days = used_days + $1
-			 WHERE employee_id = $2 AND year = $3`,
-			[days, req.employee_id, year]
+	// A státusz, a napok és a keret egy tranzakcióban: ha a napok beszúrása
+	// elbukik (közben foglalták a napot), a kérelem függőben marad.
+	const client = await context.db.connect();
+	let row: any;
+	try {
+		await client.query('BEGIN');
+		const updateResult = await client.query(
+			`UPDATE app__racona_work.leave_requests
+			 SET status = 'approved', days = $2, approved_by = $3, updated_at = NOW()
+			 WHERE id = $1 AND status = 'pending'
+			 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by, child_id, created_at, updated_at`,
+			[params.id, days, approverEmployeeId]
 		);
+		if (updateResult.rows.length === 0) {
+			throw new Error('A kérelmet közben már elbírálták.');
+		}
+		await insertLeaveDays(client, {
+			employeeId: req.employee_id,
+			organizationId: req.organization_id,
+			leaveRequestId: req.id,
+			leaveType: req.leave_type,
+			days: workingDays
+		});
+		if (req.leave_type === 'annual') {
+			await syncAnnualUsedDays(client, req.employee_id, [...groupDaysByYear(workingDays).keys()]);
+		}
+		await client.query('COMMIT');
+		row = updateResult.rows[0];
+	} catch (err) {
+		await client.query('ROLLBACK');
+		throw err;
+	} finally {
+		client.release();
 	}
 
 	// A fizetés nélküli szabadság nem munkában töltött idő: csökkenti az éves keretet
@@ -568,7 +530,6 @@ export async function approveLeaveRequest(
 		await recalculateEmployeeBalances(context, req.employee_id);
 	}
 
-	const row = updateResult.rows[0];
 	const leaveRequest: LeaveRequest = {
 		id: row.id,
 		employeeId: row.employee_id,
@@ -673,9 +634,11 @@ export async function rejectLeaveRequest(
 }
 
 /**
- * Jóváhagyott szabadságkérelem törlése.
- * Visszaállítja a leave_balances.used_days értékét (éves szabadságnál),
- * és értesíti az érintett dolgozót.
+ * Szabadságkérelem törlése.
+ *
+ * A napjai a leave_days táblából is törlődnek (CASCADE), utána az éves keret
+ * felhasználása újraszámolódik, és az érintett dolgozó értesítést kap. Ez az
+ * egyetlen eset, amikor egy beadott kérelem eltűnik (specs/leave-days.md, D14).
  */
 export async function deleteLeaveRequest(
 	params: { id: number },
@@ -698,18 +661,17 @@ export async function deleteLeaveRequest(
 
 	await requireCapability(context, req.organization_id, 'leave.approve');
 
-	// Ha jóváhagyott éves szabadság volt, visszaállítjuk a keretet
-	if (req.status === 'approved' && req.leave_type === 'annual') {
-		const year = new Date(req.start_date).getFullYear();
-		await context.db.query(
-			`UPDATE app__racona_work.leave_balances
-			 SET used_days = GREATEST(0, used_days - $1)
-			 WHERE employee_id = $2 AND year = $3`,
-			[req.days, req.employee_id, year]
-		);
-	}
-
+	// A napok a CASCADE miatt a kérelemmel együtt törlődnek
 	await context.db.query(`DELETE FROM app__racona_work.leave_requests WHERE id = $1`, [params.id]);
+
+	// Az éves keret felhasználása a megmaradt napokból (az évet átlépő kérelem két évet érint)
+	if (req.status === 'approved' && req.leave_type === 'annual') {
+		const startYear = Number(toIsoDay(req.start_date).slice(0, 4));
+		const endYear = Number(toIsoDay(req.end_date).slice(0, 4));
+		const years: number[] = [];
+		for (let y = startYear; y <= endYear; y++) years.push(y);
+		await syncAnnualUsedDays(context.db, req.employee_id, years);
+	}
 
 	if (req.status === 'approved' && req.leave_type === 'unpaid') {
 		await recalculateEmployeeBalances(context, req.employee_id);

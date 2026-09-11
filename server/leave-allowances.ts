@@ -2,7 +2,8 @@
  * Az éves szabadságon kívüli keretek: betegszabadság, apasági és szülői szabadság.
  *
  * Ezeket nem tároljuk: a keretet a dolgozó adataiból számoljuk (leave-entitlement.ts),
- * a felhasználást a kérelmekből. A betegszabadság túllépése nem akadály, csak jelzés
+ * a felhasználást a jóváhagyott napokból (leave_days), a függő részt a
+ * függő kérelmekből. A betegszabadság túllépése nem akadály, csak jelzés
  * (a 15 napon felüli rész táppénzes keresőképtelenség); az apasági és a szülői
  * szabadság szabályait a kérelem beadásakor és jóváhagyásakor ellenőrizzük.
  *
@@ -77,18 +78,25 @@ async function loadEmployee(context: RemoteContext, employeeId: number) {
 	};
 }
 
-/** Gyerekhez kötött kérelmek napjai gyerekenként és típusonként. */
+/**
+ * Gyerekhez kötött kérelmek napjai gyerekenként és típusonként.
+ * A jóváhagyott rész a tényleges napokból (leave_days), a függő rész a
+ * kérelem kért napjaiból; a részletek száma a kérelmek száma.
+ */
 async function loadChildUsage(context: RemoteContext, employeeId: number, excludeRequestId?: number) {
 	const r = await context.db.query(
-		`SELECT child_id, leave_type,
-		        COALESCE(SUM(days) FILTER (WHERE status = 'approved'), 0)::int AS used,
-		        COALESCE(SUM(days) FILTER (WHERE status = 'pending'), 0)::int AS pending,
+		`SELECT lr.child_id, lr.leave_type,
+		        COALESCE(SUM(taken.cnt) FILTER (WHERE lr.status = 'approved'), 0)::int AS used,
+		        COALESCE(SUM(lr.days) FILTER (WHERE lr.status = 'pending'), 0)::int AS pending,
 		        COUNT(*)::int AS parts
-		   FROM ${SCHEMA}.leave_requests
-		  WHERE employee_id = $1 AND child_id IS NOT NULL
-		    AND leave_type IN ('paternity', 'parental') AND status IN ('approved', 'pending')
-		    AND ($2::int IS NULL OR id <> $2)
-		  GROUP BY child_id, leave_type`,
+		   FROM ${SCHEMA}.leave_requests lr
+		   LEFT JOIN LATERAL (
+		        SELECT COUNT(*) AS cnt FROM ${SCHEMA}.leave_days ld WHERE ld.leave_request_id = lr.id
+		   ) AS taken ON TRUE
+		  WHERE lr.employee_id = $1 AND lr.child_id IS NOT NULL
+		    AND lr.leave_type IN ('paternity', 'parental') AND lr.status IN ('approved', 'pending')
+		    AND ($2::int IS NULL OR lr.id <> $2)
+		  GROUP BY lr.child_id, lr.leave_type`,
 		[employeeId, excludeRequestId ?? null]
 	);
 	const usage = new Map<string, { used: number; pending: number; parts: number }>();
@@ -114,10 +122,12 @@ export async function getLeaveAllowances(
 	const employee = await loadEmployee(context, params.employeeId);
 	const [sickResult, childrenResult, usageOf] = await Promise.all([
 		context.db.query(
-			`SELECT COALESCE(SUM(days) FILTER (WHERE status = 'approved'), 0)::int AS used,
-			        COALESCE(SUM(days) FILTER (WHERE status = 'pending'), 0)::int AS pending
-			   FROM ${SCHEMA}.leave_requests
-			  WHERE employee_id = $1 AND leave_type = 'sick' AND EXTRACT(YEAR FROM start_date) = $2`,
+			`SELECT
+			   (SELECT COUNT(*) FROM ${SCHEMA}.leave_days
+			     WHERE employee_id = $1 AND leave_type = 'sick' AND EXTRACT(YEAR FROM day) = $2)::int AS used,
+			   (SELECT COALESCE(SUM(days), 0) FROM ${SCHEMA}.leave_requests
+			     WHERE employee_id = $1 AND leave_type = 'sick' AND status = 'pending'
+			       AND EXTRACT(YEAR FROM start_date) = $2)::int AS pending`,
 			[params.employeeId, year]
 		),
 		context.db.query(

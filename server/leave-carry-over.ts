@@ -1,8 +1,8 @@
 /**
  * Az áthozott szabadságnapok felhasználása és határideje (Mt. 123. §).
  *
- * Az áthozott napok fogynak először, a határidőig kezdődő jóváhagyott éves
- * szabadságkérelmekből (leave-entitlement.ts: carryOverUsage). A határidő
+ * Az áthozott napok fogynak először, a határidőig eső jóváhagyott éves
+ * szabadságnapokból (leave_days; leave-entitlement.ts: carryOverUsage). A határidő
  * lejárta után a kiadatlan napok nem vesznek el: a munkáltatónak ki kell adnia
  * őket, ezért a HR figyelmeztetést kap (getCarryOverAlerts).
  */
@@ -40,20 +40,23 @@ export async function enrichCarryOver(
 	const targets = balances.filter((b) => b.carriedOverDays > 0 && b.carryOverDeadline);
 	if (targets.length === 0) return balances;
 
+	// Naponként egy tétel: így a határidő előtti napok pontosan számolhatók,
+	// akkor is, ha a kérelem átnyúlik a határidőn vagy egyes napjait törölték.
 	const r = await context.db.query(
-		`SELECT employee_id, EXTRACT(YEAR FROM start_date)::int AS year,
-		        to_char(start_date, 'YYYY-MM-DD') AS start_date, days
-		   FROM ${SCHEMA}.leave_requests
+		`SELECT employee_id, EXTRACT(YEAR FROM day)::int AS year,
+		        to_char(day, 'YYYY-MM-DD') AS day
+		   FROM ${SCHEMA}.leave_days
 		  WHERE employee_id = ANY($1::int[])
-		    AND EXTRACT(YEAR FROM start_date)::int = ANY($2::int[])
-		    AND leave_type = 'annual' AND status = 'approved'`,
+		    AND EXTRACT(YEAR FROM day)::int = ANY($2::int[])
+		    AND leave_type = 'annual'
+		  ORDER BY day`,
 		[[...new Set(targets.map((b) => b.employeeId))], [...new Set(targets.map((b) => b.year))]]
 	);
 	const requestsBy = new Map<string, { startDate: string; days: number }[]>();
 	for (const row of r.rows) {
 		const key = `${row.employee_id}:${row.year}`;
 		if (!requestsBy.has(key)) requestsBy.set(key, []);
-		requestsBy.get(key)!.push({ startDate: row.start_date, days: row.days });
+		requestsBy.get(key)!.push({ startDate: row.day, days: 1 });
 	}
 
 	const today = todayInBudapest();

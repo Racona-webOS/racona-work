@@ -107,6 +107,8 @@
 	"leaveRequests.columns.days": "Napok",
 	"leaveRequests.columns.status": "Státusz",
 	"leaveRequests.columns.reason": "Indoklás",
+	"leaveRequests.columns.createdAt": "Rögzítve",
+	"leaveRequests.section.requests": "Kérelmek",
 	"leaveRequests.status.pending": "Függőben",
 	"leaveRequests.status.approved": "Jóváhagyva",
 	"leaveRequests.status.rejected": "Elutasítva",

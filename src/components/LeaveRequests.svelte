@@ -451,6 +451,12 @@
 		return new Date(dateStr).toLocaleDateString('hu-HU');
 	}
 
+	/** A rögzítés időpontja: dátum és perc, mert egy napon több kérelem is jöhet. */
+	function formatDateTime(value: string | null): string {
+		if (!value) return '—';
+		return new Date(value).toLocaleString('hu-HU', { dateStyle: 'short', timeStyle: 'short' });
+	}
+
 	function leaveTypeLabel(type: string): string {
 		return (LEAVE_TYPES as readonly string[]).includes(type) ? t(`leaveRequests.type.${type}`) : type;
 	}
@@ -605,6 +611,21 @@
 					return renderSnippet(snippet, {});
 				}
 			},
+			{
+				accessorKey: 'createdAt',
+				enableHiding: true,
+				meta: { title: t('leaveRequests.columns.createdAt') },
+				header: ({ column }: any) => renderComponent(DataTableColumnHeader, {
+					get column() { return column; },
+					get title() { return t('leaveRequests.columns.createdAt'); },
+					onSort: handleSort
+				}),
+				cell: ({ row }: any) => {
+					const val = formatDateTime(row.original.createdAt);
+					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm">${val}</span>` }));
+					return renderSnippet(snippet, {});
+				}
+			},
 			actionsColumn
 		];
 	}
@@ -686,6 +707,8 @@
 				</button>
 			</div>
 		{/if}
+
+		<h3 class="section-title">{t('leaveRequests.section.requests')}</h3>
 
 		{#if DataTable && columns.length > 0}
 			{#key data}
@@ -921,6 +944,12 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
+	}
+
+	.section-title {
+		font-size: 1.05rem;
+		font-weight: 600;
+		margin: 0 0 -0.75rem;
 	}
 
 	.loading-inline {

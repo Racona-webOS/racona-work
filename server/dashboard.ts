@@ -68,15 +68,13 @@ export async function getDashboardStats(
 		[params.organizationId]
 	);
 
-	// Aktuális hónapban szabadságon lévők száma (jóváhagyott, átfedő kérelmek, csak az adott szervezetben)
+	// Aktuális hónapban szabadságon lévők száma (jóváhagyott napok, csak az adott szervezetben)
 	const onLeaveResult = await context.db.query(
-		`SELECT COUNT(DISTINCT lr.employee_id) AS on_leave_this_month
-		 FROM app__racona_work.leave_requests lr
-		 JOIN app__racona_work.employees e ON e.id = lr.employee_id
-		 WHERE lr.status = 'approved'
-		   AND lr.start_date < $1
-		   AND lr.end_date >= $2
-		   AND e.organization_id = $3`,
+		`SELECT COUNT(DISTINCT ld.employee_id) AS on_leave_this_month
+		 FROM app__racona_work.leave_days ld
+		 WHERE ld.organization_id = $3
+		   AND ld.day >= $2::date
+		   AND ld.day < $1::date`,
 		[nextMonth, monthStart, params.organizationId]
 	);
 

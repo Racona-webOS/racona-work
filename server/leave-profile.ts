@@ -20,6 +20,7 @@ import { getEmployeeOrganizationId } from './employees.js';
 import { BALANCE_COLUMNS, mapBalanceRow } from './leave.js';
 import type { LeaveBalance, LeaveBalanceCalculation } from './leave.js';
 import { logBalanceChange } from './leave-history.js';
+import { daysToPeriods } from './leave-days.js';
 import { enrichCarryOver } from './leave-carry-over.js';
 import { calculateAnnualLeave, defaultCarryOverDeadline, STATUTORY_EXTRA_DAYS } from './leave-entitlement.js';
 import type {
@@ -247,11 +248,10 @@ async function loadProfiles(
 			[employeeIds]
 		),
 		context.db.query(
-			`SELECT employee_id,
-			        to_char(start_date, 'YYYY-MM-DD') AS start_date,
-			        to_char(end_date, 'YYYY-MM-DD') AS end_date
-			   FROM ${SCHEMA}.leave_requests
-			  WHERE employee_id = ANY($1::int[]) AND leave_type = 'unpaid' AND status = 'approved'`,
+			`SELECT employee_id, to_char(day, 'YYYY-MM-DD') AS day
+			   FROM ${SCHEMA}.leave_days
+			  WHERE employee_id = ANY($1::int[]) AND leave_type = 'unpaid'
+			  ORDER BY day`,
 			[employeeIds]
 		)
 	]);
@@ -273,8 +273,15 @@ async function loadProfiles(
 	for (const row of childrenResult.rows) profiles.get(row.employee_id)?.children.push(mapChild(row));
 	for (const row of extrasResult.rows) profiles.get(row.employee_id)?.extras.push(mapExtra(row));
 	for (const row of absencesResult.rows) profiles.get(row.employee_id)?.absences.push(mapAbsence(row));
+	// A jóváhagyott fizetés nélküli napok naptári napok szerint összefüggő
+	// időszakokként kerülnek a számításba (leave-days.ts: daysToPeriods)
+	const unpaidDaysBy = new Map<number, string[]>();
 	for (const row of unpaidResult.rows) {
-		profiles.get(row.employee_id)?.approvedUnpaid.push({ from: row.start_date, to: row.end_date });
+		if (!unpaidDaysBy.has(row.employee_id)) unpaidDaysBy.set(row.employee_id, []);
+		unpaidDaysBy.get(row.employee_id)!.push(row.day);
+	}
+	for (const [employeeId, days] of unpaidDaysBy) {
+		profiles.get(employeeId)?.approvedUnpaid.push(...daysToPeriods(days));
 	}
 	return profiles;
 }
