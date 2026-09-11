@@ -5,7 +5,11 @@
 	csak az ő napjai, típusonként színezve (a típust csak a leave.approve jog
 	mutatja). A függő kérelmek halványan jelennek meg.
 
-	Szerkesztés (leave.approve joggal, kiválasztott dolgozóval): üres munkanapra
+	Három nézet: havi rács, éves nézet (tizenkét kis havi rács) és csapatnézet
+	(soronként egy dolgozó, oszloponként egy nap). A csapatnézet csak olvasásra.
+
+	Szerkesztés (leave.approve joggal, kiválasztott dolgozóval, havi és éves
+	nézetben): üres munkanapra
 	kattintva a nap felveendő, meglévőre kattintva törlendő. A jelölések a
 	Mentés gombra futnak le egy tranzakcióban; az összegzősáv a szerver
 	előnézetéből mutatja a szakaszokat és a keretet (specs/leave-days.md).
@@ -75,6 +79,24 @@
 
 	const cells = $derived(monthGrid(year, month));
 
+	// --- Nézetek -------------------------------------------------------------
+
+	type CalendarView = 'month' | 'year' | 'team';
+	let view = $state<CalendarView>('month');
+	const MONTHS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+	/** A lekérdezett időszak: éves nézetben az egész év, egyébként a hónap. */
+	const range = $derived(
+		view === 'year' ? { from: `${year}-01-01`, to: `${year}-12-31` } : monthRange(year, month)
+	);
+
+	/** A hónap napjai a csapatnézet oszlopaihoz. */
+	const monthDays = $derived(monthGrid(year, month).filter((d): d is string => d !== null));
+
+	function weekdayIndex(iso: string): number {
+		return (new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7;
+	}
+
 	/** Nap → jóváhagyott napok. */
 	const dayMap = $derived.by(() => {
 		const map = new Map<string, LeaveCalendarDay[]>();
@@ -94,6 +116,36 @@
 		}
 		return map;
 	});
+
+	/** Csapatnézet: dolgozó és nap → jóváhagyott nap. */
+	const teamMap = $derived(new Map((data?.days ?? []).map((d) => [`${d.employeeId}:${d.day}`, d])));
+
+	/** Csapatnézet: dolgozó és nap → függő nap. */
+	const pendingTeamMap = $derived(
+		new Map((data?.pending ?? []).map((d) => [`${d.employeeId}:${d.day}`, d]))
+	);
+
+	/**
+	 * A csapatnézet sorai: a szűrt dolgozó, egyébként az aktív dolgozók; ha a
+	 * lista nem tölthető, azok, akik a naptárban szerepelnek.
+	 */
+	const teamRows = $derived.by(() => {
+		const fromData = new Map<number, string>();
+		for (const d of [...(data?.days ?? []), ...(data?.pending ?? [])]) {
+			fromData.set(d.employeeId, d.employeeName);
+		}
+		if (filterEmployeeId) {
+			const emp = employees.find((e) => e.id === filterEmployeeId);
+			return [{ id: filterEmployeeId, name: emp?.userName ?? fromData.get(filterEmployeeId) ?? '—' }];
+		}
+		if (employees.length > 0) return employees.map((e) => ({ id: e.id, name: e.userName }));
+		return [...fromData].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+	});
+
+	/** A dolgozó jóváhagyott napjai a hónapban (csapatnézet összesítő). */
+	function teamTotal(employeeId: number): number {
+		return monthDays.filter((iso) => teamMap.has(`${employeeId}:${iso}`)).length;
+	}
 
 	/** A munkanaptár kivételei: nap → munkanap-e. */
 	const overrides = $derived(new Map((data?.calendar ?? []).map((c) => [c.day, c.isWorkingDay])));
@@ -222,7 +274,6 @@
 		if (!sdk?.remote || !organizationId) return;
 		loading = true;
 		error = null;
-		const range = monthRange(year, month);
 		try {
 			data = await sdk.remote.call('getLeaveCalendar', {
 				organizationId,
@@ -261,8 +312,7 @@
 
 	$effect(() => {
 		organizationId;
-		year;
-		month;
+		range;
 		filterEmployeeId;
 		refreshKey;
 		untrack(() => loadCalendar());
@@ -271,6 +321,10 @@
 	// --- Navigáció -----------------------------------------------------------
 
 	function prevMonth() {
+		if (view === 'year') {
+			year -= 1;
+			return;
+		}
 		if (month === 0) {
 			month = 11;
 			year -= 1;
@@ -280,12 +334,21 @@
 	}
 
 	function nextMonth() {
+		if (view === 'year') {
+			year += 1;
+			return;
+		}
 		if (month === 11) {
 			month = 0;
 			year += 1;
 		} else {
 			month += 1;
 		}
+	}
+
+	function setView(next: CalendarView) {
+		if (next === 'team' && lockEmployee) return;
+		view = next;
 	}
 
 	function goToday() {
@@ -325,9 +388,25 @@
 	<div class="toolbar">
 		<div class="month-nav">
 			<button class="btn-secondary" onclick={prevMonth} aria-label={t('leaveCalendar.prev')}>‹</button>
-			<span class="month-label">{year}. {t(`workCalendar.month.${month}`)}</span>
+			<span class="month-label">
+				{view === 'year' ? `${year}.` : `${year}. ${t(`workCalendar.month.${month}`)}`}
+			</span>
 			<button class="btn-secondary" onclick={nextMonth} aria-label={t('leaveCalendar.next')}>›</button>
 			<button class="btn-secondary" onclick={goToday}>{t('leaveCalendar.today')}</button>
+		</div>
+
+		<div class="view-toggle" role="group">
+			<button class="chip-btn" class:active={view === 'month'} onclick={() => setView('month')}>
+				{t('leaveCalendar.view.month')}
+			</button>
+			<button class="chip-btn" class:active={view === 'year'} onclick={() => setView('year')}>
+				{t('leaveCalendar.view.year')}
+			</button>
+			{#if !lockEmployee}
+				<button class="chip-btn" class:active={view === 'team'} onclick={() => setView('team')}>
+					{t('leaveCalendar.view.team')}
+				</button>
+			{/if}
 		</div>
 
 		{#if !lockEmployee}
@@ -359,7 +438,7 @@
 	</div>
 
 	{#if editable}
-		<p class="hint">{t('leaveCalendar.editHint')}</p>
+		<p class="hint">{view === 'team' ? t('leaveCalendar.team.readOnly') : t('leaveCalendar.editHint')}</p>
 	{/if}
 
 	<div class="legend">
@@ -382,6 +461,7 @@
 		<div class="error-banner">{error}</div>
 	{/if}
 
+	{#if view === 'month'}
 	<div class="calendar" class:is-loading={loading}>
 		<div class="weekdays">
 			{#each [0, 1, 2, 3, 4, 5, 6] as wd (wd)}
@@ -449,6 +529,97 @@
 			{/each}
 		</div>
 	</div>
+	{:else if view === 'year'}
+	<div class="calendar year-months" class:is-loading={loading}>
+		{#each MONTHS as m (m)}
+			<div class="year-month">
+				<h4>{t(`workCalendar.month.${m}`)}</h4>
+				<div class="mini-weekdays">
+					{#each [0, 1, 2, 3, 4, 5, 6] as wd (wd)}
+						<span>{t(`workCalendar.weekdayShort.${wd}`)}</span>
+					{/each}
+				</div>
+				<div class="mini-grid">
+					{#each monthGrid(year, m) as iso, i (i)}
+						{#if iso === null}
+							<span class="mini empty"></span>
+						{:else}
+							{@const approved = dayMap.get(iso) ?? []}
+							{@const pending = pendingMap.get(iso) ?? []}
+							{@const clickable = editable && isWorkingDay(iso) && pending.length === 0}
+							<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+							<div
+								class="mini {filterEmployeeId && approved.length > 0 ? typeClass(approved[0].leaveType) : ''}"
+								class:is-off={!isWorkingDay(iso)}
+								class:is-today={iso === today}
+								class:is-clickable={clickable}
+								class:is-to-add={toAdd.has(iso)}
+								class:is-to-remove={toRemove.has(iso)}
+								class:has-pending={pending.length > 0 && approved.length === 0}
+								class:has-count={!filterEmployeeId && approved.length > 0}
+								title={cellTitle(iso)}
+								role={clickable ? 'button' : undefined}
+								tabindex={clickable ? 0 : undefined}
+								onclick={() => toggleDay(iso)}
+								onkeydown={(e) => {
+									if (clickable && (e.key === 'Enter' || e.key === ' ')) {
+										e.preventDefault();
+										toggleDay(iso);
+									}
+								}}
+							>
+								{Number(iso.slice(8, 10))}
+								{#if !filterEmployeeId && approved.length > 0}
+									<span class="count">{approved.length}</span>
+								{/if}
+							</div>
+						{/if}
+					{/each}
+				</div>
+			</div>
+		{/each}
+	</div>
+	{:else}
+	<div class="calendar team-scroll" class:is-loading={loading}>
+		<table class="team">
+			<thead>
+				<tr>
+					<th class="team-name">{t('leaveCalendar.team.employee')}</th>
+					{#each monthDays as iso (iso)}
+						<th class:is-off={!isWorkingDay(iso)} class:is-today={iso === today}>
+							<span>{Number(iso.slice(8, 10))}</span>
+							<small>{t(`workCalendar.weekdayShort.${weekdayIndex(iso)}`)}</small>
+						</th>
+					{/each}
+					<th class="team-total">{t('leaveCalendar.team.total')}</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each teamRows as row (row.id)}
+					<tr>
+						<td class="team-name">{row.name}</td>
+						{#each monthDays as iso (iso)}
+							{@const d = teamMap.get(`${row.id}:${iso}`)}
+							{@const p = pendingTeamMap.get(`${row.id}:${iso}`)}
+							<td
+								class="team-cell {d ? typeClass(d.leaveType) : ''}"
+								class:is-off={!isWorkingDay(iso)}
+								class:is-today={iso === today}
+								class:is-pending={!!p && !d}
+								title={d
+									? `${row.name} – ${typeLabel(d.leaveType)}`
+									: p
+										? `${row.name} – ${t('leaveCalendar.pending')}`
+										: ''}
+							></td>
+						{/each}
+						<td class="team-total">{teamTotal(row.id) || ''}</td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
+	{/if}
 
 	{#if !loading && data && !hasAnyLeave && !hasChanges}
 		<p class="empty-state">{t('leaveCalendar.empty')}</p>
@@ -504,6 +675,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
+		/* A csapatnézet széles táblázata a saját dobozában görgessen, ne az oldal */
+		min-width: 0;
+		max-width: 100%;
 	}
 
 	.toolbar {
@@ -579,6 +753,203 @@
 
 	.calendar {
 		transition: opacity 0.15s;
+	}
+
+	.view-toggle {
+		display: flex;
+		gap: 0.25rem;
+	}
+
+	.chip-btn {
+		font-size: 0.8rem;
+		padding: 0.25rem 0.7rem;
+		border-radius: 999px;
+		border: 1px solid var(--color-border, #e2e8f0);
+		background: transparent;
+		color: inherit;
+		cursor: pointer;
+	}
+
+	.chip-btn.active {
+		background: var(--color-primary, #3730a3);
+		border-color: var(--color-primary, #3730a3);
+		color: #fff;
+	}
+
+	/* Éves nézet */
+	.year-months {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		gap: 1rem;
+	}
+
+	.year-month h4 {
+		margin: 0 0 0.35rem;
+		font-size: 0.9rem;
+	}
+
+	.mini-weekdays,
+	.mini-grid {
+		display: grid;
+		grid-template-columns: repeat(7, 1fr);
+		gap: 2px;
+	}
+
+	.mini-weekdays span {
+		text-align: center;
+		font-size: 0.65rem;
+		color: var(--muted-foreground, #71717a);
+	}
+
+	.mini {
+		aspect-ratio: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.72rem;
+		border: 1px solid transparent;
+		border-radius: 4px;
+		position: relative;
+	}
+
+	.mini.empty {
+		border: none;
+	}
+
+	.mini.is-off {
+		background: var(--muted, #f4f4f5);
+		color: var(--muted-foreground, #71717a);
+	}
+
+	.mini.is-today {
+		box-shadow: inset 0 0 0 2px var(--color-primary, #3730a3);
+	}
+
+	.mini.is-clickable {
+		cursor: pointer;
+	}
+
+	.mini.is-clickable:hover {
+		border-color: var(--color-primary, #3730a3);
+	}
+
+	.mini.is-to-add {
+		border: 2px dashed #16a34a;
+	}
+
+	.mini.is-to-remove {
+		border: 2px dashed #dc2626;
+		text-decoration: line-through;
+	}
+
+	.mini.has-pending {
+		border: 1px dashed var(--muted-foreground, #a1a1aa);
+	}
+
+	.mini.has-count {
+		background: #dbeafe;
+		color: #1e40af;
+	}
+
+	.mini .count {
+		position: absolute;
+		top: -3px;
+		right: -3px;
+		min-width: 0.9rem;
+		height: 0.9rem;
+		padding: 0 2px;
+		border-radius: 999px;
+		background: var(--color-primary, #3730a3);
+		color: #fff;
+		font-size: 0.55rem;
+		font-weight: 600;
+		line-height: 0.9rem;
+		text-align: center;
+	}
+
+	/* Csapatnézet */
+	.team-scroll {
+		overflow-x: auto;
+		max-width: 100%;
+	}
+
+	.team {
+		border-collapse: separate;
+		border-spacing: 2px;
+		font-size: 0.75rem;
+		min-width: 100%;
+	}
+
+	.team th {
+		font-weight: 500;
+		color: var(--muted-foreground, #71717a);
+		text-align: center;
+		padding: 0.15rem 0;
+		min-width: 1.6rem;
+	}
+
+	.team th span {
+		display: block;
+		font-weight: 600;
+		color: inherit;
+	}
+
+	.team th small {
+		font-size: 0.6rem;
+	}
+
+	.team th.is-today span {
+		color: var(--color-primary, #3730a3);
+	}
+
+	.team .team-name {
+		position: sticky;
+		left: 0;
+		z-index: 1;
+		text-align: left;
+		white-space: nowrap;
+		padding: 0.2rem 0.6rem 0.2rem 0;
+		background: var(--color-background, #fff);
+		font-weight: 500;
+		color: inherit;
+	}
+
+	.team .team-total {
+		text-align: right;
+		padding: 0 0.4rem;
+		font-weight: 600;
+		min-width: 2.5rem;
+	}
+
+	.team-cell {
+		height: 1.6rem;
+		border-radius: 3px;
+		background: var(--color-background, #fff);
+		border: 1px solid var(--color-border, #e2e8f0);
+	}
+
+	.team-cell.is-off {
+		background: var(--muted, #f4f4f5);
+		border-color: transparent;
+	}
+
+	.team-cell.is-today {
+		box-shadow: inset 0 0 0 2px var(--color-primary, #3730a3);
+	}
+
+	.team-cell.is-pending {
+		border: 1px dashed var(--muted-foreground, #a1a1aa);
+	}
+
+	:global(.dark) .team .team-name,
+	:global(.dark) .team-cell {
+		background: var(--color-input, oklch(1 0 0 / 15%));
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
+	}
+
+	:global(.dark) .mini.is-off,
+	:global(.dark) .team-cell.is-off {
+		background: oklch(1 0 0 / 6%);
 	}
 
 	.calendar.is-loading {

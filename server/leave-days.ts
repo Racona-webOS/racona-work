@@ -256,8 +256,8 @@ export interface LeaveCalendar {
 	canManage: boolean;
 }
 
-/** Legfeljebb ennyi nap kérhető le egyszerre (két hónap). */
-const MAX_CALENDAR_DAYS = 62;
+/** Legfeljebb ennyi nap kérhető le egyszerre (egy év, az éves nézethez). */
+const MAX_CALENDAR_DAYS = 366;
 
 /** Naptári napok száma a két nap között, mindkettőt beleértve. */
 function daySpan(from: string, to: string): number {
@@ -271,7 +271,7 @@ function daySpan(from: string, to: string): number {
  * a `leave.approve` jog mutatja (a betegszabadság egészségügyi adat). A függő
  * kérelmek napjait a kérelem időszakából számoljuk a munkanaptárral.
  *
- * @param params - A szervezet, az időszak (legfeljebb 62 nap) és a dolgozószűrő.
+ * @param params - A szervezet, az időszak (legfeljebb egy év) és a dolgozószűrő.
  * @param context - Remote futási kontextus.
  * @returns A napok, a függő napok és a munkanaptár kivételei.
  */

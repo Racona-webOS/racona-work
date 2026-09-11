@@ -99,6 +99,8 @@ Kérelem (leave_requests)            Napok (leave_days)
 
 **K6. Naptárnézet.** A nyilvántartó oldalon a kérelmek listája alatt, „Naptár” címmel: havi rács hétfői kezdéssel, előző és következő hónap, „ma” gomb. Nem munkanapok (hétvége, munkaszüneti nap) szürkék. Szűrő nélkül minden cellában a távol lévők neve (legfeljebb három név, utána „+N”, a teljes lista tooltipben). Függő kérelmek halványan, „függőben” jelöléssel.
 
+**K6/b. Éves nézet és csapatnézet.** A naptár fölött nézetváltó: Hónap, Év, Csapat. Az éves nézet tizenkét kis havi rács; szűrő nélkül a cellában a távol lévők száma, szűrővel a nap típusának színe. Szerkeszteni a havi és az éves nézetben lehet. A csapatnézet a hónap napjai oszloponként, soronként egy aktív dolgozó (szűrővel csak ő), a cella a típus színét kapja, a függő kérelem szaggatott; a sor végén a hónap jóváhagyott napjainak száma. Csak olvasásra. Saját nézetben nincs csapatnézet.
+
 **K7. Dolgozószűrő.** A naptár fölött dolgozóválasztó (a szervezet aktív dolgozói). Kiválasztott dolgozóval csak az ő napjai látszanak, típusonként színezve (jelmagyarázattal).
 
 **K8. Szerkesztés.** Csak `leave.approve` joggal és kiválasztott dolgozóval. Üres munkanapra kattintva a nap „felveendő” (a kiválasztott típussal, D9), meglévő napra kattintva „törlendő”; ugyanarra a napra újra kattintva a jelölés visszavonódik. A függő módosítások láthatóan eltérnek (szaggatott keret, áthúzás). Nem munkanapra és függő kérelem napjára nem lehet kattintani. Az összegzősáv mutatja: N nap felvétele (szakaszok száma), M nap törlése, és éves típusnál a maradék keretet a módosítás után. „Mentés” és „Elvetés” gomb; hónapváltáskor a jelölések megmaradnak. Ha van mentetlen jelölés, a dolgozószűrő váltása előtt megerősítést kérünk.
@@ -160,7 +162,7 @@ CREATE INDEX IF NOT EXISTS idx_leave_days_employee_type_day
 
 | Függvény | Jogosultság | Leírás |
 |---|---|---|
-| `getLeaveCalendar({ organizationId, from, to, employeeId? })` | `leave.request` | A `[from, to]` időszak napjai: `{ day, employeeId, employeeName, leaveType, leaveRequestId }[]`; a `leaveType` csak `leave.approve` joggal van kitöltve (D13). Külön `pending` lista a függő kérelmek munkanapjaival. Legfeljebb 62 nap egy hívásban. |
+| `getLeaveCalendar({ organizationId, from, to, employeeId? })` | `leave.request` | A `[from, to]` időszak napjai: `{ day, employeeId, employeeName, leaveType, leaveRequestId }[]`; a `leaveType` csak `leave.approve` joggal van kitöltve (D13). Külön `pending` lista a függő kérelmek munkanapjaival. Legfeljebb egy év (366 nap) egy hívásban, az éves nézethez. |
 | `saveLeaveCalendar({ organizationId, employeeId, leaveType, addDays, removeDays })` | `leave.approve` | A 4. fejezet folyamata. Visszaad: `{ createdRequests: { id, startDate, endDate, days }[], removedDays: string[] }`. A `leaveType` csak a D9 szerinti típus lehet. |
 | `previewLeaveCalendarSave({ organizationId, employeeId, leaveType, addDays, removeDays })` | `leave.approve` | Mentés nélkül: a szakaszok, a törlendő napok, évenként a keret a módosítás után, és a hibák listája (K8 összegzősáv). |
 
@@ -240,6 +242,7 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 - [x] Szerkesztés a felületen: jelölések, típusválasztó, összegzősáv a szerver előnézetéből, mentés, elvetés, megerősítés szűrőváltásnál (K8, K9)
 - [x] Értesítések és a két új email sablon: `leave_days_removed`, `leave_days_added` (K11, D16)
 - [x] Locale (hu, en)
+- [x] Éves nézet és csapatnézet (K6/b); a naptár lekérdezése egy évre is engedélyezett
 - [x] „Ebből érvényes” oszlop a kérelmek listájában (K10/b): a szerver a `leave_days` számát adja (`effectiveDays`), rendezhető
 - [x] Kézi ellenőrzés a dev szerveren: a spec példája három kérelem (péntek és hétfő egy szakasz); nem munkanap, foglalt nap, függő kérelem napja, nem létező nap törlése, tiltott típus, egyszerre felvett és törölt nap, keret túllépése mind hibával áll meg; a kérelem `days` mezője a napok törlése után is változatlan (D1)
 
@@ -252,7 +255,6 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 
 ### Későbbi ötletek
 
-- Éves nézet és csapatnézet (egy sor dolgozónként, oszlop naponként).
 - A dolgozó saját naptárában a függő kérelem visszavonása.
 - Figyelmeztetés a kiküldetéseknél, ha az út szabadságos napra esik (a kiküldetés spec 2. fázisa ide kapcsolódik).
 
