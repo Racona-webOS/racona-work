@@ -15,6 +15,7 @@
 	import LeaveProfileCard from './leave-entitlement/LeaveProfileCard.svelte';
 	import OtherAllowances from './leave-entitlement/OtherAllowances.svelte';
 	import DataRequestReview from './leave-entitlement/DataRequestReview.svelte';
+	import PersonalDataFields from './trips/PersonalDataFields.svelte';
 
 	let {
 		pluginId = 'racona-work',
@@ -470,6 +471,14 @@
 							{/if}
 						</div>
 					{/if}
+					<!-- A kiküldetési rendelvény fix mezői (specs/business-trips.md, K17) -->
+					<PersonalDataFields
+						{pluginId}
+						employeeId={view.employee.id}
+						personal={view.personal}
+						canEdit={canManageEmployee}
+						onSaved={loadDetail}
+					/>
 				{/if}
 
 				{#if detailsByCategory[cat].length === 0}

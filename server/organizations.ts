@@ -12,18 +12,68 @@ import { requireCapability, seedDefaultRoles } from './permissions.js';
 import { assignDefaultEmployeeRole } from './employees.js';
 import type { EmployeeRow } from './employees.js';
 import type { PaginatedResult } from './types.js';
+import { geocodeAddress } from './geo.js';
+import { normalizeTaxNumber } from './trip-calc.js';
 
 export interface Organization {
 	id: number;
 	name: string;
 	slug: string;
 	address: string | null;
+	/** Adószám (`12345678-1-12`), a kiküldetési rendelvény fejlécéhez. */
+	taxNumber: string | null;
+	/** A cím koordinátái (mentéskor geokódolva) — a „munkahely” kiindulópont. */
+	addressLocation: { lat: number; lng: number } | null;
 	phone: string | null;
 	email: string | null;
 	website: string | null;
 	notes: string | null;
 	createdAt: string;
 	updatedAt: string;
+}
+
+/** Mentés után: ha a címet nem találtuk a térképen, a felület figyelmeztet. */
+export interface SavedOrganization extends Organization {
+	addressGeocodeFailed: boolean;
+}
+
+const ORG_COLUMNS =
+	'id, name, slug, address, tax_number, address_lat, address_lng, phone, email, website, notes, created_at, updated_at';
+
+function mapOrganization(row: any): Organization {
+	const lat = row.address_lat === null || row.address_lat === undefined ? null : Number(row.address_lat);
+	const lng = row.address_lng === null || row.address_lng === undefined ? null : Number(row.address_lng);
+	return {
+		id: row.id,
+		name: row.name,
+		slug: row.slug,
+		address: row.address ?? null,
+		taxNumber: row.tax_number ?? null,
+		addressLocation: lat !== null && lng !== null ? { lat, lng } : null,
+		phone: row.phone ?? null,
+		email: row.email ?? null,
+		website: row.website ?? null,
+		notes: row.notes ?? null,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at
+	};
+}
+
+/**
+ * A szervezet címének geokódolása (best effort). Üres címnél törli a koordinátát.
+ * @returns true, ha volt cím, de nem találtuk
+ */
+async function geocodeOrganizationAddress(
+	context: RemoteContext,
+	organizationId: number,
+	address: string | null
+): Promise<boolean> {
+	const found = address ? await geocodeAddress(context, organizationId, address) : null;
+	await context.db.query(
+		`UPDATE app__racona_work.organizations SET address_lat = $2, address_lng = $3 WHERE id = $1`,
+		[organizationId, found?.lat ?? null, found?.lng ?? null]
+	);
+	return address !== null && found === null;
 }
 
 export interface OrganizationMember {
@@ -74,16 +124,18 @@ export async function createOrganization(
 	params: {
 		name: string;
 		address?: string;
+		taxNumber?: string;
 		phone?: string;
 		email?: string;
 		website?: string;
 		notes?: string;
 	},
 	context: RemoteContext
-): Promise<Organization> {
+): Promise<SavedOrganization> {
 	requireAdmin(context);
 
 	const slug = generateSlug(params.name);
+	const taxNumber = normalizeTaxNumber(params.taxNumber);
 
 	// Ellenőrizzük, hogy a slug egyedi-e
 	const existingResult = await context.db.query(
@@ -96,13 +148,14 @@ export async function createOrganization(
 	}
 
 	const result = await context.db.query(
-		`INSERT INTO app__racona_work.organizations (name, slug, address, phone, email, website, notes, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-		 RETURNING id, name, slug, address, phone, email, website, notes, created_at, updated_at`,
+		`INSERT INTO app__racona_work.organizations (name, slug, address, tax_number, phone, email, website, notes, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+		 RETURNING ${ORG_COLUMNS}`,
 		[
 			params.name,
 			slug,
 			params.address ?? null,
+			taxNumber,
 			params.phone ?? null,
 			params.email ?? null,
 			params.website ?? null,
@@ -122,18 +175,11 @@ export async function createOrganization(
 		console.error('[createOrganization] Szerepek seedelése sikertelen:', err);
 	}
 
-	return {
-		id: row.id,
-		name: row.name,
-		slug: row.slug,
-		address: row.address ?? null,
-		phone: row.phone ?? null,
-		email: row.email ?? null,
-		website: row.website ?? null,
-		notes: row.notes ?? null,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at
-	};
+	const addressGeocodeFailed = await geocodeOrganizationAddress(context, row.id, row.address ?? null);
+	const saved = await context.db.query(`SELECT ${ORG_COLUMNS} FROM app__racona_work.organizations WHERE id = $1`, [
+		row.id
+	]);
+	return { ...mapOrganization(saved.rows[0]), addressGeocodeFailed };
 }
 
 /**
@@ -160,7 +206,7 @@ export async function getUserOrganizations(
 	// Admin userek az összes szervezetet látják
 	if (!isDevMode(context) && isCoreAdmin(context)) {
 		const result = await context.db.query(
-			`SELECT id, name, slug, address, phone, email, website, notes, created_at, updated_at
+			`SELECT ${ORG_COLUMNS}
 			 FROM app__racona_work.organizations
 			 ORDER BY name ASC`
 		);
@@ -171,36 +217,14 @@ export async function getUserOrganizations(
 				`INSERT INTO app__racona_work.organizations (name, slug, created_at, updated_at)
 				 VALUES ('Default Organization', 'default-organization', NOW(), NOW())
 				 ON CONFLICT (slug) DO NOTHING
-				 RETURNING id, name, slug, address, phone, email, website, notes, created_at, updated_at`
+				 RETURNING ${ORG_COLUMNS}`
 			);
 			if (defaultOrg.rows.length > 0) {
-				return [defaultOrg.rows[0]].map((row: any) => ({
-					id: row.id,
-					name: row.name,
-					slug: row.slug,
-					address: row.address ?? null,
-					phone: row.phone ?? null,
-					email: row.email ?? null,
-					website: row.website ?? null,
-					notes: row.notes ?? null,
-					createdAt: row.created_at,
-					updatedAt: row.updated_at
-				}));
+				return [defaultOrg.rows[0]].map(mapOrganization);
 			}
 		}
 
-		return result.rows.map((row: any) => ({
-			id: row.id,
-			name: row.name,
-			slug: row.slug,
-			address: row.address ?? null,
-			phone: row.phone ?? null,
-			email: row.email ?? null,
-			website: row.website ?? null,
-			notes: row.notes ?? null,
-			createdAt: row.created_at,
-			updatedAt: row.updated_at
-		}));
+		return result.rows.map(mapOrganization);
 	}
 
 	// Nem-admin userek: csak a saját szervezeteik
@@ -208,7 +232,8 @@ export async function getUserOrganizations(
 
 	// Közvetlenül az employees táblából lekérdezzük a szervezeteket
 	const result = await context.db.query(
-		`SELECT DISTINCT o.id, o.name, o.slug, o.address, o.phone, o.email, o.website, o.notes, o.created_at, o.updated_at
+		`SELECT DISTINCT o.id, o.name, o.slug, o.address, o.tax_number, o.address_lat, o.address_lng,
+		        o.phone, o.email, o.website, o.notes, o.created_at, o.updated_at
 		 FROM app__racona_work.organizations o
 		 JOIN app__racona_work.employees e ON e.organization_id = o.id
 		 WHERE e.user_id = $1
@@ -216,18 +241,7 @@ export async function getUserOrganizations(
 		[userId]
 	);
 
-	return result.rows.map((row: any) => ({
-		id: row.id,
-		name: row.name,
-		slug: row.slug,
-		address: row.address ?? null,
-		phone: row.phone ?? null,
-		email: row.email ?? null,
-		website: row.website ?? null,
-		notes: row.notes ?? null,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at
-	}));
+	return result.rows.map(mapOrganization);
 }
 
 /**
@@ -241,23 +255,12 @@ export async function getOrganizations(
 	requireAdmin(context);
 
 	const result = await context.db.query(
-		`SELECT id, name, slug, address, phone, email, website, notes, created_at, updated_at
+		`SELECT ${ORG_COLUMNS}
 		 FROM app__racona_work.organizations
 		 ORDER BY created_at DESC`
 	);
 
-	return result.rows.map((row: any) => ({
-		id: row.id,
-		name: row.name,
-		slug: row.slug,
-		address: row.address ?? null,
-		phone: row.phone ?? null,
-		email: row.email ?? null,
-		website: row.website ?? null,
-		notes: row.notes ?? null,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at
-	}));
+	return result.rows.map(mapOrganization);
 }
 
 /**
@@ -269,16 +272,22 @@ export async function updateOrganization(
 		id: number;
 		name: string;
 		address?: string | null;
+		taxNumber?: string | null;
 		phone?: string | null;
 		email?: string | null;
 		website?: string | null;
 		notes?: string | null;
 	},
 	context: RemoteContext
-): Promise<Organization> {
+): Promise<SavedOrganization> {
 	requireAdmin(context);
 
 	const slug = generateSlug(params.name);
+	const taxNumber = normalizeTaxNumber(params.taxNumber);
+	const previous = await context.db.query(
+		`SELECT address, address_lat FROM app__racona_work.organizations WHERE id = $1`,
+		[params.id]
+	);
 
 	// Ellenőrizzük, hogy a slug egyedi-e (kivéve az aktuális szervezetet)
 	const existingResult = await context.db.query(
@@ -292,13 +301,14 @@ export async function updateOrganization(
 
 	const result = await context.db.query(
 		`UPDATE app__racona_work.organizations
-		 SET name = $1, slug = $2, address = $3, phone = $4, email = $5, website = $6, notes = $7, updated_at = NOW()
-		 WHERE id = $8
-		 RETURNING id, name, slug, address, phone, email, website, notes, created_at, updated_at`,
+		 SET name = $1, slug = $2, address = $3, tax_number = $4, phone = $5, email = $6, website = $7, notes = $8, updated_at = NOW()
+		 WHERE id = $9
+		 RETURNING ${ORG_COLUMNS}`,
 		[
 			params.name,
 			slug,
 			params.address ?? null,
+			taxNumber,
 			params.phone ?? null,
 			params.email ?? null,
 			params.website ?? null,
@@ -311,19 +321,18 @@ export async function updateOrganization(
 		throw new Error(`Nem található szervezet a megadott azonosítóval: ${params.id}`);
 	}
 
+	// A címet csak akkor geokódoljuk újra, ha változott (vagy eddig nem találtuk)
 	const row = result.rows[0];
-	return {
-		id: row.id,
-		name: row.name,
-		slug: row.slug,
-		address: row.address ?? null,
-		phone: row.phone ?? null,
-		email: row.email ?? null,
-		website: row.website ?? null,
-		notes: row.notes ?? null,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at
-	};
+	const before = previous.rows[0];
+	const address: string | null = row.address ?? null;
+	if (address === (before?.address ?? null) && (address === null || before?.address_lat !== null)) {
+		return { ...mapOrganization(row), addressGeocodeFailed: false };
+	}
+	const addressGeocodeFailed = await geocodeOrganizationAddress(context, row.id, address);
+	const saved = await context.db.query(`SELECT ${ORG_COLUMNS} FROM app__racona_work.organizations WHERE id = $1`, [
+		row.id
+	]);
+	return { ...mapOrganization(saved.rows[0]), addressGeocodeFailed };
 }
 
 /**

@@ -40,7 +40,11 @@ export const CAPABILITIES = [
 	'leave.calendar.manage',
 
 	'employee.view',
-	'employee.manage'
+	'employee.manage',
+
+	'trip.record',
+	'trip.approve',
+	'trip.manage'
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number];
@@ -72,7 +76,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 			'leave.approve',
 			'leave.balance.manage',
 			'employee.view',
-			'employee.manage'
+			'employee.manage',
+			'trip.record',
+			'trip.approve',
+			'trip.manage'
 		]
 	},
 	{
@@ -99,14 +106,17 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 			'employee.manage',
 			'employee.view',
 			'members.view',
-			'work.view.all'
+			'work.view.all',
+			'trip.record',
+			'trip.approve',
+			'trip.manage'
 		]
 	},
 	{
 		key: 'employee',
 		name: 'Dolgozó',
 		description: 'Alap hozzáférés a saját adatokhoz',
-		capabilities: ['leave.request', 'project.view.own', 'employee.view', 'work.log']
+		capabilities: ['leave.request', 'project.view.own', 'employee.view', 'work.log', 'trip.record']
 	}
 ];
 

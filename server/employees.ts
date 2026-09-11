@@ -10,6 +10,8 @@ import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { hasCapability, requireCapability } from './permissions.js';
 import { parseDay, todayInBudapest } from './dates.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
+import { geocodeAddress } from './geo.js';
+import { validateTaxId } from './trip-calc.js';
 import type { RecalculatedBalance } from './leave-profile.js';
 import type { PaginatedResult } from './types.js';
 
@@ -55,7 +57,21 @@ export interface EmployeeDetailView {
 	 * Személyes adatok, amelyeket csak a dolgozó maga és a HR (employee.manage
 	 * vagy leave.balance.manage) láthat; másnak null.
 	 */
-	personal: { birthDate: string | null } | null;
+	personal: EmployeePersonalData | null;
+}
+
+/**
+ * Fix személyes mezők. A születési dátum a szabadságkerethez, a többi a
+ * kiküldetési rendelvényhez kell (specs/business-trips.md, D16). Egyik sem kötelező.
+ */
+export interface EmployeePersonalData {
+	birthDate: string | null;
+	homeAddress: string | null;
+	/** A lakcím koordinátái (mentéskor geokódolva); null, ha nem találtuk. */
+	homeLocation: { lat: number; lng: number } | null;
+	birthPlace: string | null;
+	motherName: string | null;
+	taxId: string | null;
 }
 
 /** A dolgozó személyes adatait láthatja-e a hívó: saját rekord, vagy HR. */
@@ -503,6 +519,12 @@ export async function getEmployeeDetails(
 			to_char(e.hire_date, 'YYYY-MM-DD') AS hire_day,
 			to_char(e.employment_end_date, 'YYYY-MM-DD') AS employment_end_day,
 			to_char(e.birth_date, 'YYYY-MM-DD') AS birth_day,
+			e.home_address,
+			e.home_lat,
+			e.home_lng,
+			e.birth_place,
+			e.mother_name,
+			e.tax_id,
 			e.hire_date_confirmed,
 			u.full_name AS user_name,
 			u.email AS user_email,
@@ -551,9 +573,7 @@ export async function getEmployeeDetails(
 		updatedAt: row.updated_at
 	}));
 
-	const personal = (await canSeePersonalData(context, orgId, empRow.user_id))
-		? { birthDate: empRow.birth_day ?? null }
-		: null;
+	const personal = (await canSeePersonalData(context, orgId, empRow.user_id)) ? mapPersonal(empRow) : null;
 
 	return {
 		employee,
@@ -565,6 +585,107 @@ export async function getEmployeeDetails(
 		},
 		personal
 	};
+}
+
+function mapPersonal(row: any): EmployeePersonalData {
+	const lat = row.home_lat === null || row.home_lat === undefined ? null : Number(row.home_lat);
+	const lng = row.home_lng === null || row.home_lng === undefined ? null : Number(row.home_lng);
+	return {
+		birthDate: row.birth_day ?? null,
+		homeAddress: row.home_address ?? null,
+		homeLocation: lat !== null && lng !== null ? { lat, lng } : null,
+		birthPlace: row.birth_place ?? null,
+		motherName: row.mother_name ?? null,
+		taxId: row.tax_id ?? null
+	};
+}
+
+function optionalText(value: unknown, label: string, maxLength: number): string | null {
+	if (value === null || value === undefined) return null;
+	const trimmed = String(value).trim().replace(/\s+/g, ' ');
+	if (trimmed.length > maxLength) throw new Error(`${label}: legfeljebb ${maxLength} karakter.`);
+	return trimmed || null;
+}
+
+/**
+ * A kiküldetési rendelvényhez szükséges személyes adatok mentése (K17). Csak a
+ * megadott mezők változnak. A lakcímet mentéskor geokódoljuk; ha nem találjuk,
+ * a cím akkor is mentődik, csak kiindulópontként nem használható.
+ */
+export async function saveEmployeePersonalData(
+	params: {
+		employeeId: number;
+		homeAddress?: string | null;
+		birthPlace?: string | null;
+		motherName?: string | null;
+		taxId?: string | null;
+	},
+	context: RemoteContext
+): Promise<{
+	personal: EmployeePersonalData;
+	/** A lakcím, ahogy a térképen megtaláltuk (ellenőrzéshez), ha változott. */
+	geocodedAddress: string | null;
+	geocodeFailed: boolean;
+	taxIdBirthDateMismatch: boolean;
+}> {
+	const orgId = await getEmployeeOrganizationId(context, params.employeeId);
+	await requireCapability(context, orgId, 'employee.manage');
+
+	const current = await context.db.query(
+		`SELECT home_address, to_char(birth_date, 'YYYY-MM-DD') AS birth_day FROM app__racona_work.employees WHERE id = $1`,
+		[params.employeeId]
+	);
+	const birthDay: string | null = current.rows[0]?.birth_day ?? null;
+
+	const sets: string[] = [];
+	const values: unknown[] = [params.employeeId];
+	const set = (column: string, value: unknown) => {
+		values.push(value);
+		sets.push(`${column} = $${values.length}`);
+	};
+
+	let geocodedAddress: string | null = null;
+	let geocodeFailed = false;
+	if (params.homeAddress !== undefined) {
+		const address = optionalText(params.homeAddress, 'Lakcím', 300);
+		set('home_address', address);
+		if (address !== (current.rows[0]?.home_address ?? null)) {
+			const found = address ? await geocodeAddress(context, orgId, address) : null;
+			geocodeFailed = address !== null && found === null;
+			geocodedAddress = found?.address ?? null;
+			set('home_lat', found?.lat ?? null);
+			set('home_lng', found?.lng ?? null);
+		}
+	}
+	if (params.birthPlace !== undefined) set('birth_place', optionalText(params.birthPlace, 'Születési hely', 100));
+	if (params.motherName !== undefined) set('mother_name', optionalText(params.motherName, 'Anyja neve', 150));
+
+	let taxIdBirthDateMismatch = false;
+	if (params.taxId !== undefined) {
+		const taxId = optionalText(params.taxId, 'Adóazonosító jel', 20)?.replace(/[\s-]/g, '') ?? null;
+		if (taxId) {
+			const check = validateTaxId(taxId, birthDay);
+			if (!check.valid) {
+				throw new Error('Adóazonosító jel: 10 számjegy, 8-cal kezdődik, és az ellenőrző jegy nem stimmel.');
+			}
+			taxIdBirthDateMismatch = check.birthDateMismatch;
+		}
+		set('tax_id', taxId);
+	}
+
+	if (sets.length > 0) {
+		await context.db.query(
+			`UPDATE app__racona_work.employees SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $1`,
+			values
+		);
+	}
+	const updated = await context.db.query(
+		`SELECT to_char(birth_date, 'YYYY-MM-DD') AS birth_day, home_address, home_lat, home_lng,
+		        birth_place, mother_name, tax_id
+		   FROM app__racona_work.employees WHERE id = $1`,
+		[params.employeeId]
+	);
+	return { personal: mapPersonal(updated.rows[0]), geocodedAddress, geocodeFailed, taxIdBirthDateMismatch };
 }
 
 /**

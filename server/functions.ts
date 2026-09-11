@@ -31,6 +31,16 @@
  *   projects.ts      — projektek, projekt tagok, projekt-szintű szerepek
  *   work-entries.ts  — munkabejegyzések (lista, CRUD, kategóriák)
  *   project-report.ts — projekt riport (munkabejegyzések aggregálása)
+ *   trip-calc.ts     — kiküldetési rendelvény számítása (tiszta függvények, a kliens is importálja)
+ *   polyline.ts      — útvonal-alak kódolása (a kliens is importálja)
+ *   trip-access.ts   — kiküldetések: „saját vagy HR” jogosultsági segédek
+ *   trip-settings.ts — kiküldetések: beállítások és NAV üzemanyagárak
+ *   geo.ts           — címkeresés (Nominatim) és útvonaltervezés (Valhalla) gyorsítótárral
+ *   trip-vehicles.ts — a dolgozók autói
+ *   trip-places.ts   — mentett helyek (lakcím, munkahely, céges és saját helyek)
+ *   trips.ts         — utak rögzítése, elrendelő felülbírálása
+ *   trip-settlements.ts — havi kiküldetési rendelvény: beküldés, jóváhagyás, kifizetés
+ *   trip-notifications.ts — kiküldetési értesítések
  *
  * A kliens kód a típusokat innen importálja (`../../server/functions.js`),
  * ezért a domain modulok típusai is itt vannak reexportálva.
@@ -56,6 +66,7 @@ export {
 	deleteEmployeeDetail,
 	updateEmployee,
 	saveEmployeeBirthDate,
+	saveEmployeePersonalData,
 	getMyEmployee
 } from './employees.js';
 
@@ -64,6 +75,7 @@ export type {
 	EmployeeRow,
 	EmployeeDetail,
 	EmployeeDetailView,
+	EmployeePersonalData,
 	EmployeeListParams,
 	UnlinkedUser
 } from './employees.js';
@@ -195,7 +207,12 @@ export {
 	getAvailableEmployeesForOrganization
 } from './organizations.js';
 
-export type { Organization, OrganizationMember, OrganizationMemberRow } from './organizations.js';
+export type {
+	Organization,
+	SavedOrganization,
+	OrganizationMember,
+	OrganizationMemberRow
+} from './organizations.js';
 
 // --- Munkanaptár ------------------------------------------------------------
 
@@ -280,3 +297,47 @@ export type {
 	ProjectReportCategory,
 	ProjectReportDaily
 } from './project-report.js';
+
+// --- Kiküldetések -------------------------------------------------------------
+
+export { getTripPolicy, saveTripPolicy, getFuelPrices, saveFuelPrice } from './trip-settings.js';
+export type { TripPolicy, FuelPrice } from './trip-settings.js';
+
+export { searchPlaces, calculateRoute } from './geo.js';
+export type { PlaceResult, RouteResult } from './geo.js';
+
+export { getTripVehicles, saveTripVehicle, archiveTripVehicle } from './trip-vehicles.js';
+export type { TripVehicle } from './trip-vehicles.js';
+
+export { getTripPlaces, getCompanyTripPlaces, saveTripPlace, deleteTripPlace } from './trip-places.js';
+export type { TripPlace, TripPlaces } from './trip-places.js';
+
+export { getTrip, saveTrip, deleteTrip, setTripOrderedBy } from './trips.js';
+export type { TripRow, TripDetail, SaveTripParams } from './trips.js';
+
+export {
+	getTripMonth,
+	getSettlements,
+	getSettlementDocument,
+	submitSettlement,
+	withdrawSettlement,
+	decideSettlement,
+	markSettlementPaid,
+	reopenSettlement,
+	getSettlementPermissions,
+	getTripOrderers
+} from './trip-settlements.js';
+export type { SettlementKey, TripMonthGroup, SettlementListRow } from './trip-settlements.js';
+
+export type {
+	FuelType,
+	PriceType,
+	ReturnMode,
+	SettlementStatus,
+	SettlementWarning,
+	SettlementDocument,
+	SettlementRow,
+	SettlementCalc,
+	VehicleConsumption,
+	Waypoint
+} from './trip-calc.js';

@@ -48,6 +48,10 @@
 		{
 			labelKey: 'capabilities.group.employees',
 			items: ['employee.view', 'employee.manage']
+		},
+		{
+			labelKey: 'capabilities.group.trips',
+			items: ['trip.record', 'trip.approve', 'trip.manage']
 		}
 	];
 

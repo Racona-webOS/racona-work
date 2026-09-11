@@ -16,7 +16,7 @@
    */
 
   import { onMount } from "svelte";
-  import type { Organization } from "../../server/functions.js";
+  import type { Organization, SavedOrganization } from "../../server/functions.js";
   import {
     getOrganizationStore,
     createOrganizationStore,
@@ -54,6 +54,7 @@
   let showAddMemberForm = $state(false);
   let newOrgName = $state("");
   let newOrgAddress = $state("");
+  let newOrgTaxNumber = $state("");
   let newOrgPhone = $state("");
   let newOrgEmail = $state("");
   let newOrgWebsite = $state("");
@@ -61,6 +62,7 @@
   let editOrgId = $state<number | null>(null);
   let editOrgName = $state("");
   let editOrgAddress = $state("");
+  let editOrgTaxNumber = $state("");
   let editOrgPhone = $state("");
   let editOrgEmail = $state("");
   let editOrgWebsite = $state("");
@@ -96,12 +98,13 @@
       const result = await sdk?.remote?.call("createOrganization", {
         name: newOrgName,
         address: newOrgAddress || undefined,
+        taxNumber: newOrgTaxNumber || undefined,
         phone: newOrgPhone || undefined,
         email: newOrgEmail || undefined,
         website: newOrgWebsite || undefined,
         notes: newOrgNotes || undefined,
       });
-      const newOrg = result as Organization;
+      const newOrg = result as SavedOrganization;
 
       // Hozzáadjuk a store-hoz is
       if (orgStore) {
@@ -117,6 +120,7 @@
       selectedOrg = newOrg;
       newOrgName = "";
       newOrgAddress = "";
+      newOrgTaxNumber = "";
       newOrgPhone = "";
       newOrgEmail = "";
       newOrgWebsite = "";
@@ -125,6 +129,7 @@
 
       // Toast üzenet megjelenítése
       sdk?.ui?.toast(t('organizations.createSuccess', { name: newOrg.name }), 'success');
+      if (newOrg.addressGeocodeFailed) sdk?.ui?.toast(t('organizations.addressNotOnMap'), 'warning');
 
       // Értesítjük a sidebar OrganizationSwitcher-t
       window.dispatchEvent(
@@ -144,6 +149,7 @@
     editOrgId = org.id;
     editOrgName = org.name;
     editOrgAddress = org.address ?? "";
+    editOrgTaxNumber = org.taxNumber ?? "";
     editOrgPhone = org.phone ?? "";
     editOrgEmail = org.email ?? "";
     editOrgWebsite = org.website ?? "";
@@ -164,12 +170,14 @@
         id: editOrgId,
         name: editOrgName,
         address: editOrgAddress || null,
+        taxNumber: editOrgTaxNumber || null,
         phone: editOrgPhone || null,
         email: editOrgEmail || null,
         website: editOrgWebsite || null,
         notes: editOrgNotes || null,
       });
-      const updatedOrg = result as Organization;
+      const updatedOrg = result as SavedOrganization;
+      if (updatedOrg.addressGeocodeFailed) sdk?.ui?.toast(t('organizations.addressNotOnMap'), 'warning');
 
       // Frissítjük a store-ban is
       if (orgStore) {
@@ -350,6 +358,12 @@
                 <span class="detail-value">{selectedOrg.address}</span>
               </div>
             {/if}
+            {#if selectedOrg.taxNumber}
+              <div class="detail-item">
+                <span class="detail-label">{t("organizations.taxNumber")}</span>
+                <span class="detail-value">{selectedOrg.taxNumber}</span>
+              </div>
+            {/if}
             {#if selectedOrg.phone}
               <div class="detail-item">
                 <span class="detail-label">{t("organizations.phone")}</span>
@@ -434,6 +448,15 @@
                 type="text"
                 bind:value={newOrgAddress}
                 placeholder={t("organizations.address.placeholder")}
+                class="input"
+              />
+            </label>
+            <label>
+              <span>{t("organizations.taxNumber")}</span>
+              <input
+                type="text"
+                bind:value={newOrgTaxNumber}
+                placeholder={t("organizations.taxNumber.placeholder")}
                 class="input"
               />
             </label>
@@ -531,6 +554,15 @@
                 type="text"
                 bind:value={editOrgAddress}
                 placeholder="pl. 1234 Budapest, Fő utca 1."
+                class="input"
+              />
+            </label>
+            <label>
+              <span>{t("organizations.taxNumber")}</span>
+              <input
+                type="text"
+                bind:value={editOrgTaxNumber}
+                placeholder={t("organizations.taxNumber.placeholder")}
                 class="input"
               />
             </label>

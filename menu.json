@@ -48,9 +48,31 @@
 	},
 	{
 		"labelKey": "menu.businessTrips",
-		"href": "#business-trips",
+		"href": "#",
 		"icon": "Car",
-		"component": "BusinessTrips"
+		"children": [
+			{
+				"labelKey": "menu.businessTrips.trips",
+				"href": "#business-trips",
+				"icon": "Route",
+				"component": "BusinessTrips",
+				"requiredCapability": "trip.record"
+			},
+			{
+				"labelKey": "menu.businessTrips.settlements",
+				"href": "#business-trips/settlements",
+				"icon": "FileText",
+				"component": "TripSettlements",
+				"requiredCapability": "trip.record"
+			},
+			{
+				"labelKey": "menu.businessTrips.vehicles",
+				"href": "#business-trips/vehicles",
+				"icon": "CarFront",
+				"component": "TripVehicles",
+				"requiredCapability": "trip.record"
+			}
+		]
 	},
 	{
 		"labelKey": "menu.timeAndLeave",
@@ -96,6 +118,13 @@
 				"icon": "BellRing",
 				"component": "LeaveSettings",
 				"requiredCapability": "org.manage"
+			},
+			{
+				"labelKey": "menu.settings.businessTrips",
+				"href": "#settings/business-trips",
+				"icon": "Fuel",
+				"component": "TripSettings",
+				"requiredCapability": "trip.manage"
 			},
 			{
 				"labelKey": "menu.settings.permissions",

@@ -1,6 +1,8 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
 import SimpleDataTable from '@racona/sdk/dev/components/SimpleDataTable.svelte';
+// Élesben a core adja (sdk.libs.maplibre); dev módban a mock SDK-nak adjuk át
+import * as svelteMaplibreGl from 'svelte-maplibre-gl';
 
 async function initDevSDK() {
 	if (typeof window !== 'undefined' && !(window as any).webOS) {
@@ -17,7 +19,13 @@ async function initDevSDK() {
 		}
 		const defaultLocale = 'hu' in translations ? 'hu' : (Object.keys(translations)[0] ?? 'en');
 
-		MockWebOSSDK.initialize({ i18n: { locale: defaultLocale, translations } }, { DataTable: SimpleDataTable });
+		MockWebOSSDK.initialize(
+			{
+				i18n: { locale: defaultLocale, translations },
+				libs: { mockLibraries: { 'svelte-maplibre-gl': svelteMaplibreGl } }
+			},
+			{ DataTable: SimpleDataTable }
+		);
 
 		const DEV_SERVER_URL = 'http://localhost:5175';
 		if ((window as any).webOS?.remote) {
