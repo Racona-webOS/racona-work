@@ -63,7 +63,8 @@ Kérelem (leave_requests)            Napok (leave_days)
 
  beadás ──▶ pending ──jóváhagyás──▶ approved ──▶ munkanaponként egy sor
                │                       │
-               └──elutasítás──▶ rejected           HR naptár: nap törlése ──▶ a sor törlődik,
+               ├──elutasítás──▶ rejected           HR naptár: nap törlése ──▶ a sor törlődik,
+               └──visszavonás (a dolgozó)──▶ withdrawn
                                                    a kérelem nem változik (D1)
  HR naptár: nap felvétele ──▶ szakaszonként új approved kérelem ──▶ napok
  HR: kérelem törlése ──▶ a kérelem és a napjai törlődnek (D14)
@@ -110,6 +111,8 @@ Kérelem (leave_requests)            Napok (leave_days)
 **K10. Rögzítés dátuma.** A kérelmek listájában új „Rögzítve” oszlop (`created_at`, dátum és idő), rendezhető. Alapértelmezett rendezés marad a rögzítés szerint csökkenő.
 
 **K10/b. Ebből érvényes.** A kérelmek listájában a kért napok mellett külön oszlop mutatja, hány nap tartozik ma a kérelemhez a `leave_days` táblából. Jóváhagyott kérelemnél, ha kevesebb a kértnél (a HR a naptárban törölt belőle), kiemelve, a tooltip megmondja, hány napot töröltek. Függő és elutasított kérelemnél üres.
+
+**K12/b. Függő kérelem visszavonása.** A dolgozó a saját függő kérelmét visszavonhatja: a saját naptárban a kérelem napjára kattintva (megerősítés után), vagy a kérelmek listájának műveletéből. A kérelem `withdrawn` státuszba kerül, nem törlődik. Aki a beadásról értesült, rendszeren belüli értesítést kap a visszavonásról; email nincs.
 
 **K11. Értesítések.** A dolgozó értesítést kap a naptárból törölt napokról (a napok listájával) és a felvett szakaszokról (időszakonként a munkanapok számával), rendszeren belül és emailben (D16). A műveletet végző HR nem kap értesítést a saját napjairól.
 
@@ -242,6 +245,7 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 - [x] Szerkesztés a felületen: jelölések, típusválasztó, összegzősáv a szerver előnézetéből, mentés, elvetés, megerősítés szűrőváltásnál (K8, K9)
 - [x] Értesítések és a két új email sablon: `leave_days_removed`, `leave_days_added` (K11, D16)
 - [x] Locale (hu, en)
+- [x] Függő kérelem visszavonása a saját naptárban és a listában (K12/b): `withdrawLeaveRequest`, `withdrawn` státusz
 - [x] Éves nézet és csapatnézet (K6/b); a naptár lekérdezése egy évre is engedélyezett
 - [x] „Ebből érvényes” oszlop a kérelmek listájában (K10/b): a szerver a `leave_days` számát adja (`effectiveDays`), rendezhető
 - [x] Kézi ellenőrzés a dev szerveren: a spec példája három kérelem (péntek és hétfő egy szakasz); nem munkanap, foglalt nap, függő kérelem napja, nem létező nap törlése, tiltott típus, egyszerre felvett és törölt nap, keret túllépése mind hibával áll meg; a kérelem `days` mezője a napok törlése után is változatlan (D1)
@@ -255,7 +259,6 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 
 ### Későbbi ötletek
 
-- A dolgozó saját naptárában a függő kérelem visszavonása.
 - Figyelmeztetés a kiküldetéseknél, ha az út szabadságos napra esik (a kiküldetés spec 2. fázisa ide kapcsolódik).
 
 ## 11. Kockázatok és ellenőrzendők

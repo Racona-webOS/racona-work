@@ -11,7 +11,11 @@ import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { requireCapability, requireSelfOrCapability } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
-import { notifyLeaveRequestCreated, notifyLeaveRequestDecision } from './leave-notifications.js';
+import {
+	notifyLeaveRequestCreated,
+	notifyLeaveRequestDecision,
+	notifyLeaveRequestWithdrawn
+} from './leave-notifications.js';
 import { validateChildLeave } from './leave-allowances.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
 import { logBalanceChange } from './leave-history.js';
@@ -640,6 +644,79 @@ export async function rejectLeaveRequest(
 	);
 
 	return leaveRequest;
+}
+
+/**
+ * Függő kérelem visszavonása a beadó dolgozó által.
+ *
+ * A kérelem `withdrawn` státuszba kerül, hogy a nyoma megmaradjon (nem
+ * törlődik). Csak a saját, még függő kérelem vonható vissza; a beadásról
+ * értesített dolgozók rendszeren belüli értesítést kapnak a visszavonásról.
+ */
+export async function withdrawLeaveRequest(
+	params: { id: number },
+	context: RemoteContext
+): Promise<LeaveRequest> {
+	const requestResult = await context.db.query(
+		`SELECT lr.id, lr.employee_id, lr.leave_type, lr.start_date, lr.end_date, lr.days, lr.status,
+		        e.organization_id, e.user_id
+		 FROM app__racona_work.leave_requests lr
+		 JOIN app__racona_work.employees e ON e.id = lr.employee_id
+		 WHERE lr.id = $1`,
+		[params.id]
+	);
+	if (requestResult.rows.length === 0) {
+		throw new Error(`Nem található szabadságkérelem a megadott azonosítóval: ${params.id}`);
+	}
+	const req = requestResult.rows[0];
+
+	await requireCapability(context, req.organization_id, 'leave.request');
+	if (!isDevMode(context) && !isCoreAdmin(context)) {
+		const callerUserId = await resolveUserId(context);
+		if (Number(req.user_id) !== Number(callerUserId)) {
+			throw new Error('Csak a saját kérelmedet vonhatod vissza.');
+		}
+	}
+	if (req.status !== 'pending') {
+		throw new Error(`Csak függő kérelem vonható vissza (jelenlegi státusz: ${req.status}).`);
+	}
+
+	const updateResult = await context.db.query(
+		`UPDATE app__racona_work.leave_requests
+		 SET status = 'withdrawn', updated_at = NOW()
+		 WHERE id = $1 AND status = 'pending'
+		 RETURNING id, employee_id, leave_type, start_date, end_date, days, status, reason, approved_by, child_id, created_at, updated_at`,
+		[params.id]
+	);
+	if (updateResult.rows.length === 0) {
+		throw new Error('A kérelmet közben már elbírálták.');
+	}
+	const row = updateResult.rows[0];
+
+	await notifyLeaveRequestWithdrawn(context, {
+		id: row.id,
+		employeeId: row.employee_id,
+		organizationId: req.organization_id,
+		leaveType: row.leave_type,
+		startDate: toIsoDay(row.start_date),
+		endDate: toIsoDay(row.end_date),
+		days: row.days
+	});
+
+	return {
+		id: row.id,
+		employeeId: row.employee_id,
+		leaveType: row.leave_type,
+		startDate: row.start_date,
+		endDate: row.end_date,
+		days: row.days,
+		status: row.status,
+		reason: row.reason ?? null,
+		approvedBy: row.approved_by ?? null,
+		childId: row.child_id ?? null,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at
+	};
 }
 
 /**

@@ -267,6 +267,18 @@
 	}
 
 	// --- Új kérelem ---
+	async function withdrawRequest(row: LeaveRequestRow) {
+		if (!window.confirm(t('leaveRequests.withdrawConfirm'))) return;
+		try {
+			await sdk?.remote?.call('withdrawLeaveRequest', { id: row.id });
+			calendarRefresh += 1;
+			sdk?.ui?.toast(t('leaveRequests.withdrawn'), 'success');
+			loadData();
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
+		}
+	}
+
 	async function openNewRequestModal() {
 		showNewRequestModal = true;
 		newReqType = 'annual';
@@ -473,13 +485,18 @@
 		const map: Record<string, string> = {
 			pending: t('leaveRequests.status.pending'),
 			approved: t('leaveRequests.status.approved'),
-			rejected: t('leaveRequests.status.rejected')
+			rejected: t('leaveRequests.status.rejected'),
+			withdrawn: t('leaveRequests.status.withdrawn')
 		};
 		return map[status] ?? status;
 	}
 
 	function statusClass(status: string): string {
-		return { pending: 'badge-pending', approved: 'badge-approved', rejected: 'badge-rejected' }[status] ?? 'badge-pending';
+		return (
+			{ pending: 'badge-pending', approved: 'badge-approved', rejected: 'badge-rejected', withdrawn: 'badge-withdrawn' }[
+				status
+			] ?? 'badge-pending'
+		);
 	}
 
 	// --- Oszlopok ---
@@ -494,8 +511,13 @@
 		};
 
 		const actionsColumn = createActionsColumn((row: LeaveRequestRow) => {
-			// Ha a user nem manager, nem ajánlunk fel semmilyen action-t.
-			if (!canApprove) return [];
+			// A dolgozó a saját függő kérelmét visszavonhatja; a jóváhagyó is, ha a sajátja
+			const isOwnPending = row.status === 'pending' && !!myEmployee && row.employeeId === myEmployee.id;
+			if (!canApprove) {
+				return isOwnPending
+					? [{ label: t('leaveRequests.withdraw'), onClick: () => withdrawRequest(row), variant: 'destructive' as const }]
+					: [];
+			}
 
 			if (row.status === 'pending') {
 				return [
@@ -508,7 +530,10 @@
 						onClick: () => rejectRequest(row),
 						variant: 'destructive' as const,
 						separator: true
-					}
+					},
+					...(isOwnPending
+						? [{ label: t('leaveRequests.withdraw'), onClick: () => withdrawRequest(row), variant: 'destructive' as const }]
+						: [])
 				];
 			}
 			if (row.status === 'approved') {
@@ -1028,6 +1053,7 @@
 	:global(.text-muted) { color: var(--muted-foreground, #71717a); }
 	:global(.badge-approved) { background: #dcfce7; color: #166534; }
 	:global(.badge-rejected) { background: #fee2e2; color: #991b1b; }
+	:global(.badge-withdrawn) { background: #e4e4e7; color: #3f3f46; }
 
 	/* Modal */
 	.modal-overlay {
@@ -1202,4 +1228,5 @@
 	:global(.dark) :global(.badge-pending) { background: oklch(0.3 0.05 60); color: #fde68a; }
 	:global(.dark) :global(.badge-approved) { background: oklch(0.25 0.05 145); color: #86efac; }
 	:global(.dark) :global(.badge-rejected) { background: oklch(0.25 0.05 20); color: #fca5a5; }
+	:global(.dark) :global(.badge-withdrawn) { background: oklch(0.3 0 0); color: #d4d4d8; }
 </style>

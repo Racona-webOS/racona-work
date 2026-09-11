@@ -5,6 +5,7 @@
  *   - új kérelem → a szervezet beállításaiban megjelölt dolgozók kapják (8.8)
  *   - elbírálás / törlés → a kérelmet beadó dolgozó kapja (8.9)
  *   - naptáras mentés (napok törölve, szabadság rögzítve) → a dolgozó kapja
+ *   - visszavonás → a beadásról értesített dolgozók kapják (csak rendszeren belül)
  *
  * Minden küldés best-effort: a hibát naplózzuk, de a kérelem művelete nem
  * gördül vissza, és a hívó nem kap hibát. A műveletet végző felhasználó nem
@@ -360,6 +361,61 @@ function reasonBlockHtml(reason: string): string {
 		`<p style="margin: 8px 0 0; font-size: 14px; color: #18181b;"><strong>${label}:</strong> ` +
 		`${escapeHtml(reason).replace(/\n/g, '<br>')}</p>`
 	);
+}
+
+/**
+ * A dolgozó visszavonta a függő kérelmét: rendszeren belüli értesítés azoknak,
+ * akik a beadásról is értesültek. Email nincs, mert nincs teendő.
+ *
+ * @param context - Remote hívás kontextus.
+ * @param request - A visszavont kérelem.
+ */
+export async function notifyLeaveRequestWithdrawn(
+	context: RemoteContext,
+	request: LeaveNotificationRequest
+): Promise<void> {
+	try {
+		const settingsResult = await context.db.query(
+			`SELECT value FROM ${SCHEMA}.kv_store WHERE key = $1`,
+			[notifiersSettingsKey(request.organizationId)]
+		);
+		const notifierEmployeeIds = toIdList(settingsResult.rows[0]?.value);
+		if (notifierEmployeeIds.length === 0) return;
+
+		const actorUserId = await resolveActorUserId(context);
+		const recipientResult = await context.db.query(
+			`SELECT DISTINCT u.id AS user_id, u.full_name, u.email
+			   FROM ${SCHEMA}.employees e
+			   JOIN auth.users u ON u.id = e.user_id
+			  WHERE e.id = ANY($1::int[])
+			    AND e.organization_id = $2
+			    AND e.status = 'active'`,
+			[notifierEmployeeIds, request.organizationId]
+		);
+		const userIds = recipientResult.rows
+			.map(toRecipient)
+			.filter((r) => r.userId !== actorUserId)
+			.map((r) => r.userId);
+		if (userIds.length === 0) return;
+
+		const employee = await loadEmployee(context, request.employeeId);
+		const employeeName = employee?.name ?? '—';
+		const leaveType = leaveTypeLabel(request.leaveType);
+		const period = formatPeriod(request.startDate, request.endDate);
+
+		await sendInApp(context, {
+			userIds,
+			title: { hu: 'Szabadságkérelem visszavonva', en: 'Leave request withdrawn' },
+			message: {
+				hu: `${employeeName}: ${leaveType.hu}, ${period.hu} (${request.days} munkanap)`,
+				en: `${employeeName}: ${leaveType.en}, ${period.en} (${workingDaysEn(request.days)})`
+			},
+			type: 'info',
+			data: { leaveRequestId: request.id, organizationId: request.organizationId }
+		});
+	} catch (err) {
+		console.error('[Work] Szabadságkérelem visszavonás értesítés sikertelen:', err);
+	}
 }
 
 // --- Naptáras mentés ----------------------------------------------------------

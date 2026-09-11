@@ -324,6 +324,7 @@
       pending: t("leaveRequests.status.pending"),
       approved: t("leaveRequests.status.approved"),
       rejected: t("leaveRequests.status.rejected"),
+      withdrawn: t("leaveRequests.status.withdrawn"),
     };
     return map[status] ?? status;
   }
@@ -333,6 +334,7 @@
       pending: "badge-pending",
       approved: "badge-approved",
       rejected: "badge-rejected",
+      withdrawn: "badge-withdrawn",
     };
     return map[status] ?? "badge-pending";
   }
@@ -848,6 +850,10 @@
     background: #fee2e2;
     color: #991b1b;
   }
+  .badge-withdrawn {
+    background: #e4e4e7;
+    color: #3f3f46;
+  }
 
   /* Loading / error */
   .error-state {
@@ -931,6 +937,10 @@
   :global(.dark) .badge-rejected {
     background: oklch(0.25 0.05 20);
     color: #fca5a5;
+  }
+  :global(.dark) .badge-withdrawn {
+    background: oklch(0.3 0 0);
+    color: #d4d4d8;
   }
 
   :global(.dark) .btn-retry {

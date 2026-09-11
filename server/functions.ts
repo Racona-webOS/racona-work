@@ -90,6 +90,7 @@ export {
 	createLeaveRequest,
 	approveLeaveRequest,
 	rejectLeaveRequest,
+	withdrawLeaveRequest,
 	deleteLeaveRequest,
 	getLeaveBalances,
 	setLeaveBalance

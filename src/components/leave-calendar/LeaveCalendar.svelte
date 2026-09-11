@@ -8,6 +8,9 @@
 	Három nézet: havi rács, éves nézet (tizenkét kis havi rács) és csapatnézet
 	(soronként egy dolgozó, oszloponként egy nap). A csapatnézet csak olvasásra.
 
+	Saját nézetben a dolgozó a függő kérelme napjára kattintva visszavonhatja
+	a kérelmet (megerősítés után).
+
 	Szerkesztés (leave.approve joggal, kiválasztott dolgozóval, havi és éves
 	nézetben): üres munkanapra
 	kattintva a nap felveendő, meglévőre kattintva törlendő. A jelölések a
@@ -180,7 +183,47 @@
 		plan = null;
 	}
 
+	// --- Saját függő kérelem visszavonása -----------------------------------
+
+	/** Saját nézetben a függő kérelem napja kattintható: visszavonás. */
+	const canWithdraw = $derived(lockEmployee && !!employeeId);
+	let withdrawing = $state(false);
+
+	/** A kérelem napjai a betöltött időszakból, a megerősítő szöveghez. */
+	function pendingPeriod(leaveRequestId: number): string {
+		const days = (data?.pending ?? []).filter((d) => d.leaveRequestId === leaveRequestId).map((d) => d.day);
+		if (days.length === 0) return '';
+		const first = days[0];
+		const last = days[days.length - 1];
+		return first === last ? formatDay(first) : `${formatDay(first)} – ${formatDay(last)}`;
+	}
+
+	function formatDay(iso: string): string {
+		return new Date(`${iso}T00:00:00Z`).toLocaleDateString('hu-HU', { timeZone: 'UTC' });
+	}
+
+	async function withdrawPending(iso: string) {
+		const pending = (pendingMap.get(iso) ?? []).find((d) => d.employeeId === employeeId);
+		if (!canWithdraw || !pending || withdrawing) return;
+		if (!window.confirm(t('leaveCalendar.withdrawConfirm', { period: pendingPeriod(pending.leaveRequestId) }))) return;
+		withdrawing = true;
+		try {
+			await sdk.remote.call('withdrawLeaveRequest', { id: pending.leaveRequestId });
+			sdk?.ui?.toast(t('leaveCalendar.withdrawn'), 'success');
+			await loadCalendar();
+			onSaved?.();
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
+		} finally {
+			withdrawing = false;
+		}
+	}
+
 	function toggleDay(iso: string) {
+		if (canWithdraw) {
+			withdrawPending(iso);
+			return;
+		}
 		if (!editable || !isWorkingDay(iso)) return;
 		if ((pendingMap.get(iso) ?? []).length > 0) return;
 		const hasApproved = (dayMap.get(iso) ?? []).length > 0;
@@ -439,6 +482,8 @@
 
 	{#if editable}
 		<p class="hint">{view === 'team' ? t('leaveCalendar.team.readOnly') : t('leaveCalendar.editHint')}</p>
+	{:else if canWithdraw}
+		<p class="hint">{t('leaveCalendar.withdrawHint')}</p>
 	{/if}
 
 	<div class="legend">
@@ -477,7 +522,9 @@
 					{@const pending = pendingMap.get(iso) ?? []}
 					{@const shown = approved.slice(0, MAX_NAMES)}
 					{@const extra = approved.length - shown.length}
-					{@const clickable = editable && isWorkingDay(iso) && pending.length === 0}
+					{@const clickable = canWithdraw
+						? pending.length > 0
+						: editable && isWorkingDay(iso) && pending.length === 0}
 					<!-- A szerep és a tabindex csak kattintható cellán van; a statikus ellenőrző ezt nem látja -->
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<div
@@ -546,7 +593,9 @@
 						{:else}
 							{@const approved = dayMap.get(iso) ?? []}
 							{@const pending = pendingMap.get(iso) ?? []}
-							{@const clickable = editable && isWorkingDay(iso) && pending.length === 0}
+							{@const clickable = canWithdraw
+								? pending.length > 0
+								: editable && isWorkingDay(iso) && pending.length === 0}
 							<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 							<div
 								class="mini {filterEmployeeId && approved.length > 0 ? typeClass(approved[0].leaveType) : ''}"
