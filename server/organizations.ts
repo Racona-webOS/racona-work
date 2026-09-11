@@ -562,7 +562,37 @@ export async function removeEmployeeFromOrganization(
 
 	const userId = employeeCheck.rows[0].user_id;
 
-	// ÚJ: Töröljük az employee rekordot (CASCADE törli a kapcsolódó adatokat)
+	// A nyilvántartási adatokat (szabadság, munkaidő, kiküldetés) meg kell
+	// őrizni, ezért akinek ilyen van, azt nem töröljük: kilépettre kell állítani.
+	// Az adatbázis is tiltaná (a kérelmek és keretek hivatkozása nem CASCADE),
+	// de így érthető üzenetet kap a felület.
+	const records = await context.db.query(
+		`SELECT
+		    EXISTS (SELECT 1 FROM app__racona_work.leave_requests WHERE employee_id = $1) AS leave_requests,
+		    EXISTS (SELECT 1 FROM app__racona_work.leave_requests WHERE approved_by = $1) AS approved_requests,
+		    EXISTS (SELECT 1 FROM app__racona_work.leave_balances WHERE employee_id = $1) AS leave_balances,
+		    EXISTS (SELECT 1 FROM app__racona_work.work_entries WHERE employee_id = $1) AS work_entries,
+		    EXISTS (SELECT 1 FROM app__racona_work.trips WHERE employee_id = $1) AS trips,
+		    EXISTS (SELECT 1 FROM app__racona_work.trip_settlements WHERE employee_id = $1) AS trip_settlements`,
+		[params.employeeId]
+	);
+	const found = records.rows[0] ?? {};
+	const kept = [
+		found.leave_requests && 'szabadságkérelmek',
+		found.approved_requests && 'általa jóváhagyott kérelmek',
+		found.leave_balances && 'szabadságkeretek',
+		found.work_entries && 'munkaidő-bejegyzések',
+		(found.trips || found.trip_settlements) && 'kiküldetések'
+	].filter(Boolean);
+	if (kept.length > 0) {
+		throw new Error(
+			`A dolgozó nem távolítható el, mert megőrzendő adatai vannak (${kept.join(', ')}). ` +
+				'Helyette a dolgozó adatlapján, az Alapadatoknál állítsd a státuszát Inaktívra, és add meg a kilépés dátumát.'
+		);
+	}
+
+	// Adat nélküli (pl. tévedésből felvett) dolgozó: a sora és a kapcsolódó,
+	// nem megőrzendő adatai (adatlap, projekttagság, autók, helyek) törlődnek (CASCADE)
 	await context.db.query(
 		`DELETE FROM app__racona_work.employees
 		 WHERE organization_id = $1 AND id = $2`,
