@@ -9,8 +9,8 @@
 	(soronként egy dolgozó, oszloponként egy nap). A csapatnézet csak olvasásra.
 
 	Saját nézetben a dolgozó a függő kérelme napjára kattintva visszavonhatja
-	a kérelmet (megerősítés után). Szerkesztés nélkül a napra kattintva a rács
-	alatt részletkártya mutatja a nap összes bejegyzését (a tooltip helyett).
+	a kérelmet (megerősítés után). Szerkesztés nélkül a napra kattintva a nap
+	mellett felugró doboz mutatja a nap összes bejegyzését (a tooltip helyett).
 
 	Szerkesztés (leave.approve joggal, kiválasztott dolgozóval, havi és éves
 	nézetben): üres munkanapra
@@ -232,8 +232,44 @@
 
 	// --- Részletek ------------------------------------------------------------
 
-	/** A kiválasztott nap, aminek a bejegyzései a rács alatt látszanak. */
+	/** A kiválasztott nap, aminek a bejegyzései a felugró dobozban látszanak. */
 	let detailsDay = $state<string | null>(null);
+
+	/** A komponens gyökere: ehhez képest pozicionáljuk a felugró dobozt. */
+	let rootEl = $state<HTMLElement | null>(null);
+
+	/** A kattintott cella helye a gyökérhez képest. */
+	let detailsAnchor = $state<{ left: number; top: number; width: number; height: number } | null>(null);
+
+	const POPUP_WIDTH = 288;
+	const POPUP_GAP = 8;
+
+	/** A doboz helye: a cella jobb oldalán, ha nem fér ki, a bal oldalán. */
+	const popupStyle = $derived.by(() => {
+		if (!detailsAnchor || !rootEl) return '';
+		const rootWidth = rootEl.clientWidth;
+		let left = detailsAnchor.left + detailsAnchor.width + POPUP_GAP;
+		if (left + POPUP_WIDTH > rootWidth) left = detailsAnchor.left - POPUP_WIDTH - POPUP_GAP;
+		if (left < 0) left = Math.max(0, rootWidth - POPUP_WIDTH);
+		return `left: ${Math.round(left)}px; top: ${Math.round(detailsAnchor.top)}px; width: ${POPUP_WIDTH}px;`;
+	});
+
+	function closeDetails() {
+		detailsDay = null;
+		detailsAnchor = null;
+	}
+
+	/** Kattintás a dobozon és a napokon kívül, vagy Escape: bezárás. */
+	function onWindowPointerDown(event: PointerEvent) {
+		if (!detailsDay) return;
+		const target = event.target as HTMLElement | null;
+		if (target?.closest('.details-popup, .cell, .mini')) return;
+		closeDetails();
+	}
+
+	function onWindowKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape' && detailsDay) closeDetails();
+	}
 
 	const detailsApproved = $derived(detailsDay ? (dayMap.get(detailsDay) ?? []) : []);
 	const detailsPending = $derived(detailsDay ? (pendingMap.get(detailsDay) ?? []) : []);
@@ -248,9 +284,21 @@
 		});
 	}
 
-	function openDetails(iso: string) {
+	function openDetails(iso: string, cell: HTMLElement | null) {
 		const count = (dayMap.get(iso)?.length ?? 0) + (pendingMap.get(iso)?.length ?? 0);
-		detailsDay = count > 0 && detailsDay !== iso ? iso : null;
+		if (count === 0 || detailsDay === iso || !cell || !rootEl) {
+			closeDetails();
+			return;
+		}
+		const cellRect = cell.getBoundingClientRect();
+		const rootRect = rootEl.getBoundingClientRect();
+		detailsAnchor = {
+			left: cellRect.left - rootRect.left,
+			top: cellRect.top - rootRect.top,
+			width: cellRect.width,
+			height: cellRect.height
+		};
+		detailsDay = iso;
 	}
 
 	/**
@@ -264,13 +312,13 @@
 		return approved + pending > 0;
 	}
 
-	function toggleDay(iso: string) {
+	function toggleDay(iso: string, cell: HTMLElement | null = null) {
 		if (canWithdraw && (pendingMap.get(iso) ?? []).some((d) => d.employeeId === employeeId)) {
 			withdrawPending(iso);
 			return;
 		}
 		if (!editable) {
-			openDetails(iso);
+			openDetails(iso, cell);
 			return;
 		}
 		if (!isWorkingDay(iso)) return;
@@ -361,7 +409,7 @@
 		if (!sdk?.remote || !organizationId) return;
 		loading = true;
 		error = null;
-		detailsDay = null;
+		closeDetails();
 		try {
 			data = await sdk.remote.call('getLeaveCalendar', {
 				organizationId,
@@ -472,7 +520,9 @@
 	}
 </script>
 
-<div class="leave-calendar">
+<svelte:window onpointerdown={onWindowPointerDown} onkeydown={onWindowKeydown} />
+
+<div class="leave-calendar" bind:this={rootEl}>
 	<div class="toolbar">
 		<div class="month-nav">
 			<button class="btn-secondary" onclick={prevMonth} aria-label={t('leaveCalendar.prev')}>‹</button>
@@ -584,11 +634,11 @@
 						title={cellTitle(iso)}
 						role={clickable ? 'button' : undefined}
 						tabindex={clickable ? 0 : undefined}
-						onclick={() => toggleDay(iso)}
+						onclick={(e) => toggleDay(iso, e.currentTarget)}
 						onkeydown={(e) => {
 							if (clickable && (e.key === 'Enter' || e.key === ' ')) {
 								e.preventDefault();
-								toggleDay(iso);
+								toggleDay(iso, e.currentTarget);
 							}
 						}}
 					>
@@ -655,11 +705,11 @@
 								title={cellTitle(iso)}
 								role={clickable ? 'button' : undefined}
 								tabindex={clickable ? 0 : undefined}
-								onclick={() => toggleDay(iso)}
+								onclick={(e) => toggleDay(iso, e.currentTarget)}
 								onkeydown={(e) => {
 									if (clickable && (e.key === 'Enter' || e.key === ' ')) {
 										e.preventDefault();
-										toggleDay(iso);
+										toggleDay(iso, e.currentTarget);
 									}
 								}}
 							>
@@ -716,11 +766,11 @@
 	</div>
 	{/if}
 
-	{#if detailsDay && detailsApproved.length + detailsPending.length > 0}
-		<div class="details">
+	{#if detailsDay && detailsAnchor && detailsApproved.length + detailsPending.length > 0}
+		<div class="details-popup" style={popupStyle} role="dialog" aria-label={formatDayLong(detailsDay)}>
 			<div class="details-head">
 				<strong>{formatDayLong(detailsDay)}</strong>
-				<button class="btn-secondary" onclick={() => (detailsDay = null)}>{t('leaveCalendar.details.close')}</button>
+				<button class="details-close" onclick={closeDetails} aria-label={t('leaveCalendar.details.close')}>×</button>
 			</div>
 			<ul class="details-list">
 				{#each detailsApproved as d (d.leaveRequestId + ':' + d.employeeId)}
@@ -790,6 +840,7 @@
 
 <style>
 	.leave-calendar {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
@@ -1164,7 +1215,9 @@
 		box-shadow: 0 0 0 2px var(--color-primary, #3730a3);
 	}
 
-	.details {
+	.details-popup {
+		position: absolute;
+		z-index: 30;
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
@@ -1172,7 +1225,22 @@
 		border: 1px solid var(--color-border, #e2e8f0);
 		border-radius: 0.5rem;
 		background: var(--color-background, #fff);
+		box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
 		font-size: 0.875rem;
+	}
+
+	.details-close {
+		border: none;
+		background: transparent;
+		color: var(--muted-foreground, #71717a);
+		font-size: 1.1rem;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0 0.2rem;
+	}
+
+	.details-close:hover {
+		color: inherit;
 	}
 
 	.details-head {
@@ -1203,7 +1271,7 @@
 		text-align: center;
 	}
 
-	:global(.dark) .details {
+	:global(.dark) .details-popup {
 		background: var(--color-card, oklch(0.2 0 0));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}

@@ -153,7 +153,7 @@
 	"leaveCalendar.withdrawHint": "Click a day of your pending request to withdraw it.",
 	"leaveCalendar.withdrawConfirm": "Withdraw the request for {period}?",
 	"leaveCalendar.withdrawn": "The request has been withdrawn.",
-	"leaveCalendar.detailsHint": "Click a day to see its details below the grid.",
+	"leaveCalendar.detailsHint": "Click a day to see its details next to it.",
 	"leaveCalendar.details.close": "Close",
 	"leaveRequests.type.annual": "Annual Leave",
 	"leaveRequests.type.sick": "Sick Leave",

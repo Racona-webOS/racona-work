@@ -102,7 +102,7 @@ Kérelem (leave_requests)            Napok (leave_days)
 
 **K6/b. Éves nézet és csapatnézet.** A naptár fölött nézetváltó: Hónap, Év, Csapat. Az éves nézet tizenkét kis havi rács; szűrő nélkül a cellában a távol lévők száma, szűrővel a nap típusának színe. Szerkeszteni a havi és az éves nézetben lehet. A csapatnézet a hónap napjai oszloponként, soronként egy aktív dolgozó (szűrővel csak ő), a cella a típus színét kapja, a függő kérelem szaggatott; a sor végén a hónap jóváhagyott napjainak száma. Csak olvasásra. Saját nézetben nincs csapatnézet.
 
-**K6/c. Napi részletek.** Szerkesztés nélkül (nincs kiválasztott dolgozó, vagy nincs jóváhagyó jog) a havi és az éves nézetben a napra kattintva a rács alatt részletkártya mutatja a nap összes bejegyzését: név és típus (a típus csak a jóváhagyónak), a függő kérelmek külön jelölve. Ugyanarra a napra kattintva bezárul.
+**K6/c. Napi részletek.** Szerkesztés nélkül (nincs kiválasztott dolgozó, vagy nincs jóváhagyó jog) a havi és az éves nézetben a napra kattintva a nap mellett felugró doboz mutatja a nap összes bejegyzését: név és típus (a típus csak a jóváhagyónak), a függő kérelmek külön jelölve. Ugyanarra a napra kattintva, kívülre kattintva vagy Escape-re bezárul; jobbra nyílik, ha nem fér ki, balra.
 
 **K7. Dolgozószűrő.** A naptár fölött dolgozóválasztó (a szervezet aktív dolgozói). Kiválasztott dolgozóval csak az ő napjai látszanak, típusonként színezve (jelmagyarázattal).
 
@@ -248,7 +248,7 @@ A kérelem jóváhagyása, elutasítása és törlése a mostani `leave_request_
 - [x] Értesítések és a két új email sablon: `leave_days_removed`, `leave_days_added` (K11, D16)
 - [x] Locale (hu, en)
 - [x] Függő kérelem visszavonása a saját naptárban és a listában (K12/b): `withdrawLeaveRequest`, `withdrawn` státusz
-- [x] Napi részletkártya kattintásra a havi és az éves nézetben (K6/c)
+- [x] Napi részletek felugró dobozban kattintásra a havi és az éves nézetben (K6/c)
 - [x] Éves nézet és csapatnézet (K6/b); a naptár lekérdezése egy évre is engedélyezett
 - [x] „Ebből érvényes” oszlop a kérelmek listájában (K10/b): a szerver a `leave_days` számát adja (`effectiveDays`), rendezhető
 - [x] Kézi ellenőrzés a dev szerveren: a spec példája három kérelem (péntek és hétfő egy szakasz); nem munkanap, foglalt nap, függő kérelem napja, nem létező nap törlése, tiltott típus, egyszerre felvett és törölt nap, keret túllépése mind hibával áll meg; a kérelem `days` mezője a napok törlése után is változatlan (D1)
