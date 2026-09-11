@@ -23,7 +23,7 @@ import { recalculateEmployeeBalances } from './leave-profile.js';
 import { BALANCE_LEAVE_TYPES, CHILD_LEAVE_TYPES, consumesAnnualBalance, isLeaveType } from './leave-types.js';
 import { validateChildLeave } from './leave-allowances.js';
 import type { LeaveType } from './leave-types.js';
-import { isDayClosed, loadClosedYear } from './leave-closing.js';
+import { loadLeaveYearState, lockedDayErrors } from './leave-closing.js';
 import {
 	CALENDAR_LEAVE_TYPES,
 	groupDaysByYear,
@@ -263,6 +263,8 @@ export interface LeaveCalendar {
 	canManage: boolean;
 	/** A legutolsó lezárt év; eddig (és ez előtt) nem lehet módosítani. */
 	closedYear: number | null;
+	/** A legutolsó megnyitott év; a későbbi évekre még nem lehet rögzíteni (null: egy sincs). */
+	openedYear: number | null;
 }
 
 /** Legfeljebb ennyi nap kérhető le egyszerre (egy év, az éves nézethez). */
@@ -322,7 +324,7 @@ export async function getLeaveCalendar(
 		: `${where} AND lr.employee_id = $${queryParams.length + 1}`;
 	const pendingParams = canManage ? queryParams : [...queryParams, ownEmployeeId ?? 0];
 
-	const [daysResult, pendingResult, overrides, closedYear] = await Promise.all([
+	const [daysResult, pendingResult, overrides, yearState] = await Promise.all([
 		context.db.query(
 			`SELECT to_char(ld.day, 'YYYY-MM-DD') AS day, ld.employee_id, ld.leave_type, ld.leave_request_id,
 			        u.full_name AS employee_name
@@ -347,7 +349,7 @@ export async function getLeaveCalendar(
 			pendingParams
 		),
 		getWorkCalendarOverrides(context, organizationId, from, to),
-		loadClosedYear(context.db, organizationId)
+		loadLeaveYearState(context.db, organizationId)
 	]);
 
 	const days: LeaveCalendarDay[] = daysResult.rows.map((row: any) => ({
@@ -381,7 +383,8 @@ export async function getLeaveCalendar(
 		pending,
 		calendar: [...overrides].map(([day, isWorking]) => ({ day, isWorkingDay: isWorking })),
 		canManage,
-		closedYear
+		closedYear: yearState.closedYear,
+		openedYear: yearState.openedYear
 	};
 }
 
@@ -530,12 +533,8 @@ async function planCalendarChanges(
 			: new Map<string, boolean>();
 	const working = (day: string) => isWorkingDay(day, overrides);
 
-	// Lezárt évet nem lehet módosítani
-	const closedYear = await loadClosedYear(db, input.organizationId);
-	const closedDays = all.filter((d) => isDayClosed(d, closedYear));
-	if (closedDays.length > 0) {
-		errors.push(`A(z) ${closedYear}. évig az évek le vannak zárva, ott nem lehet módosítani: ${closedDays.join(', ')}.`);
-	}
+	// Lezárt és meg nem nyitott évet nem lehet módosítani
+	errors.push(...lockedDayErrors(all, await loadLeaveYearState(db, input.organizationId)));
 
 	// Felvétel: munkanap, szabad, és nincs rá függő kérelem
 	const notWorking = input.addDays.filter((d) => !working(d));
@@ -814,11 +813,7 @@ async function planRequestBatch(
 			: new Map<string, boolean>();
 	const working = (day: string) => isWorkingDay(day, overrides);
 
-	const closedYear = await loadClosedYear(db, input.organizationId);
-	const closedDays = days.filter((d) => isDayClosed(d, closedYear));
-	if (closedDays.length > 0) {
-		errors.push(`A(z) ${closedYear}. évig az évek le vannak zárva: ${closedDays.join(', ')}.`);
-	}
+	errors.push(...lockedDayErrors(days, await loadLeaveYearState(db, input.organizationId)));
 
 	const notWorking = days.filter((d) => !working(d));
 	if (notWorking.length > 0) {

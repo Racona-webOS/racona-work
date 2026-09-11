@@ -391,11 +391,25 @@
 	 * Kattintható-e a nap: szerkesztésben az üres munkanap és a meglévő nap;
 	 * egyébként az, amin van bejegyzés (részletek, saját nézetben visszavonás).
 	 */
-	/** A nap lezárt évre esik-e (a szerver is ellenőrzi, ez csak a felület). */
+	/**
+	 * A nap lezárt vagy még meg nem nyitott évre esik-e: ott nem lehet
+	 * rögzíteni (a szerver is ellenőrzi, ez csak a felület).
+	 */
 	function isClosed(iso: string): boolean {
-		const closedYear = data?.closedYear ?? null;
-		return closedYear !== null && Number(iso.slice(0, 4)) <= closedYear;
+		if (!data) return false;
+		const dayYear = Number(iso.slice(0, 4));
+		if (data.closedYear !== null && dayYear <= data.closedYear) return true;
+		return data.openedYear === null || dayYear > data.openedYear;
 	}
+
+	/** Súgó, ha a látott időszakban meg nem nyitott év is van (ott nem lehet rögzíteni). */
+	const unopenedHint = $derived.by(() => {
+		if (!data) return '';
+		if (data.openedYear === null) return t('leaveCalendar.noOpenYearHint');
+		return Number(range.to.slice(0, 4)) > data.openedYear
+			? t('leaveCalendar.unopenedHint', { year: data.openedYear + 1 })
+			: '';
+	});
 
 	function isClickable(iso: string): boolean {
 		const approved = dayMap.get(iso)?.length ?? 0;
@@ -769,6 +783,7 @@
 			{#if data?.closedYear !== null && data?.closedYear !== undefined}
 				{t('leaveCalendar.closedHint', { year: data.closedYear })}
 			{/if}
+			{unopenedHint}
 		</p>
 	{:else if canRequest}
 		<div class="guide">
@@ -785,6 +800,7 @@
 				{#if data?.closedYear !== null && data?.closedYear !== undefined}
 					{t('leaveCalendar.closedHint', { year: data.closedYear })}
 				{/if}
+				{unopenedHint}
 			</p>
 		</div>
 	{:else}

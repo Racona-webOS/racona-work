@@ -16,6 +16,7 @@ const SCHEMA = 'app__racona_work';
 export type BalanceHistoryAction =
 	| 'created'
 	| 'bulk_created'
+	| 'year_opened'
 	| 'recalculated'
 	| 'adjusted'
 	| 'calculation_applied'

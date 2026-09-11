@@ -11,7 +11,16 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import type {} from '@racona/sdk/types';
-	import type { CalendarDay, CalendarDayKind } from '../../server/functions.js';
+	import type {
+		CalendarDay,
+		CalendarDayKind,
+		MandatoryLeavePlan,
+		MandatoryLeaveResult,
+		MandatoryLeaveRow,
+		OpenLeaveYearPreview,
+		OpenLeaveYearResult
+	} from '../../server/functions.js';
+	import { daysToPeriods } from '../../server/leave-day-utils.js';
 	import {
 		getOrganizationStore,
 		createOrganizationStore
@@ -52,23 +61,151 @@
 	const relocatedRestDays = $derived(days.filter((d) => d.kind === 'relocated_rest_day').length);
 	const relocatedOutOfSync = $derived(relocatedWorkDays !== relocatedRestDays);
 
-	// --- Év lezárása --------------------------------------------------------
-	// A lezárt évre és a korábbiakra nem lehet szabadságot rögzíteni; a HR
-	// (leave.balance.manage) zárja le és nyitja újra.
+	// --- Év lezárása és megnyitása ------------------------------------------
+	// Szabadságot csak nyitott évre lehet rögzíteni: amit megnyitottak és nincs
+	// lezárva. A HR (leave.balance.manage) nyitja meg, zárja le és nyitja újra
+	// (specs/year-opening.md).
 	let closedYear = $state<number | null>(null);
+	let openedYear = $state<number | null>(null);
 	let canClose = $state(false);
 	let closing = $state(false);
 	const currentYear = new Date().getFullYear();
 	const yearClosed = $derived(closedYear !== null && year <= closedYear);
+	const yearOpened = $derived(!yearClosed && openedYear !== null && year <= openedYear);
+	/** A meg nem nyitott év megnyitható-e most: sorban, legfeljebb a jövő év (a szerver is ellenőrzi). */
+	const yearOpenable = $derived(
+		!yearClosed && !yearOpened && year <= currentYear + 1 && (openedYear === null || year === openedYear + 1)
+	);
 
 	async function loadClosedYear() {
 		if (!currentOrganization) return;
 		try {
 			const r = await sdk?.remote?.call('getLeaveClosedYear', { organizationId: currentOrganization.id });
 			closedYear = r?.closedYear ?? null;
+			openedYear = r?.openedYear ?? null;
 		} catch {
 			closedYear = null;
+			openedYear = null;
 		}
+	}
+
+	// --- Évnyitás és kötelező szabadságok ------------------------------------
+	// Mindkettő előnézettel indul; a gomb a szerveren újratervez és végrehajt.
+
+	type YearDialogMode = 'open' | 'mandatory';
+	let yearDialog = $state<YearDialogMode | null>(null);
+	let yearPlan = $state<OpenLeaveYearPreview | MandatoryLeavePlan | null>(null);
+	let yearPlanLoading = $state(false);
+	let yearRunning = $state(false);
+
+	const openPreview = $derived(yearDialog === 'open' ? (yearPlan as OpenLeaveYearPreview | null) : null);
+	/** Van-e mit végrehajtani: évnyitásnál ha nyitható, ellenőrzésnél ha van kiírandó nap. */
+	const yearCanRun = $derived(
+		!!yearPlan && (yearDialog === 'open' ? openPreview?.canOpen === true : yearPlan.daysToAssign > 0)
+	);
+
+	async function openYearDialog(mode: YearDialogMode) {
+		if (!currentOrganization) return;
+		yearDialog = mode;
+		yearPlan = null;
+		yearPlanLoading = true;
+		try {
+			yearPlan = await sdk?.remote?.call(mode === 'open' ? 'previewOpenLeaveYear' : 'previewMandatoryLeave', {
+				organizationId: currentOrganization.id,
+				year
+			});
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message ?? t('error.loadFailed'), 'error');
+			yearDialog = null;
+		} finally {
+			yearPlanLoading = false;
+		}
+	}
+
+	function closeYearDialog() {
+		if (yearRunning) return;
+		yearDialog = null;
+		yearPlan = null;
+	}
+
+	async function runYearDialog() {
+		if (!currentOrganization || !yearDialog || !yearCanRun) return;
+		yearRunning = true;
+		try {
+			if (yearDialog === 'open') {
+				const r: OpenLeaveYearResult = await sdk?.remote?.call('openLeaveYear', {
+					organizationId: currentOrganization.id,
+					year
+				});
+				sdk?.ui?.toast(
+					t('workCalendar.opening.done', {
+						year: r.year,
+						balances: r.createdBalances,
+						days: r.days,
+						employees: r.employees
+					}),
+					'success'
+				);
+			} else {
+				const r: MandatoryLeaveResult = await sdk?.remote?.call('applyMandatoryLeave', {
+					organizationId: currentOrganization.id,
+					year
+				});
+				sdk?.ui?.toast(t('workCalendar.mandatory.done', { days: r.days, employees: r.employees }), 'success');
+			}
+			yearRunning = false;
+			closeYearDialog();
+			await loadClosedYear();
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
+		} finally {
+			yearRunning = false;
+		}
+	}
+
+	/** Rövid dátum: „dec. 28.”; az év a címben van. */
+	function shortDay(iso: string): string {
+		return new Date(`${iso}T00:00:00Z`).toLocaleDateString('hu-HU', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+	}
+
+	function formatRange(from: string, to: string): string {
+		return from === to ? shortDay(from) : `${shortDay(from)} – ${shortDay(to)}`;
+	}
+
+	/** Az év kötelező napjai összefüggő naptári tartományokként. */
+	const mandatoryRanges = $derived(
+		yearPlan ? daysToPeriods(yearPlan.mandatoryDays).map((p) => formatRange(p.from, p.to)).join(', ') : ''
+	);
+
+	/** A sor teendője egy mondatban. */
+	function rowAction(row: MandatoryLeaveRow): string {
+		if (row.applicableDays === 0) {
+			return yearPlan && yearPlan.mandatoryDays.length > 0 ? t('workCalendar.mandatory.notApplicable') : '—';
+		}
+		if (row.assignDays.length > 0) {
+			return t('workCalendar.mandatory.assign', {
+				days: row.assignDays.length,
+				periods: row.periods.map((p) => formatRange(p.startDate, p.endDate)).join(', ')
+			});
+		}
+		if (row.pendingDays.length === 0 && row.shortDays.length === 0) return t('workCalendar.mandatory.allSet');
+		return t('workCalendar.mandatory.noneAssigned');
+	}
+
+	/** A sor figyelmeztetései: kevés vagy nincs keret, függő kérelem. */
+	function rowWarnings(row: MandatoryLeaveRow): string[] {
+		const warnings: string[] = [];
+		if (row.shortDays.length > 0) {
+			warnings.push(
+				row.hasBalance
+					? t('workCalendar.mandatory.short', { days: row.shortDays.length, remaining: Math.max(0, row.remainingBefore) })
+					: t('workCalendar.mandatory.noBalance', { days: row.shortDays.length })
+			);
+		}
+		if (row.pendingDays.length > 0) {
+			warnings.push(t('workCalendar.mandatory.pending', { days: row.pendingDays.map(shortDay).join(', ') }));
+		}
+		return warnings;
 	}
 
 	async function closeYear() {
@@ -153,6 +290,8 @@
 	function cellClass(iso: string): string {
 		const entry = dayMap.get(iso);
 		if (entry) {
+			// A kötelező szabadság munkanap, de saját színe van, nem az áthelyezett munkanapé
+			if (entry.kind === 'mandatory_leave') return 'is-mandatory-leave';
 			return entry.isWorkingDay ? 'is-workday' : `is-${entry.kind.replace(/_/g, '-')}`;
 		}
 		return isWeekend(iso) ? 'is-weekend' : '';
@@ -335,10 +474,24 @@
 								{t('workCalendar.closing.reopenButton', { year })}
 							</button>
 						{/if}
-					{:else if canClose && year <= currentYear}
-						<button class="btn-secondary" onclick={closeYear} disabled={closing}>
-							{t('workCalendar.closing.closeButton', { year })}
-						</button>
+					{:else if yearOpened}
+						{#if canClose && year <= currentYear}
+							<button class="btn-secondary" onclick={closeYear} disabled={closing}>
+								{t('workCalendar.closing.closeButton', { year })}
+							</button>
+						{/if}
+						{#if canClose}
+							<button class="btn-secondary" onclick={() => openYearDialog('mandatory')}>
+								{t('workCalendar.mandatory.button')}
+							</button>
+						{/if}
+					{:else}
+						<span class="chip is-closed">{t('workCalendar.opening.notOpened')}</span>
+						{#if canClose && yearOpenable}
+							<button class="btn-secondary" onclick={() => openYearDialog('open')}>
+								{t('workCalendar.opening.button', { year })}
+							</button>
+						{/if}
 					{/if}
 					<button class="btn-primary" onclick={generateHolidays} disabled={generating || loading}>
 						{generating ? t('loading') : t('workCalendar.generate')}
@@ -348,6 +501,13 @@
 
 			{#if yearClosed}
 				<p class="notice">{t('workCalendar.closing.hint', { year })}</p>
+			{:else if !yearOpened}
+				<p class="notice">
+					{t('workCalendar.opening.hint', { year })}
+					{#if !yearOpenable && openedYear !== null && year > openedYear + 1}
+						{t('workCalendar.opening.hintSequence', { year: openedYear + 1 })}
+					{/if}
+				</p>
 			{/if}
 
 			{#if !loading && relocatedOutOfSync}
@@ -404,6 +564,90 @@
 	</section>
 </div>
 
+{#if yearDialog}
+	<div class="modal-overlay" role="dialog" aria-modal="true">
+		<div class="modal modal-wide">
+			<h3>
+				{yearDialog === 'open'
+					? t('workCalendar.opening.title', { year })
+					: t('workCalendar.mandatory.title', { year })}
+			</h3>
+			<p class="modal-description">
+				{yearDialog === 'open' ? t('workCalendar.opening.description') : t('workCalendar.mandatory.description')}
+			</p>
+
+			{#if yearPlanLoading}
+				<div class="loading-state"><div class="spinner"></div><span>{t('loading')}</span></div>
+			{:else if yearPlan}
+				{#if openPreview && !openPreview.canOpen}
+					<p class="notice is-warning">{openPreview.blockedReason}</p>
+				{/if}
+				<p class="plan-days">
+					{yearPlan.mandatoryDays.length > 0
+						? t('workCalendar.mandatory.days', { days: mandatoryRanges })
+						: t('workCalendar.mandatory.noDays')}
+				</p>
+				{#if yearDialog === 'mandatory' && yearPlan.daysToAssign === 0}
+					<p class="notice">{t('workCalendar.mandatory.nothingToDo')}</p>
+				{/if}
+
+				<div class="plan-scroll">
+					<table class="plan-table">
+						<thead>
+							<tr>
+								<th>{t('workCalendar.mandatory.columnEmployee')}</th>
+								{#if yearDialog === 'open'}
+									<th>{t('workCalendar.opening.columnBalance')}</th>
+								{/if}
+								<th>{t('workCalendar.mandatory.columnAction')}</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each yearPlan.rows as row (row.employeeId)}
+								{@const warnings = rowWarnings(row)}
+								<tr class:has-action={row.assignDays.length > 0}>
+									<td class="plan-name">{row.employeeName}</td>
+									{#if yearDialog === 'open'}
+										<td class="plan-balance">
+											{row.newBalance !== null
+												? t('workCalendar.opening.newBalance', { days: row.newBalance })
+												: t('workCalendar.opening.existingBalance', { days: row.existingBalance ?? 0 })}
+										</td>
+									{/if}
+									<td>
+										<span>{rowAction(row)}</span>
+										{#each warnings as warning (warning)}
+											<span class="plan-warning">{warning}</span>
+										{/each}
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={closeYearDialog} disabled={yearRunning}>
+					{yearCanRun ? t('form.cancel') : t('workCalendar.mandatory.close')}
+				</button>
+				{#if yearCanRun && yearPlan}
+					<button class="btn-primary" onclick={runYearDialog} disabled={yearRunning}>
+						{yearRunning
+							? t('loading')
+							: yearDialog === 'open'
+								? t('workCalendar.opening.run')
+								: t('workCalendar.mandatory.run', {
+										employees: yearPlan.employeesToAssign,
+										days: yearPlan.daysToAssign
+									})}
+					</button>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
 {#if editorOpen}
 	<div class="modal-overlay" role="dialog" aria-modal="true">
 		<div class="modal">
@@ -424,9 +668,11 @@
 					? isWeekend(editorDay)
 						? t('workCalendar.editor.defaultWeekend')
 						: t('workCalendar.editor.defaultWeekday')
-					: KIND_IS_WORKING[editorKind]
-						? t('workCalendar.editor.countsAsWorkday')
-						: t('workCalendar.editor.countsAsRestDay')}
+					: editorKind === 'mandatory_leave'
+						? t('workCalendar.editor.mandatoryLeave')
+						: KIND_IS_WORKING[editorKind]
+							? t('workCalendar.editor.countsAsWorkday')
+							: t('workCalendar.editor.countsAsRestDay')}
 			</p>
 
 			<label class="form-label">
@@ -481,6 +727,81 @@
 		margin-top: 1.25rem;
 		padding-top: 1rem;
 		gap: 0.5rem;
+	}
+
+	/* Évnyitás és kötelező szabadságok: dolgozónként egy sor */
+	.modal-wide {
+		max-width: 760px;
+	}
+
+	.plan-days {
+		margin: 0.25rem 0 0.5rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.plan-scroll {
+		overflow: auto;
+		min-height: 0;
+		flex: 1 1 auto;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 0.5rem;
+	}
+
+	.plan-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.85rem;
+	}
+
+	.plan-table th {
+		position: sticky;
+		top: 0;
+		text-align: left;
+		font-weight: 600;
+		font-size: 0.8rem;
+		padding: 0.5rem 0.75rem;
+		background: var(--color-muted, #f8fafc);
+		color: var(--color-muted-foreground, #64748b);
+	}
+
+	.plan-table td {
+		padding: 0.5rem 0.75rem;
+		border-top: 1px solid var(--color-border, #e2e8f0);
+		vertical-align: top;
+	}
+
+	.plan-table td span {
+		display: block;
+	}
+
+	.plan-name,
+	.plan-balance {
+		white-space: nowrap;
+	}
+
+	.plan-table tr.has-action .plan-name {
+		font-weight: 600;
+	}
+
+	.plan-warning {
+		margin-top: 0.2rem;
+		color: #b45309;
+		font-size: 0.8rem;
+	}
+
+	:global(.dark) .plan-table th {
+		background: var(--color-muted, oklch(0.269 0 0));
+		color: var(--color-muted-foreground, oklch(0.708 0 0));
+	}
+
+	:global(.dark) .plan-scroll,
+	:global(.dark) .plan-table td {
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
+	}
+
+	:global(.dark) .plan-warning {
+		color: #fcd34d;
 	}
 
 	.form-label {

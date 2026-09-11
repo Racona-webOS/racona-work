@@ -760,9 +760,11 @@ export async function deleteLeaveRequest(
 
 	await requireCapability(context, req.organization_id, 'leave.approve');
 
-	// Lezárt év jóváhagyott szabadsága nem törölhető
+	// Lezárt év jóváhagyott szabadsága nem törölhető; a meg nem nyitott évé igen
 	if (req.status === 'approved') {
-		await assertDaysOpen(context.db, req.organization_id, [toIsoDay(req.start_date), toIsoDay(req.end_date)]);
+		await assertDaysOpen(context.db, req.organization_id, [toIsoDay(req.start_date), toIsoDay(req.end_date)], {
+			allowUnopened: true
+		});
 	}
 
 	// A napok a CASCADE miatt a kérelemmel együtt törlődnek

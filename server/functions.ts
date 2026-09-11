@@ -16,7 +16,8 @@
  *   employees.ts     — dolgozók és dolgozói adatlap
  *   leave.ts         — szabadságkérelmek és egyenlegek
  *   leave-days.ts    — a jóváhagyott szabadság napjai és a szabadságnaptár
- *   leave-closing.ts — év lezárása (a lezárt évre nem lehet szabadságot rögzíteni)
+ *   leave-closing.ts — év lezárása és megnyitása (csak nyitott évre lehet szabadságot rögzíteni)
+ *   leave-year-opening.ts — évnyitás: keretek és a kötelező szabadságok kiírása
  *   leave-entitlement.ts — éves szabadságkeret számítása (tiszta függvény)
  *   leave-profile.ts — a számítás adatai (születési dátum, gyerekek, távollétek) és a számított keretek
  *   leave-allowances.ts — betegszabadság, apasági és szülői szabadság kerete
@@ -116,6 +117,21 @@ export {
 	submitLeaveRequestBatch
 } from './leave-days.js';
 export { getLeaveClosedYear, setLeaveClosedYear } from './leave-closing.js';
+export type { LeaveYearState } from './leave-closing.js';
+export {
+	previewOpenLeaveYear,
+	openLeaveYear,
+	previewMandatoryLeave,
+	applyMandatoryLeave
+} from './leave-year-opening.js';
+export type {
+	MandatoryLeavePeriod,
+	MandatoryLeaveRow,
+	MandatoryLeavePlan,
+	OpenLeaveYearPreview,
+	MandatoryLeaveResult,
+	OpenLeaveYearResult
+} from './leave-year-opening.js';
 export type {
 	LeaveCalendar,
 	LeaveCalendarDay,

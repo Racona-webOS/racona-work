@@ -708,7 +708,7 @@ async function insertCalculatedBalance(
 		carriedOverDays: number;
 		carryOverDeadline: string | null;
 		userId: number;
-		action: 'created' | 'bulk_created';
+		action: 'created' | 'bulk_created' | 'year_opened';
 	}
 ): Promise<LeaveBalance | null> {
 	const calculated = values.calculation.result.totalDays;
@@ -1126,6 +1126,88 @@ export async function applyLeaveEntitlements(
 	}
 
 	return { created, skippedEmployeeIds };
+}
+
+// --- Évnyitás (specs/year-opening.md, D4) -------------------------------------
+// Belső segédek a leave-year-opening.ts számára; a functions.ts NEM reexportálja.
+
+/**
+ * Az évnyitás kerettervének egy sora: a meglévő keret, vagy ha nincs, a
+ * számított (áthozatal és korrekció nélkül).
+ */
+export interface YearBalancePlanRow {
+	employeeId: number;
+	/** A meglévő keret összege; null, ha nincs. */
+	existingTotal: number | null;
+	/** Keret nélkül a számított összeg; meglévő keretnél null. */
+	calculatedTotal: number | null;
+}
+
+/**
+ * A szervezet aktív dolgozóinak kerete az évre: meglévő, vagy számított.
+ *
+ * @param context - Remote kontextus.
+ * @param organizationId - A szervezet.
+ * @param year - A megnyitandó év.
+ */
+export async function planYearBalances(
+	context: RemoteContext,
+	organizationId: number,
+	year: number
+): Promise<YearBalancePlanRow[]> {
+	const employees = await loadActiveEmployees(context, organizationId, year);
+	const missing = employees.filter((e) => !e.has_balance).map((e) => e.id);
+	const [profiles, policy, existing] = await Promise.all([
+		loadProfiles(context, missing),
+		loadPolicy(context, organizationId),
+		context.db.query(
+			`SELECT employee_id, total_days FROM ${SCHEMA}.leave_balances
+			  WHERE organization_id = $1 AND year = $2`,
+			[organizationId, year]
+		)
+	]);
+	const totals = new Map<number, number>(existing.rows.map((r: any) => [r.employee_id, r.total_days]));
+	return employees.map((e) => {
+		if (e.has_balance) return { employeeId: e.id, existingTotal: totals.get(e.id) ?? 0, calculatedTotal: null };
+		const calculation = calculate(toEntitlementBase(profiles.get(e.id)!, policy), year);
+		return { employeeId: e.id, existingTotal: null, calculatedTotal: Math.max(0, calculation.result.totalDays) };
+	});
+}
+
+/**
+ * A hiányzó keretek létrehozása évnyitáskor, a tranzakció kliensével. A
+ * számítást a mostani adatokból végzi; a meglévő keretet nem írja felül.
+ *
+ * @returns A létrehozott keretek száma.
+ */
+export async function createYearBalances(
+	db: Pick<RemoteContext['db'], 'query'>,
+	context: RemoteContext,
+	organizationId: number,
+	year: number,
+	userId: number
+): Promise<number> {
+	const employees = await loadActiveEmployees(context, organizationId, year);
+	const missing = employees.filter((e) => !e.has_balance).map((e) => e.id);
+	if (missing.length === 0) return 0;
+	const [profiles, policy] = await Promise.all([loadProfiles(context, missing), loadPolicy(context, organizationId)]);
+	let created = 0;
+	for (const employeeId of missing) {
+		const balance = await insertCalculatedBalance(db, {
+			employeeId,
+			organizationId,
+			year,
+			calculation: calculate(toEntitlementBase(profiles.get(employeeId)!, policy), year),
+			adjustmentDays: 0,
+			adjustmentNote: null,
+			carriedOverDays: 0,
+			carryOverDeadline: null,
+			userId,
+			action: 'year_opened'
+		});
+		if (balance) created++;
+	}
+	return created;
 }
 
 // --- Céges szabály ----------------------------------------------------------
