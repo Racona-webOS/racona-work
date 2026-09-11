@@ -122,7 +122,11 @@ Kérelem (leave_requests)            Napok (leave_days)
 
 **K14. Áthelyezett napok szinkronja.** A munkanaptár figyelmeztet, ha az évben az áthelyezett munkanapok és a máskor ledolgozott szabadnapok száma nem egyezik. Csak jelzés, nem tilt.
 
-**K15. Kérelem a saját naptárból.** A dolgozó a saját naptárában (alapból az éves nézetben) üres munkanapokra kattintva jelöli ki a kért napokat; a jóváhagyott és függő napjai látszanak, azokra nem lehet jelölni. Az összegzősáv a szerver előnézetéből mutatja, hány kérelem lesz (az összefüggő napok egy kérelem, mint a HR-nél), és a keretet a módosítás után: **a maradékból a függő kérelmek napjai is le vannak vonva**, ennél többet nem jelölhet. Típus: a céges kötelező kivételével bármelyik; apasági és szülői szabadságnál gyerekválasztóval, a függő kérelmek a gyerekes keretben is foglalnak. Indoklás adható. A beküldés egy tranzakcióban szakaszonként egy függő kérelmet hoz létre, és a beadásról egy összevont értesítés megy a megjelölt dolgozóknak (az időszakok felsorolva). A kérelem-űrlap („+ Új kérelem”) megszűnt; a naptár az egyetlen beadási hely, a dolgozónak a naptár fölött lépésekre bontott útmutatóval.
+**K15. Kérelem a saját naptárból.** A dolgozó alapból ugyanazt a naptárat látja, mint a HR: mindenki napjait, típus nélkül, olvasásra. Az „Új szabadság” gombbal kérelmező módba vált: a saját naptára rögzített szűrővel, éves nézetben; üres munkanapokra kattintva jelöli ki a kért napokat; a jóváhagyott és függő napjai látszanak, azokra nem lehet jelölni. Az összegzősáv a szerver előnézetéből mutatja, hány kérelem lesz (az összefüggő napok egy kérelem, mint a HR-nél), és a keretet a módosítás után: **a maradékból a függő kérelmek napjai is le vannak vonva**, ennél többet nem jelölhet. Típus: a céges kötelező kivételével bármelyik; apasági és szülői szabadságnál gyerekválasztóval, a függő kérelmek a gyerekes keretben is foglalnak. Indoklás adható. A beküldés egy tranzakcióban szakaszonként egy függő kérelmet hoz létre, és a beadásról egy összevont értesítés megy a megjelölt dolgozóknak (az időszakok felsorolva). A kérelem-űrlap („+ Új kérelem”) megszűnt; a naptár az egyetlen beadási hely, a dolgozónak a naptár fölött lépésekre bontott útmutatóval.
+
+**K16. Irányítópult.** A dolgozói keret-dobozban a felhasznált napok mellett a jóváhagyásra váró (függő, a keretet terhelő, idei) kérelmek napjai is látszanak, a „Még kérhető” érték ezekkel csökkentve. A dobozban „Szabadságok kezelése” gomb visz a nyilvántartó oldalra; külön „Új kérelem” gomb nincs.
+
+**K17. Kötelező szabadság a munkanaptárban.** Új naptári típus (`mandatory_leave`): a cég által kijelölt nap, amire mindenkinek szabadságot kell kivennie. Munkanapnak számít (a szabadság rá esik). Az app-beli működése (pl. automatikus rögzítés) később kerül kidolgozásra.
 
 **K11. Értesítések.** A dolgozó értesítést kap a naptárból törölt napokról (a napok listájával) és a felvett szakaszokról (időszakonként a munkanapok számával), rendszeren belül és emailben (D16). A műveletet végző HR nem kap értesítést a saját napjairól.
 
@@ -258,6 +262,7 @@ A kérelem jóváhagyása és elutasítása, valamint a még függő kérelem t�
 - [x] Értesítések és a két új email sablon: `leave_days_removed`, `leave_days_added` (K11, D16)
 - [x] Locale (hu, en)
 - [x] Függő kérelem visszavonása a saját naptárban és a listában (K12/b): `withdrawLeaveRequest`, `withdrawn` státusz
+- [x] Dolgozói naptár: alapból mindenki látszik, „Új szabadság” gombbal kérelmező mód; irányítópult keret-doboz a függő napokkal és a „Szabadságok kezelése” gombbal (K16); „Kötelező szabadság” naptári típus (K17)
 - [x] Gyerekhez kötött típusok és indoklás a naptárban; a kérelem-űrlap kivezetve
 - [x] Kérelem beadása a saját naptárból, szakaszokra bontva, a függő kérelmekkel csökkentett keret ellenőrzésével, összevont értesítéssel (K15)
 - [x] Céges kötelező szabadság típus, az éves keretet terheli, csak a jóváhagyó rögzítheti (D17)

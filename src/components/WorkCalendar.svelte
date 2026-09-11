@@ -119,7 +119,9 @@
 		public_holiday: false,
 		relocated_rest_day: false,
 		relocated_work_day: true,
-		company_day: false
+		company_day: false,
+		// Kötelező szabadság: munkanap, amire szabadságot kell kivenni
+		mandatory_leave: true
 	};
 
 	/**
@@ -134,7 +136,8 @@
 		'public_holiday',
 		'relocated_rest_day',
 		'relocated_work_day',
-		'company_day'
+		'company_day',
+		'mandatory_leave'
 	];
 
 	const MONTHS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
@@ -358,6 +361,7 @@
 				<span class="chip is-relocated-rest-day">{t('workCalendar.kind.relocated_rest_day')}</span>
 				<span class="chip is-workday">{t('workCalendar.kind.relocated_work_day')}</span>
 				<span class="chip is-company-day">{t('workCalendar.kind.company_day')}</span>
+				<span class="chip is-mandatory-leave">{t('workCalendar.kind.mandatory_leave')}</span>
 				<span class="chip is-weekend">{t('workCalendar.weekend')}</span>
 			</div>
 
@@ -659,6 +663,11 @@
 	.is-company-day {
 		background: #ede9fe;
 		color: #5b21b6;
+	}
+
+	.is-mandatory-leave {
+		background: #ccfbf1;
+		color: #115e59;
 	}
 
 	.is-workday {

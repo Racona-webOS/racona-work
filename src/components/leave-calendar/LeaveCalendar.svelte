@@ -8,10 +8,12 @@
 	Három nézet: havi rács, éves nézet (tizenkét kis havi rács) és csapatnézet
 	(soronként egy dolgozó, oszloponként egy nap). A csapatnézet csak olvasásra.
 
-	Saját nézetben a dolgozó a naptárban jelöli ki a kért napokat (alapból az
-	éves nézet), a szerver szakaszokra bontja és mutatja a keretét, egy gombbal
-	beküldi: szakaszonként egy függő kérelem. A függő kérelme napjára
-	kattintva visszavonhatja a kérelmet (megerősítés után). Szerkesztés nélkül a napra kattintva a nap
+	A dolgozó alapból ugyanazt látja, mint a HR: mindenki napjait (típus
+	nélkül), olvasásra. Az „Új szabadság” gombbal kérelmező módba vált: a saját
+	naptára éves nézetben, ahol kijelöli a kért napokat, a szerver szakaszokra
+	bontja és mutatja a keretét, egy gombbal beküldi (szakaszonként egy függő
+	kérelem). A saját függő kérelmét a részletekből vagy kérelmező módban a
+	napra kattintva vonhatja vissza (megerősítés után). Szerkesztés nélkül a napra kattintva a nap
 	mellett felugró doboz mutatja a nap összes bejegyzését (a tooltip helyett).
 
 	Szerkesztés (leave.approve joggal, kiválasztott dolgozóval, havi és éves
@@ -44,19 +46,16 @@
 		pluginId = 'racona-work',
 		organizationId,
 		canManage = false,
-		employeeId = null,
-		lockEmployee = false,
+		ownEmployeeId = null,
 		refreshKey = 0,
 		onSaved
 	}: {
 		pluginId?: string;
 		organizationId: number;
-		/** leave.approve: a típus látszik (a szerver dönt, ez csak a felirat). */
+		/** leave.approve: a típus látszik és szerkeszthet (a szerver dönt, ez csak a felület). */
 		canManage?: boolean;
-		/** Rögzített dolgozószűrő (saját nézet). */
-		employeeId?: number | null;
-		/** Igaz, ha a dolgozószűrő nem váltható (saját nézet). */
-		lockEmployee?: boolean;
+		/** A hívó saját dolgozói sora: ezzel kér szabadságot és vonja vissza a sajátját. */
+		ownEmployeeId?: number | null;
 		/** Növelve újratölt (kérelem jóváhagyása, törlése után). */
 		refreshKey?: number;
 		/** Sikeres naptáras mentés után (a kérelmek listája frissülhet). */
@@ -65,6 +64,14 @@
 
 	const sdk = $derived(resolveSdk(pluginId));
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
+
+	// --- Kérelmező mód ---------------------------------------------------------
+	// A nem jóváhagyó dolgozó az „Új szabadság” gombbal vált át: a saját naptára
+	// rögzített szűrővel, éves nézetben, jelöléssel és beküldéssel.
+	let requestMode = $state(false);
+	const canEnterRequestMode = $derived(!canManage && !!ownEmployeeId);
+	const lockEmployee = $derived(requestMode);
+	const employeeId = $derived(requestMode ? ownEmployeeId : null);
 
 	// --- Állapot -------------------------------------------------------------
 
@@ -177,8 +184,20 @@
 	/** Csak a jóváhagyó szerkeszthet, és csak kiválasztott dolgozóval. */
 	const editable = $derived(canManage && !lockEmployee && !!filterEmployeeId && data?.canManage === true);
 
-	/** Saját nézet: a dolgozó a naptárból kérelmet ad be (K15). */
+	/** Kérelmező mód: a dolgozó a naptárból kérelmet ad be (K15). */
 	const canRequest = $derived(lockEmployee && !!employeeId && !editable);
+
+	function enterRequestMode() {
+		if (!canEnterRequestMode) return;
+		clearChanges();
+		requestMode = true;
+	}
+
+	function exitRequestMode() {
+		if (hasChanges && !window.confirm(t('leaveCalendar.discardConfirm'))) return;
+		clearChanges();
+		requestMode = false;
+	}
 	let requestType = $state<LeaveType>('annual');
 
 	/** A jelölések típusa: a HR felvételnél vagy a dolgozó kérelménél. */
@@ -272,11 +291,18 @@
 
 	async function withdrawPending(iso: string) {
 		const pending = (pendingMap.get(iso) ?? []).find((d) => d.employeeId === employeeId);
-		if (!canWithdraw || !pending || withdrawing) return;
-		if (!window.confirm(t('leaveCalendar.withdrawConfirm', { period: pendingPeriod(pending.leaveRequestId) }))) return;
+		if (!canWithdraw || !pending) return;
+		await withdrawRequest(pending.leaveRequestId);
+	}
+
+	/** Saját függő kérelem visszavonása (a részletekből vagy kérelmező módban). */
+	async function withdrawRequest(leaveRequestId: number) {
+		if (withdrawing) return;
+		if (!window.confirm(t('leaveCalendar.withdrawConfirm', { period: pendingPeriod(leaveRequestId) }))) return;
 		withdrawing = true;
 		try {
-			await sdk.remote.call('withdrawLeaveRequest', { id: pending.leaveRequestId });
+			await sdk.remote.call('withdrawLeaveRequest', { id: leaveRequestId });
+			closeDetails();
 			sdk?.ui?.toast(t('leaveCalendar.withdrawn'), 'success');
 			await loadCalendar();
 			onSaved?.();
@@ -497,6 +523,7 @@
 				'success'
 			);
 			clearChanges();
+			requestMode = false;
 			await loadCalendar();
 			onSaved?.();
 		} catch (err: any) {
@@ -648,6 +675,14 @@
 			<button class="btn-secondary" onclick={goToday}>{t('leaveCalendar.today')}</button>
 		</div>
 
+		{#if canEnterRequestMode}
+			{#if requestMode}
+				<button class="btn-secondary" onclick={exitRequestMode}>{t('leaveCalendar.backToOverview')}</button>
+			{:else}
+				<button class="btn-primary" onclick={enterRequestMode}>+ {t('leaveCalendar.newLeave')}</button>
+			{/if}
+		{/if}
+
 		<div class="view-toggle" role="group">
 			<button class="chip-btn" class:active={view === 'month'} onclick={() => setView('month')}>
 				{t('leaveCalendar.view.month')}
@@ -744,10 +779,13 @@
 				{/if}
 			</p>
 		</div>
-	{:else if canWithdraw}
-		<p class="hint">{t('leaveCalendar.withdrawHint')} {t('leaveCalendar.detailsHint')}</p>
 	{:else}
-		<p class="hint">{t('leaveCalendar.detailsHint')}</p>
+		<p class="hint">
+			{t('leaveCalendar.detailsHint')}
+			{#if canEnterRequestMode}
+				{t('leaveCalendar.overviewHint')}
+			{/if}
+		</p>
 	{/if}
 
 	<div class="legend">
@@ -952,6 +990,11 @@
 					<li>
 						<span class="mark is-pending">{t('leaveCalendar.pending')}</span>
 						<span>{d.employeeName}{d.leaveType ? ` – ${typeLabel(d.leaveType)}` : ''}</span>
+						{#if ownEmployeeId && d.employeeId === ownEmployeeId}
+							<button class="link-btn" onclick={() => withdrawRequest(d.leaveRequestId)} disabled={withdrawing}>
+								{t('leaveRequests.withdraw')}
+							</button>
+						{/if}
 					</li>
 				{/each}
 			</ul>
@@ -1405,6 +1448,20 @@
 		background: var(--color-background, #fff);
 		box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
 		font-size: 0.875rem;
+	}
+
+	.link-btn {
+		margin-left: auto;
+		border: none;
+		background: transparent;
+		color: #991b1b;
+		font-size: 0.8rem;
+		cursor: pointer;
+		padding: 0 0.2rem;
+	}
+
+	.link-btn:hover {
+		text-decoration: underline;
 	}
 
 	.details-close {

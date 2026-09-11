@@ -601,8 +601,7 @@
 				{pluginId}
 				organizationId={currentOrganization.id}
 				canManage={canApprove}
-				employeeId={viewMode === 'mine' ? (myEmployee?.id ?? null) : null}
-				lockEmployee={viewMode === 'mine'}
+				ownEmployeeId={myEmployee?.id ?? null}
 				refreshKey={calendarRefresh}
 				onSaved={() => loadData()}
 			/>

@@ -31,7 +31,7 @@
   import MyLeaveData from "./leave-entitlement/MyLeaveData.svelte";
   import DataRequestReview from "./leave-entitlement/DataRequestReview.svelte";
   import CarryOverAlerts from "./leave-entitlement/CarryOverAlerts.svelte";
-  import { LEAVE_TYPES } from "../../server/leave-types.js";
+  import { LEAVE_TYPES, consumesAnnualBalance } from "../../server/leave-types.js";
 
   let { pluginId = "racona-work" }: { pluginId?: string } = $props();
 
@@ -75,6 +75,12 @@
   // --- Self-service nézet állapota ---
   let myEmployee = $state<EmployeeRow | null>(null);
   let myBalance = $state<LeaveBalance | null>(null);
+  /** Az idei, még el nem bírált, a keretet terhelő kérelmek napjai. */
+  let myPendingDays = $state(0);
+  /** A maradék a függő kérelmekkel csökkentve: ennyit lehet még kérni. */
+  const myAvailableDays = $derived(
+    myBalance ? myBalance.remainingDays - myPendingDays : 0,
+  );
   let showBreakdown = $state(false);
   let myRequests = $state<LeaveRequestRow[]>([]);
   let selfLoading = $state(false);
@@ -128,7 +134,7 @@
         return;
       }
 
-      const [balances, requests] = await Promise.all([
+      const [balances, requests, pending] = await Promise.all([
         sdk.remote.call("getLeaveBalances", { employeeId: me.id }) as Promise<
           LeaveBalance[]
         >,
@@ -139,10 +145,23 @@
           sortBy: "createdAt",
           sortOrder: "desc",
         }) as Promise<PaginatedResult<LeaveRequestRow>>,
+        sdk.remote.call("getLeaveRequests", {
+          organizationId: currentOrganization.id,
+          employeeId: me.id,
+          status: "pending",
+          pageSize: 200,
+        }) as Promise<PaginatedResult<LeaveRequestRow>>,
       ]);
 
       myBalance = (balances ?? []).find((b) => b.year === thisYear) ?? null;
       myRequests = requests?.data ?? [];
+      myPendingDays = (pending?.data ?? [])
+        .filter(
+          (r) =>
+            consumesAnnualBalance(r.leaveType) &&
+            String(r.startDate).slice(0, 4) === String(thisYear),
+        )
+        .reduce((sum, r) => sum + r.days, 0);
     } catch (err: any) {
       selfError = formatErrorMessage(err?.message ?? t("error.loadFailed"));
     } finally {
@@ -339,7 +358,8 @@
     return map[status] ?? "badge-pending";
   }
 
-  function handleNewRequest() {
+  /** A szabadságok kezelése a nyilvántartó oldalon (naptár, kérelmek). */
+  function openLeavePage() {
     sdk?.ui?.navigateTo?.("LeaveRequests", {});
   }
 </script>
@@ -442,9 +462,6 @@
               <h2>{t("dashboard.self.sectionTitle")}</h2>
               <p class="subtitle">{t("dashboard.self.sectionSubtitle")}</p>
             </div>
-            <button class="btn-primary" onclick={handleNewRequest}>
-              + {t("dashboard.self.newRequest")}
-            </button>
           </div>
           {#if selfError}
             <p class="error-message">{selfError}</p>
@@ -477,9 +494,6 @@
             <h2>{t("dashboard.self.title", { name: myEmployee.userName })}</h2>
             <p class="subtitle">{t("dashboard.self.subtitle")}</p>
           </div>
-          <button class="btn-primary" onclick={handleNewRequest}>
-            + {t("dashboard.self.newRequest")}
-          </button>
         </div>
 
         {@render selfOverview(myEmployee)}
@@ -516,10 +530,19 @@
           <span class="b-label">{t("dashboard.self.usedDays")}</span>
           <span class="b-value used">{myBalance.usedDays}</span>
         </div>
-        <div class="balance-stat" class:warning={myBalance.remainingDays < 5}>
-          <span class="b-label">{t("dashboard.self.remainingDays")}</span>
-          <span class="b-value remaining">{myBalance.remainingDays}</span>
+        <div class="balance-stat">
+          <span class="b-label">{t("dashboard.self.pendingDays")}</span>
+          <span class="b-value pending">{myPendingDays}</span>
         </div>
+        <div class="balance-stat" class:warning={myAvailableDays < 5}>
+          <span class="b-label">{t("dashboard.self.remainingDays")}</span>
+          <span class="b-value remaining">{myAvailableDays}</span>
+        </div>
+      </div>
+      <div class="balance-actions">
+        <button class="btn-primary" onclick={openLeavePage}>
+          {t("dashboard.self.manageLeave")}
+        </button>
       </div>
       <div class="balance-bar">
         <div
@@ -683,7 +706,7 @@
 
   .balance-stats {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
     gap: 1rem;
   }
 
@@ -707,6 +730,14 @@
     line-height: 1;
   }
 
+  .b-value.pending {
+    color: #92400e;
+  }
+  .balance-actions {
+    margin-top: 0.75rem;
+    display: flex;
+    justify-content: flex-end;
+  }
   .b-value.used {
     color: #d97706;
   }

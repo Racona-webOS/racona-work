@@ -22,13 +22,18 @@ export type CalendarDayKind =
 	| 'public_holiday'
 	| 'relocated_rest_day'
 	| 'relocated_work_day'
-	| 'company_day';
+	| 'company_day'
+	// Kötelező szabadság: a cég által kijelölt nap, amire mindenkinek szabadságot
+	// kell kivennie (pl. a két ünnep között). Munkanap marad (a szabadság rá esik);
+	// az app-beli működése később kerül kidolgozásra (specs/leave-days.md).
+	| 'mandatory_leave';
 
 const CALENDAR_DAY_KINDS: readonly CalendarDayKind[] = [
 	'public_holiday',
 	'relocated_rest_day',
 	'relocated_work_day',
-	'company_day'
+	'company_day',
+	'mandatory_leave'
 ];
 
 export interface CalendarDay {
