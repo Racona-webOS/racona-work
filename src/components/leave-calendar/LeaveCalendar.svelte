@@ -492,7 +492,8 @@
 	{/if}
 
 	<div class="legend">
-		{#if canManage && filterEmployeeId}
+		<!-- A jóváhagyó a típust látja (szűrő nélkül is típus szerint színezett a cella), a kolléga csak azt, hogy távol van -->
+		{#if canManage}
 			{#each LEAVE_TYPES as type (type)}
 				<span class="chip type-{type}">{t(`leaveRequests.type.${type}`)}</span>
 			{/each}
@@ -962,7 +963,7 @@
 		z-index: 1;
 		text-align: left;
 		white-space: nowrap;
-		padding: 0.2rem 0.6rem 0.2rem 0;
+		padding: 0.2rem 0.75rem;
 		background: var(--color-background, #fff);
 		font-weight: 500;
 		color: inherit;
