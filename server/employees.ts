@@ -30,7 +30,8 @@ export interface EmployeeRow extends Employee {
 	userName: string;
 	userEmail: string;
 	userImage: string | null;
-	organizationRole?: string;
+	/** A Jogosultságoknál kiosztott szervezeti szerepek nevei (csak a getEmployees tölti). */
+	roles?: string[];
 }
 
 export interface EmployeeDetail {
@@ -361,7 +362,7 @@ export async function getEmployees(
 		department: 'e.department',
 		status: 'e.status',
 		hireDate: 'e.hire_date',
-		organizationRole: 'e.status'
+		roles: 'role_names'
 	};
 
 	const sortColumn = sortColumnMap[params.sortBy ?? 'userName'] ?? 'u.full_name';
@@ -412,7 +413,14 @@ export async function getEmployees(
 			e.updated_at,
 			u.full_name AS user_name,
 			u.email AS user_email,
-			u.image AS user_image
+			u.image AS user_image,
+			ARRAY(
+				SELECT r.name
+				  FROM app__racona_work.wp_member_roles mr
+				  JOIN app__racona_work.wp_roles r ON r.id = mr.role_id
+				 WHERE mr.organization_id = e.organization_id AND mr.user_id = e.user_id
+				 ORDER BY r.is_system DESC, r.name ASC
+			) AS role_names
 		 FROM app__racona_work.employees e
 		 JOIN auth.users u ON e.user_id = u.id
 		 ${whereClause}
@@ -433,7 +441,7 @@ export async function getEmployees(
 		userName: row.user_name,
 		userEmail: row.user_email,
 		userImage: row.user_image ?? null,
-		organizationRole: row.organization_role ?? 'member'
+		roles: row.role_names ?? []
 	}));
 
 	return {

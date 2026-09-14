@@ -37,6 +37,15 @@
 		return sdk?.i18n?.t(key) ?? key;
 	}
 
+	// A raw snippetekbe kerülő, felhasználó által megadott szöveg (pl. egyedi szerepnév)
+	function escapeHtml(s: string): string {
+		return s
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;');
+	}
+
 	// --- SDK DataTable komponensek ---
 	const DataTable = $derived(sdk?.components?.DataTable);
 	const DataTableColumnHeader = $derived(sdk?.components?.DataTableColumnHeader);
@@ -57,7 +66,7 @@
 	let debounceTimer: ReturnType<typeof setTimeout>;
 
 	// --- Modal állapot ---
-	type ModalMode = 'none' | 'choose' | 'link' | 'create' | 'addMember' | 'changeRole';
+	type ModalMode = 'none' | 'choose' | 'link' | 'create' | 'addMember';
 	let modalMode = $state<ModalMode>('none');
 	let unlinkedUsers = $state<UnlinkedUser[]>([]);
 	let unlinkedLoading = $state(false);
@@ -68,10 +77,6 @@
 	let newDepartment = $state('');
 	let formLoading = $state(false);
 	let formError = $state<string | null>(null);
-
-	// --- Szerepkör módosítás állapot ---
-	let employeeToChangeRole = $state<EmployeeRow | null>(null);
-	let newRole = $state<'member' | 'admin'>('member');
 
 	// --- Tag hozzáadás modal állapot ---
 	let availableEmployees = $state<EmployeeRow[]>([]);
@@ -202,10 +207,6 @@
 				primary: true
 			},
 			{
-				label: row.organizationRole === 'admin' ? 'Taggá tétel' : 'Adminná tétel',
-				onClick: (row: EmployeeRow) => handleChangeRoleClick(row)
-			},
-			{
 				label: 'Tag eltávolítása',
 				onClick: (row: EmployeeRow) => handleRemoveMemberClick(row),
 				variant: 'destructive'
@@ -262,36 +263,6 @@
 				}
 			},
 			{
-				accessorKey: 'position',
-				enableHiding: true,
-				meta: { title: t('employees.columns.position') },
-				header: ({ column }: any) => renderComponent(DataTableColumnHeader, {
-					get column() { return column; },
-					get title() { return t('employees.columns.position'); },
-					onSort: handleSort
-				}),
-				cell: ({ row }: any) => {
-					const val = row.original.position ?? '—';
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm">${val}</span>` }));
-					return renderSnippet(snippet, {});
-				}
-			},
-			{
-				accessorKey: 'department',
-				enableHiding: true,
-				meta: { title: t('employees.columns.department') },
-				header: ({ column }: any) => renderComponent(DataTableColumnHeader, {
-					get column() { return column; },
-					get title() { return t('employees.columns.department'); },
-					onSort: handleSort
-				}),
-				cell: ({ row }: any) => {
-					const val = row.original.department ?? '—';
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm">${val}</span>` }));
-					return renderSnippet(snippet, {});
-				}
-			},
-			{
 				accessorKey: 'status',
 				enableHiding: true,
 				meta: { title: t('employees.columns.status') },
@@ -321,29 +292,22 @@
 				}
 			},
 			{
-				accessorKey: 'organizationRole',
+				accessorKey: 'roles',
 				enableHiding: true,
-				meta: { title: 'Szerepkör' },
+				meta: { title: t('employees.columns.roles') },
 				header: ({ column }: any) => renderComponent(DataTableColumnHeader, {
 					get column() { return column; },
-					get title() { return 'Szerepkör'; },
+					get title() { return t('employees.columns.roles'); },
 					onSort: handleSort
 				}),
 				cell: ({ row }: any) => {
-					const role = row.original.organizationRole ?? 'member';
-					const labelMap: Record<string, string> = {
-						admin: 'Adminisztrátor',
-						member: 'Tag'
-					};
-					const colorMap: Record<string, string> = {
-						admin: 'badge-admin',
-						member: 'badge-member'
-					};
-					const label = labelMap[role] ?? role;
-					const cls = colorMap[role] ?? 'badge-member';
-					const snippet = createRawSnippet(() => ({
-						render: () => `<span class="badge ${cls}">${label}</span>`
-					}));
+					const roles: string[] = row.original.roles ?? [];
+					const html = roles.length
+						? `<span class="role-badges">${roles
+								.map((r) => `<span class="badge badge-member">${escapeHtml(r)}</span>`)
+								.join('')}</span>`
+						: `<span class="text-sm text-muted-foreground">—</span>`;
+					const snippet = createRawSnippet(() => ({ render: () => html }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -585,42 +549,6 @@
 		}
 	}
 
-	// --- Szerepkör módosítás ---
-	function handleChangeRoleClick(employee: EmployeeRow) {
-		employeeToChangeRole = employee;
-		newRole = (employee.organizationRole === 'admin' ? 'member' : 'admin') as 'member' | 'admin';
-		modalMode = 'changeRole';
-	}
-
-	function cancelChangeRole() {
-		employeeToChangeRole = null;
-		modalMode = 'none';
-		formError = null;
-	}
-
-	async function confirmChangeRole() {
-		if (!employeeToChangeRole || !currentOrganization) return;
-
-		formLoading = true;
-		formError = null;
-		try {
-			await sdk?.remote?.call('updateOrganizationMemberRole', {
-				organizationId: currentOrganization.id,
-				employeeId: employeeToChangeRole.id,
-				role: newRole
-			});
-
-			const roleLabel = newRole === 'admin' ? 'adminisztrátorrá' : 'taggá';
-			sdk?.ui?.toast(`Szerepkör sikeresen módosítva ${roleLabel} ✓`, 'success');
-			cancelChangeRole();
-			loadData();
-		} catch (err: any) {
-			formError = err?.message ?? 'Hiba történt a szerepkör módosítása során';
-		} finally {
-			formLoading = false;
-		}
-	}
-
 	onMount(async () => {
 		// Store inicializálás
 		if (sdk?.remote) {
@@ -678,14 +606,16 @@
 				>
 					{#snippet toolbar()}
 						{#if Input}
-							<!-- svelte-ignore svelte_component_deprecated -->
-							<svelte:component
-								this={Input}
-								placeholder={t('employees.search')}
-								value={searchInput}
-								oninput={handleSearchInput}
-								class="h-8 w-[200px] lg:w-[280px]"
-							/>
+							<div class="search-box">
+								<!-- svelte-ignore svelte_component_deprecated -->
+								<svelte:component
+									this={Input}
+									placeholder={t('employees.search')}
+									value={searchInput}
+									oninput={handleSearchInput}
+									class="h-8"
+								/>
+							</div>
 						{/if}
 					{/snippet}
 				</svelte:component>
@@ -889,46 +819,6 @@
 	</div>
 {/if}
 
-<!-- Modal: Szerepkör módosítása -->
-{#if modalMode === 'changeRole' && employeeToChangeRole}
-	<div class="modal-overlay" role="dialog" aria-modal="true">
-		<div class="modal modal-confirm">
-			<div class="confirm-icon">👤</div>
-			<h3>Szerepkör módosítása</h3>
-			<p class="modal-description">
-				Biztosan módosítani szeretnéd <strong>{employeeToChangeRole.userName}</strong> szerepkörét?
-			</p>
-			<div class="role-selection">
-				<label class="role-option">
-					<input type="radio" name="role" value="member" bind:group={newRole} />
-					<div class="role-info">
-						<span class="role-title">Tag</span>
-						<span class="role-desc">Normál hozzáférés a szervezet adataihoz</span>
-					</div>
-				</label>
-				<label class="role-option">
-					<input type="radio" name="role" value="admin" bind:group={newRole} />
-					<div class="role-info">
-						<span class="role-title">Adminisztrátor</span>
-						<span class="role-desc">Teljes hozzáférés, tagok kezelése</span>
-					</div>
-				</label>
-			</div>
-			{#if formError}
-				<p class="form-error">{formError}</p>
-			{/if}
-			<div class="modal-footer">
-				<button class="btn-secondary" onclick={cancelChangeRole} disabled={formLoading}>
-					{t('form.cancel')}
-				</button>
-				<button class="btn-primary" onclick={confirmChangeRole} disabled={formLoading}>
-					{formLoading ? t('loading') : 'Módosítás'}
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
 <style>
 	@import '../styles/shared.css';
 
@@ -937,6 +827,16 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.5rem;
+	}
+
+	/* Gyorskereső: a teljes placeholder férjen ki */
+	.search-box {
+		width: 20rem;
+		max-width: 100%;
+	}
+
+	.search-box :global(input) {
+		width: 100%;
 	}
 
 	/* Badge */
@@ -952,8 +852,13 @@
 	:global(.badge-active) { background: #dcfce7; color: #166534; }
 	:global(.badge-inactive) { background: #f1f5f9; color: #475569; }
 	:global(.badge-on-leave) { background: #dbeafe; color: #1e40af; }
-	:global(.badge-admin) { background: #fef3c7; color: #92400e; }
 	:global(.badge-member) { background: #e0e7ff; color: #3730a3; }
+
+	:global(.role-badges) {
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+	}
 
 	/* Avatar */
 	:global(.avatar-img) {
@@ -1045,7 +950,6 @@
 	/* Label override-ok: a shared.css globálisan flex-direction:column-t állít be
 	   minden label-re, ezeket a modal-specifikus label-eknél felül kell írni. */
 	.user-item,
-	.role-option,
 	.employee-item {
 		flex-direction: row;
 	}
@@ -1219,53 +1123,6 @@
 		font-weight: 500;
 	}
 
-	/* Role selection */
-	.role-selection {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		margin: 1rem 0;
-	}
-
-	.role-option {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.75rem;
-		padding: 1rem;
-		border: 2px solid var(--color-border, #e2e8f0);
-		border-radius: 0.5rem;
-		cursor: pointer;
-		transition: all 0.15s;
-	}
-
-	.role-option:hover {
-		border-color: var(--color-primary, #3730a3);
-		background: var(--color-primary-subtle, #e0e7ff);
-	}
-
-	.role-option:has(input:checked) {
-		border-color: var(--color-primary, #3730a3);
-		background: var(--color-primary-subtle, #e0e7ff);
-	}
-
-	.role-info {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		flex: 1;
-	}
-
-	.role-title {
-		font-weight: 600;
-		font-size: 0.875rem;
-		color: var(--color-foreground, #0f172a);
-	}
-
-	.role-desc {
-		font-size: 0.8rem;
-		color: var(--color-muted-foreground, #64748b);
-	}
-
 	/* Sötét mód */
 	:global(.dark) .modal {
 		background: var(--color-card, oklch(0.205 0 0));
@@ -1341,27 +1198,5 @@
 
 	:global(.dark) .employee-avatar-placeholder {
 		background: var(--color-primary-subtle, oklch(0.269 0 0));
-	}
-
-	:global(.dark) .role-option {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-	}
-
-	:global(.dark) .role-option:hover {
-		border-color: var(--color-primary, #3730a3);
-		background: var(--color-primary-subtle, oklch(0.269 0 0));
-	}
-
-	:global(.dark) .role-option:has(input:checked) {
-		border-color: var(--color-primary, #3730a3);
-		background: var(--color-primary-subtle, oklch(0.269 0 0));
-	}
-
-	:global(.dark) .role-title {
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .role-desc {
-		color: var(--color-muted-foreground, oklch(0.708 0 0));
 	}
 </style>

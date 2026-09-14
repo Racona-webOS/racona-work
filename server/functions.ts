@@ -245,7 +245,6 @@ export {
 	getOrganizationMembers,
 	addEmployeeToOrganization,
 	removeEmployeeFromOrganization,
-	updateOrganizationMemberRole,
 	getAvailableEmployeesForOrganization
 } from './organizations.js';
 
@@ -278,9 +277,10 @@ export {
 	deleteRole,
 	listRoleMembers,
 	addRoleMember,
-	removeRoleMember,
-	seedDefaultRoles
+	removeRoleMember
 } from './permissions.js';
+// A seedDefaultRoles belső segéd (createOrganization hívja): remote-ból hívva
+// bárki szervezet-adminisztrátorrá tehette volna magát, ezért nincs itt.
 
 export type { Capability, RoleRow, RoleMemberRow } from './permissions.js';
 

@@ -13,7 +13,12 @@
  *   - listRoleMembers({ roleId })
  *   - addRoleMember({ roleId, userId })
  *   - removeRoleMember({ roleId, userId })
- *   - seedDefaultRoles({ organizationId }) // új szervezethez (createOrganization hívja)
+ *
+ * Belső (nem remote): seedDefaultRoles — új szervezethez, a createOrganization hívja.
+ *
+ * Felső korlát: a `roles.manage` joggal csak a hívó saját képességein belül
+ * lehet szerepet szerkeszteni, törölni és tagot hozzáadni/eltávolítani
+ * (capabilitiesBeyond). A core admin és a dev mód kivétel.
  */
 
 import type { RemoteContext } from './context.js';
@@ -246,6 +251,77 @@ export async function requireSelfOrCapability(
 	return orgId;
 }
 
+// --- Felső korlát a szerepkezeléshez ----------------------------------------
+
+/**
+ * A `before` és `after` képességhalmaz eltérései közül azok, amelyekkel a hívó
+ * nem rendelkezik. Üres lista: a változtatás a hívó saját jogain belül marad.
+ */
+export function capabilitiesBeyond(
+	own: ReadonlySet<string>,
+	before: Iterable<string>,
+	after: Iterable<string>
+): string[] {
+	const b = new Set(before);
+	const a = new Set(after);
+	const changed = [...a].filter((c) => !b.has(c)).concat([...b].filter((c) => !a.has(c)));
+	return changed.filter((c) => !own.has(c)).sort();
+}
+
+/** A hívó képességei a szervezetben; core admin és dev módban mind. */
+async function loadOwnCapabilities(context: RemoteContext, organizationId: number): Promise<Set<string>> {
+	const { capabilities } = await getMyCapabilities({ organizationId }, context);
+	return new Set(capabilities);
+}
+
+async function loadRoleCapabilities(context: RemoteContext, roleId: number): Promise<string[]> {
+	const r = await context.db.query(
+		`SELECT capability FROM app__racona_work.wp_role_capabilities WHERE role_id = $1`,
+		[roleId]
+	);
+	return r.rows.map((row: any) => String(row.capability));
+}
+
+/**
+ * Szerep képességeinek módosítása csak a hívó saját jogain belül: olyan
+ * képességet, amellyel ő nem rendelkezik, nem adhat hozzá és nem vehet el.
+ * Így a `roles.manage` nem ad több jogot, mint amennyi a hívónak már van.
+ */
+async function requireCapabilityChangeAllowed(
+	context: RemoteContext,
+	organizationId: number,
+	before: Iterable<string>,
+	after: Iterable<string>
+): Promise<void> {
+	const beyond = capabilitiesBeyond(await loadOwnCapabilities(context, organizationId), before, after);
+	if (beyond.length > 0) {
+		throw new Error(
+			`Csak olyan képességet adhatsz hozzá vagy vehetsz el, amellyel te is rendelkezel (hiányzik: ${beyond.join(', ')}).`
+		);
+	}
+}
+
+/**
+ * A szerep tagjait kezelni és a szerepet törölni csak az tudja, akinek a szerep
+ * összes képessége megvan — különben magának vagy másnak több jogot adhatna.
+ */
+async function requireRoleWithinOwnCapabilities(
+	context: RemoteContext,
+	organizationId: number,
+	roleId: number
+): Promise<void> {
+	const beyond = capabilitiesBeyond(
+		await loadOwnCapabilities(context, organizationId),
+		[],
+		await loadRoleCapabilities(context, roleId)
+	);
+	if (beyond.length > 0) {
+		throw new Error(
+			`Ezt a szerepet csak az kezelheti, aki a szerep összes képességével rendelkezik (hiányzik: ${beyond.join(', ')}).`
+		);
+	}
+}
+
 // --- Rendszer szerepek seedelése (új szervezethez) --------------------------
 
 /**
@@ -432,6 +508,7 @@ export async function createRole(
 	}
 
 	const caps = validateCapabilities(params.capabilities);
+	await requireCapabilityChangeAllowed(context, params.organizationId, [], caps);
 	const rawKey = params.key?.trim() || slugifyKey(params.name);
 	const key = slugifyKey(rawKey);
 	if (!key) throw new Error('Érvénytelen szerep kulcs');
@@ -500,6 +577,16 @@ export async function updateRole(
 		await requireCapability(context, role.organization_id, 'roles.manage');
 	}
 
+	const caps = params.capabilities === undefined ? undefined : validateCapabilities(params.capabilities);
+	if (caps) {
+		await requireCapabilityChangeAllowed(
+			context,
+			role.organization_id,
+			await loadRoleCapabilities(context, role.id),
+			caps
+		);
+	}
+
 	const client = await context.db.connect();
 	try {
 		await client.query('BEGIN');
@@ -523,8 +610,7 @@ export async function updateRole(
 			);
 		}
 
-		if (params.capabilities !== undefined) {
-			const caps = validateCapabilities(params.capabilities);
+		if (caps) {
 			await client.query(
 				`DELETE FROM app__racona_work.wp_role_capabilities WHERE role_id = $1`,
 				[role.id]
@@ -572,6 +658,7 @@ export async function deleteRole(
 	if (!isCoreAdmin(context) && !isDevMode(context)) {
 		await requireCapability(context, role.organization_id, 'roles.manage');
 	}
+	await requireRoleWithinOwnCapabilities(context, role.organization_id, role.id);
 
 	await context.db.query(`DELETE FROM app__racona_work.wp_roles WHERE id = $1`, [role.id]);
 	return { ok: true };
@@ -644,6 +731,7 @@ export async function addRoleMember(
 	if (!isCoreAdmin(context) && !isDevMode(context)) {
 		await requireCapability(context, role.organization_id, 'roles.manage');
 	}
+	await requireRoleWithinOwnCapabilities(context, role.organization_id, role.id);
 
 	// Csak olyan user-t lehet hozzáadni, aki a szervezet tagja (employee rekorddal).
 	const memberCheck = await context.db.query(
@@ -688,6 +776,7 @@ export async function removeRoleMember(
 	if (!isCoreAdmin(context) && !isDevMode(context)) {
 		await requireCapability(context, role.organization_id, 'roles.manage');
 	}
+	await requireRoleWithinOwnCapabilities(context, role.organization_id, role.id);
 
 	// Védelem: ne maradjon a szervezet org_admin nélkül.
 	if (role.key === 'org_admin') {

@@ -603,52 +603,6 @@ export async function removeEmployeeFromOrganization(
 }
 
 /**
- * Dolgozó szerepkörének frissítése szervezetben.
- * Követelmény: 4.11
- */
-export async function updateOrganizationMemberRole(
-	params: { organizationId: number; employeeId: number; role: string },
-	context: RemoteContext
-): Promise<OrganizationMember> {
-	// Paraméter validáció
-	if (!params.organizationId || params.organizationId <= 0) {
-		throw new Error('Érvénytelen szervezet azonosító');
-	}
-
-	// Szerepkör validáció
-	if (!['member', 'admin'].includes(params.role)) {
-		throw new Error('Érvénytelen szerepkör. Csak "member" vagy "admin" lehet.');
-	}
-
-	// ÚJ SÉMA: Nincs role mező az employees táblában
-	// Ez a függvény már nem releváns, de megtartjuk kompatibilitás miatt
-	// Egyszerűen visszaadjuk az employee adatait
-
-	await requireCapability(context, params.organizationId, 'members.manage');
-
-	// Ellenőrizzük hogy a dolgozó tagja-e a szervezetnek
-	const result = await context.db.query(
-		`SELECT id, organization_id, id AS employee_id, created_at AS joined_at
-		 FROM app__racona_work.employees
-		 WHERE organization_id = $1 AND id = $2`,
-		[params.organizationId, params.employeeId]
-	);
-
-	if (result.rows.length === 0) {
-		throw new Error('A dolgozó nem tagja ennek a szervezetnek.');
-	}
-
-	const row = result.rows[0];
-	return {
-		id: row.id,
-		organizationId: row.organization_id,
-		employeeId: row.employee_id,
-		role: 'member', // Mindig member, nincs role mező
-		joinedAt: row.joined_at
-	};
-}
-
-/**
  * Azok a dolgozók, akik még nem tagjai az adott szervezetnek.
  * Követelmény: 4.12
  */

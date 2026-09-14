@@ -80,11 +80,25 @@
 	let currentOrganization = $state<Organization | null>(null);
 	let hasAccess = $state(false);
 	let canManageRoles = $state(false);
+	// A szerver csak a hívó saját képességein belül enged szerepet módosítani
+	// (felső korlát), ezért a felület is csak ezeket kínálja fel.
+	let myCapabilities = $state<Set<string>>(new Set());
 
 	let roles = $state<RoleRow[]>([]);
 	let rolesLoading = $state(false);
 	let selectedRoleId = $state<number | null>(null);
 	let selectedRole = $derived(roles.find((r) => r.id === selectedRoleId) ?? null);
+	// A szerep tagjait és törlését csak az kezelheti, akinek a szerep összes képessége megvan.
+	let roleWithinOwn = $derived(
+		selectedRole ? selectedRole.capabilities.every((c) => myCapabilities.has(c)) : false
+	);
+
+	function syncAccess(store: OrganizationStore) {
+		currentOrganization = store.currentOrganization;
+		hasAccess = store.hasAccess;
+		canManageRoles = store.can('roles.manage');
+		myCapabilities = new Set(store.capabilities);
+	}
 
 	let members = $state<RoleMemberRow[]>([]);
 	let membersLoading = $state(false);
@@ -303,6 +317,7 @@
 
 	// --- Képesség toggle ------------------------------------------------------
 	function toggleEditCapability(cap: string) {
+		if (!myCapabilities.has(cap)) return;
 		const next = new Set(editCapabilities);
 		if (next.has(cap)) next.delete(cap);
 		else next.add(cap);
@@ -310,6 +325,7 @@
 	}
 
 	function toggleNewCapability(cap: string) {
+		if (!myCapabilities.has(cap)) return;
 		const next = new Set(newCapabilities);
 		if (next.has(cap)) next.delete(cap);
 		else next.add(cap);
@@ -325,15 +341,11 @@
 				orgStore = createOrganizationStore(pluginId, sdk);
 			}
 
-			currentOrganization = orgStore.currentOrganization;
-			hasAccess = orgStore.hasAccess;
-			canManageRoles = orgStore.can('roles.manage');
+			syncAccess(orgStore);
 
 			if (orgStore.availableOrganizations.length === 0) {
 				await orgStore.loadOrganizations();
-				currentOrganization = orgStore.currentOrganization;
-				hasAccess = orgStore.hasAccess;
-				canManageRoles = orgStore.can('roles.manage');
+				syncAccess(orgStore);
 			}
 		}
 
@@ -346,11 +358,7 @@
 	$effect(() => {
 		const handleOrgChange = () => {
 			const store = (window as any).__racona_work_org_store__ as OrganizationStore | undefined;
-			if (store) {
-				currentOrganization = store.currentOrganization;
-				hasAccess = store.hasAccess;
-				canManageRoles = store.can('roles.manage');
-			}
+			if (store) syncAccess(store);
 		};
 		window.addEventListener('organization-changed', handleOrgChange);
 		return () => window.removeEventListener('organization-changed', handleOrgChange);
@@ -434,7 +442,7 @@
 				<aside class="members-panel">
 					<div class="panel-header">
 						<h3>{t('permissions.members.title')}</h3>
-						{#if selectedRole && availableToAdd.length > 0}
+						{#if selectedRole && roleWithinOwn && availableToAdd.length > 0}
 							<button class="btn-secondary" onclick={() => (showAddMember = true)}>
 								+ {t('permissions.members.add')}
 							</button>
@@ -464,13 +472,15 @@
 										<span class="name">{m.userName}</span>
 										<span class="email">{m.userEmail}</span>
 									</div>
-									<button
-										class="remove-btn"
-										title={t('permissions.members.removeConfirm')}
-										onclick={() => handleRemoveMember(m.userId)}
-									>
-										✕
-									</button>
+									{#if roleWithinOwn}
+										<button
+											class="remove-btn"
+											title={t('permissions.members.removeConfirm')}
+											onclick={() => handleRemoveMember(m.userId)}
+										>
+											✕
+										</button>
+									{/if}
 								</li>
 							{/each}
 						</ul>
@@ -492,6 +502,9 @@
 							</h3>
 							{#if selectedRole.isSystem}
 								<p class="hint">{t('permissions.role.systemHint')}</p>
+							{/if}
+							{#if !roleWithinOwn}
+								<p class="hint">{t('permissions.role.beyondOwnHint')}</p>
 							{/if}
 						</div>
 
@@ -535,9 +548,15 @@
 										</div>
 										<div class="cap-items">
 											{#each group.items as cap (cap)}
-												<label class="cap-item" class:checked={editCapabilities.has(cap)}>
+												<label
+													class="cap-item"
+													class:checked={editCapabilities.has(cap)}
+													class:locked={!myCapabilities.has(cap)}
+													title={myCapabilities.has(cap) ? undefined : t('permissions.role.capabilityLocked')}
+												>
 													<Checkbox
 														checked={editCapabilities.has(cap)}
+														disabled={!myCapabilities.has(cap)}
 														onCheckedChange={() => toggleEditCapability(cap)}
 													/>
 													<span>{t(`capability.${cap}`)}</span>
@@ -550,7 +569,7 @@
 						</div>
 
 						<div class="editor-actions">
-							{#if !selectedRole.isSystem}
+							{#if !selectedRole.isSystem && roleWithinOwn}
 								<button
 									class="btn-danger"
 									onclick={handleDeleteRole}
@@ -610,9 +629,15 @@
 									</div>
 									<div class="cap-items">
 										{#each group.items as cap (cap)}
-											<label class="cap-item" class:checked={newCapabilities.has(cap)}>
+											<label
+												class="cap-item"
+												class:checked={newCapabilities.has(cap)}
+												class:locked={!myCapabilities.has(cap)}
+												title={myCapabilities.has(cap) ? undefined : t('permissions.role.capabilityLocked')}
+											>
 												<Checkbox
 													checked={newCapabilities.has(cap)}
+													disabled={!myCapabilities.has(cap)}
 													onCheckedChange={() => toggleNewCapability(cap)}
 												/>
 												<span>{t(`capability.${cap}`)}</span>
@@ -808,6 +833,10 @@
 		margin: 0;
 	}
 
+	.editor-header .hint + .hint {
+		margin-top: 0.375rem;
+	}
+
 	.form-grid {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
@@ -923,6 +952,15 @@
 
 	.cap-item.checked {
 		font-weight: 500;
+	}
+
+	.cap-item.locked {
+		cursor: not-allowed;
+		opacity: 0.55;
+	}
+
+	.cap-item.locked:hover {
+		background: transparent;
 	}
 
 	.editor-actions {
