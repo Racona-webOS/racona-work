@@ -27,6 +27,7 @@
 	import { untrack } from 'svelte';
 	import type {
 		EmployeeRow,
+		LeaveBalanceOverview,
 		LeaveCalendar,
 		LeaveCalendarDay,
 		LeaveCalendarPendingDay,
@@ -42,6 +43,7 @@
 	import { CALENDAR_LEAVE_TYPES, REQUEST_CALENDAR_LEAVE_TYPES } from '../../../server/leave-day-utils.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import { isWeekend, monthGrid, monthRange } from '../../lib/calendar-grid.js';
+	import LeaveSummaryTable from './LeaveSummaryTable.svelte';
 
 	let {
 		pluginId = 'racona-work',
@@ -187,6 +189,54 @@
 	}
 
 	const hasAnyLeave = $derived((data?.days.length ?? 0) + (data?.pending.length ?? 0) > 0);
+
+	// --- Táblázatos összesítő (specs/leave-days.md, K18) --------------------
+
+	/** Csak a jóváhagyónak, a kérelmező módon kívül: a típus egészségügyi adat is lehet. */
+	const showSummary = $derived(canManage && !lockEmployee && data?.canManage === true);
+
+	/** Éves nézetben dolgozónként az éves keret (az egyenleg oldal lekérdezéséből). */
+	let yearAllowances = $state<Map<number, number> | null>(null);
+
+	async function loadAllowances() {
+		yearAllowances = null;
+		if (!sdk?.remote || !organizationId || view !== 'year' || !showSummary) return;
+		const requestedYear = year;
+		try {
+			const overview: LeaveBalanceOverview = await sdk.remote.call('getLeaveBalanceOverview', {
+				organizationId,
+				year: requestedYear
+			});
+			if (requestedYear === year && view === 'year') {
+				yearAllowances = new Map(overview.employees.map((e) => [e.employeeId, e.totalDays]));
+			}
+		} catch {
+			// Keret nélkül is használható: a keret-oszlopokban „—” marad
+			if (requestedYear === year) yearAllowances = new Map();
+		}
+	}
+
+	$effect(() => {
+		organizationId;
+		view;
+		year;
+		showSummary;
+		refreshKey;
+		untrack(() => loadAllowances());
+	});
+
+	const summaryPeriod = $derived(
+		view === 'year'
+			? t('leaveSummary.period.year', { year })
+			: t('leaveSummary.period.month', {
+					year,
+					month: t(`workCalendar.month.${month}`),
+					monthLower: t(`workCalendar.month.${month}`).toLocaleLowerCase('hu')
+				})
+	);
+	const summaryFileName = $derived(
+		view === 'year' ? `szabadsagok-${year}` : `szabadsagok-${year}-${String(month + 1).padStart(2, '0')}`
+	);
 
 	// --- Szerkesztés ---------------------------------------------------------
 
@@ -1003,6 +1053,19 @@
 			</tbody>
 		</table>
 	</div>
+	{/if}
+
+	{#if showSummary && data}
+		<LeaveSummaryTable
+			{pluginId}
+			employees={teamRows}
+			days={data.days}
+			pending={data.pending}
+			allowances={yearAllowances}
+			showBalance={view === 'year'}
+			period={summaryPeriod}
+			fileName={summaryFileName}
+		/>
 	{/if}
 
 	{#if detailsDay && detailsAnchor && detailsApproved.length + detailsPending.length > 0}

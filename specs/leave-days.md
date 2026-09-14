@@ -1,6 +1,6 @@
 # Szabadságnapok és szabadságnaptár
 
-> Státusz: 1–3. fázis kész · Utolsó módosítás: 2026-09-11
+> Státusz: 1–4. fázis kész · Utolsó módosítás: 2026-09-14
 
 Ma a szabadság egyetlen igazságforrása a szabadságkérelem (`leave_requests`): egy intervallum és egy `days` szám. Ebből nem lehet utólag egy napot kivenni, és a HR nem látja napokra bontva, ki mikor van szabadságon. A cél, hogy a kérelem **beadott, utólag nem módosuló meta sor** maradjon, a tényleges szabadság viszont **napszinten** legyen tárolva. A napok táblája lesz az igazságforrás a szabadságok mutatásához, a keretek terheléséhez és a naptárhoz. A nyilvántartó oldalon a kérelmek listája alá naptárnézet kerül, amiben a HR napokat vehet fel és törölhet.
 
@@ -280,6 +280,26 @@ A kérelem jóváhagyása és elutasítása, valamint a még függő kérelem t�
 - A mentés a dolgozó sorát zárolja (`FOR UPDATE`), hogy két egyszerre futó mentés egymás után ellenőrizzen.
 - A megerősítés szűrőváltásnál a böngésző natív `confirm` ablakával történik.
 - A jelölések sima `Set`-ben élnek, minden változásnál újra létrehozva. A `svelte/reactivity` (`SvelteSet`) nem használható a pluginban: a build csak a `svelte` és a `svelte/internal/client` csomagot veszi a core közös runtime-jából, a `svelte/reactivity` a csomagba kerülne a saját runtime-másolatával, és a jelölések nem frissítenék a felületet (dev módban egy runtime van, ott nem látszik).
+
+### 4. fázis: táblázatos összesítő és export ✅
+
+**K18. Összesítő a naptár alatt.** A szabadság-nyilvántartó naptára alatt, havi, csapat- és éves nézetben, táblázat dolgozónként: a jóváhagyott napok típusonként, összesen, a függő kérelmek napjai; éves nézetben az éves keret és a maradék is. Havi és csapatnézetben a megjelenített hónapra, éves nézetben az egész évre vonatkozik. Az „Export (XLSX)” gomb ugyanezt munkafüzetbe menti.
+
+| # | Kérdés | Döntés |
+|---|---|---|
+| D19 | Ki látja? | Csak a jóváhagyó (`leave.approve`), a kérelmező módon kívül: a típus (pl. betegszabadság) egészségügyi adat, a kollégák a naptárban sem látják. |
+| D20 | Honnan jönnek a számok? | A naptár már letöltött napjaiból (`getLeaveCalendar`), új szerverhívás nélkül; a dolgozószűrő a táblázatra is vonatkozik. A sorok a csapatnézet sorai (az aktív dolgozók), a listán kívüli, de az időszakban szabadságon lévő dolgozó a végére kerül. |
+| D21 | Keret és maradék | Csak éves nézetben. A keret a `getLeaveBalanceOverview` válaszából jön (dolgozónként `total_days`), a maradék: keret − az év éves és céges kötelező szabadság napjai (`BALANCE_LEAVE_TYPES`). Keret nélkül „—”. A függő napok nincsenek benne. |
+| D22 | Oszlopok | A képernyőn a típusoszlopok közül csak az látszik, amelyikben van nap (az éves mindig); az exportban mindegyik típus szerepel, hogy a fájlok oszlopai egyformák legyenek. Ismeretlen típus „Egyéb (típus nélkül)” oszlopba kerül. |
+| D23 | Export | XLSX sablon nélkül (`src/lib/xlsx-writer.ts`, fflate): cím, félkövér és kitöltött fejléc, rögzített fejlécsor, oszlopszélességek, összesen sor; a számok számként. Fájlnév: `szabadsagok-2026-09.xlsx`, éves nézetben `szabadsagok-2026.xlsx`. |
+
+- [x] `src/lib/leave-summary.ts`: `summarizeLeave`, `visibleLeaveTypes`
+- [x] `src/lib/xlsx-writer.ts`: `buildXlsx`, `downloadBytes`, `columnName`, `escapeXml`, `sheetName`
+- [x] `tests/leave-summary.test.ts` (5 teszt: típusonkénti és függő napok, listán kívüli dolgozó, keret és maradék, látható típusok, xlsx részek és cellák)
+- [x] `LeaveSummaryTable.svelte` a `LeaveCalendar.svelte` alatt; éves nézetben a keretek betöltése
+- [x] Locale (hu, en)
+- [x] Ellenőrzés a dev szerveren: havi, csapat- és éves nézet (a maradék egyezik a Szabadság egyenleg oldal kivett és lefoglalt napjaival), az export fájlneve, típusa és tartalma; a böngészőből letöltött fájlt a LibreOffice hibátlanul beolvasta (számok számként, ékezetek, összesen sor)
+- [ ] Élesben ellenőrizendő: csak jóváhagyóként látszik (a dev mód minden jogot megad); a letöltés a core ablakában; megnyitás Excelben
 
 ### Későbbi ötletek
 
