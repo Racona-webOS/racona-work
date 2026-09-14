@@ -28,7 +28,9 @@
  *   dates.ts         — dátum-segédek (budapesti nap, YYYY-MM-DD ellenőrzés)
  *   leave-types.ts   — szabadságtípusok (a kliens is importálja)
  *   dashboard.ts     — irányítópult statisztikák
- *   settings.ts      — kv_store alapú beállítások
+ *   leave-notifications.ts — szabadságos értesítések és az új kérelmek értesítendőinek beállítása
+ *   notification-settings.ts — mely eseményekről menjen email (szervezetenként)
+ *   notification-email.ts — közös email-küldés, a beállítás ellenőrzésével
  *   organizations.ts — szervezetek és szervezeti tagság
  *   permissions.ts   — szerepek és képességek
  *   projects.ts      — projektek, projekt tagok, projekt-szintű szerepek
@@ -230,7 +232,9 @@ export type { DashboardStats } from './dashboard.js';
 
 // --- Beállítások ------------------------------------------------------------
 
-export { getSettings, saveSettings } from './settings.js';
+export { getLeaveNotifiers, saveLeaveNotifiers } from './leave-notifications.js';
+export { getNotificationSettings, saveNotificationSettings } from './notification-settings.js';
+export type { NotificationEvent, NotificationSettings } from './notification-settings.js';
 
 // --- Szervezetek ------------------------------------------------------------
 

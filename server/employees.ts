@@ -12,6 +12,7 @@ import { parseDay, todayInBudapest } from './dates.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
 import { geocodeAddress } from './geo.js';
 import { validateTaxId } from './trip-calc.js';
+import { isEmailEnabled } from './notification-settings.js';
 import type { RecalculatedBalance } from './leave-profile.js';
 import type { PaginatedResult } from './types.js';
 
@@ -270,13 +271,13 @@ export async function createEmployeeWithUser(
 	// A tranzakción kívül, best-effort: ha hiba van, a dolgozó már létrejött.
 	await assignDefaultEmployeeRole(context, params.organizationId, employee.userId);
 
-	// Email küldés a tranzakción kívül — hiba esetén NEM gördíti vissza
+	// Email küldés a tranzakción kívül — hiba esetén NEM gördíti vissza.
+	// A szervezet kikapcsolhatja (specs/notifications.md).
 	try {
+		if (!(await isEmailEnabled(context, params.organizationId, 'employee.welcome'))) {
+			return employee;
+		}
 		const schemaName = `app__${context.pluginId.replace(/-/g, '_')}`;
-		const companyNameResult = await context.db.query(
-			`SELECT value FROM ${schemaName}.kv_store WHERE key = 'settings:company_name'`
-		);
-		const companyName = companyNameResult.rows[0]?.value ?? 'Racona';
 
 		// Szervezet neve, amibe a dolgozót felvették.
 		const orgResult = await context.db.query(
@@ -318,7 +319,6 @@ export async function createEmployeeWithUser(
 			data: {
 				name: params.name,
 				email: params.email,
-				companyName,
 				organizationName,
 				pluginName,
 				positionHtml,

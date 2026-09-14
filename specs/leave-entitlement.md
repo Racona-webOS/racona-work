@@ -312,7 +312,8 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
 | `setLeaveBalanceAdjustment({ balanceId, adjustmentDays, adjustmentNote, isLocked })` | `leave.balance.manage` | K4, K5. |
 | `applyCalculationToBalance({ balanceId, keepTotal })` | `leave.balance.manage` | K8: kézi vagy zárolt keret átállítása számított módra. `keepTotal` esetén a korrekció = régi összeg − számított. |
 | `getLeavePolicy({ organizationId })` | `employee.view` | Céges szabály, kv_store kulcs: `settings:leave_policy:org_<id>`. |
-| `saveLeavePolicy({ organizationId, extraDaysForAll, extraDaysLabel? })` | `org.manage` | Mentés + a cég dolgozóinak újraszámolása. |
+| `saveLeavePolicy({ organizationId, extraDaysForAll, extraDaysLabel? })` | `leave.balance.manage` | Mentés + a cég dolgozóinak újraszámolása. |
+| `getLeaveNotifiers({ organizationId })` / `saveLeaveNotifiers({ organizationId, employeeIds })` (`leave-notifications.ts`) | `leave.balance.manage` | Kik kapnak értesítést az új kérelmekről (`settings:leave_request_notifiers:org_<id>`). Csak a szervezet dolgozói kerülhetnek a listába. A korábbi általános `getSettings`/`saveSettings` megszűnt: bármelyik kulcsot nyersen írhatta volna. |
 
 **Meglévő függvények változásai**
 
@@ -349,7 +350,7 @@ Validáció: a dátumok `YYYY-MM-DD` formájú, létező napok. Születési dát
 
 - A saját keret kártyáján kinyitható a bontás, csak olvasásra.
 
-**Beállítások – `LeaveSettings.svelte`** (a menüpont `org.manage` joghoz kötött)
+**Beállítások – `LeaveSettings.svelte`** (a menüpont `leave.balance.manage` joghoz kötött, így a HR felelős is eléri)
 
 - Új „Céges többletnap” szakasz: napok száma mindenkinek, és ennek megnevezése (pl. „KSZ szerinti többlet”).
 

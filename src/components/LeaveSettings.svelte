@@ -88,10 +88,8 @@
 			});
 			employees = result?.data ?? [];
 
-			// Meglévő beállítás betöltése - szervezet-specifikus kulccsal
-			const settingsKey = `settings:leave_request_notifiers:org_${currentOrganization.id}`;
-			const saved = await sdk?.remote?.call('getSettings', {
-				key: settingsKey
+			const saved: number[] = await sdk?.remote?.call('getLeaveNotifiers', {
+				organizationId: currentOrganization.id
 			});
 			selectedNotifierIds = Array.isArray(saved) ? saved : [];
 
@@ -114,15 +112,13 @@
 
 		saving = true;
 		try {
-			// Szervezet-specifikus kulccsal mentés
-			const settingsKey = `settings:leave_request_notifiers:org_${currentOrganization.id}`;
-			await sdk?.remote?.call('saveSettings', {
-				key: settingsKey,
-				value: selectedNotifierIds
+			selectedNotifierIds = await sdk.remote.call('saveLeaveNotifiers', {
+				organizationId: currentOrganization.id,
+				employeeIds: selectedNotifierIds
 			});
 			sdk?.ui?.toast(t('settings.saveSuccess'), 'success');
-		} catch {
-			sdk?.ui?.toast(t('error.saveFailed'), 'error');
+		} catch (err: any) {
+			sdk?.ui?.toast(err?.message?.replace(/^[A-Z_]+:\s*/, '') ?? t('error.saveFailed'), 'error');
 		} finally {
 			saving = false;
 		}
@@ -201,35 +197,6 @@
 				<span>{t('loading')}</span>
 			</div>
 		{:else}
-			<!-- Céges szabadság-többlet -->
-			<div class="settings-section">
-				<div class="section-header">
-					<h3>{t('settings.leavePolicy.title')}</h3>
-					<p class="section-description">{t('settings.leavePolicy.description')}</p>
-				</div>
-				<div class="policy-fields">
-					<label>
-						<span>{t('settings.leavePolicy.days')}</span>
-						<input class="input" type="number" min="0" max="30" bind:value={policyDays} />
-					</label>
-					<label>
-						<span>{t('settings.leavePolicy.label')}</span>
-						<input
-							class="input"
-							type="text"
-							maxlength="100"
-							placeholder={t('settings.leavePolicy.labelPlaceholder')}
-							bind:value={policyLabel}
-						/>
-					</label>
-				</div>
-				<div class="save-row">
-					<button class="btn-secondary" onclick={savePolicy} disabled={policySaving}>
-						{policySaving ? t('loading') : t('settings.leavePolicy.save')}
-					</button>
-				</div>
-			</div>
-
 			<!-- Szabadságkérelem értesítendők szekció -->
 			<div class="settings-section">
 				<div class="section-header">
@@ -271,20 +238,49 @@
 							</label>
 						{/each}
 					</div>
-
-					{#if selectedNotifierIds.length === 0}
-						<p class="no-selection-hint">{t('settings.leaveNotifiers.noSelection')}</p>
-					{:else}
-						<p class="selection-count">{selectedNotifierIds.length} dolgozó kiválasztva</p>
-					{/if}
 				{/if}
+
+				<div class="save-row">
+					{#if !employeesLoading && employees.length > 0}
+						{#if selectedNotifierIds.length === 0}
+							<p class="no-selection-hint">{t('settings.leaveNotifiers.noSelection')}</p>
+						{:else}
+							<p class="selection-count">{selectedNotifierIds.length} dolgozó kiválasztva</p>
+						{/if}
+					{/if}
+					<button class="btn-primary" onclick={saveSettings} disabled={saving}>
+						{saving ? t('loading') : t('settings.save')}
+					</button>
+				</div>
 			</div>
 
-			<!-- Mentés gomb -->
-			<div class="save-row">
-				<button class="btn-primary" onclick={saveSettings} disabled={saving}>
-					{saving ? t('loading') : t('settings.save')}
-				</button>
+			<!-- Céges szabadság-többlet -->
+			<div class="settings-section">
+				<div class="section-header">
+					<h3>{t('settings.leavePolicy.title')}</h3>
+					<p class="section-description">{t('settings.leavePolicy.description')}</p>
+				</div>
+				<div class="policy-fields">
+					<label>
+						<span>{t('settings.leavePolicy.days')}</span>
+						<input class="input" type="number" min="0" max="30" bind:value={policyDays} />
+					</label>
+					<label>
+						<span>{t('settings.leavePolicy.label')}</span>
+						<input
+							class="input"
+							type="text"
+							maxlength="100"
+							placeholder={t('settings.leavePolicy.labelPlaceholder')}
+							bind:value={policyLabel}
+						/>
+					</label>
+				</div>
+				<div class="save-row">
+					<button class="btn-primary" onclick={savePolicy} disabled={policySaving}>
+						{policySaving ? t('loading') : t('settings.leavePolicy.save')}
+					</button>
+				</div>
 			</div>
 		{/if}
 	{/if}
@@ -299,13 +295,30 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2rem;
-		max-width: 640px;
+		max-width: 960px;
 	}
 
 	.page-header h2 {
 		font-size: 1.5rem;
 		font-weight: 700;
 		margin: 0 0 0.25rem;
+	}
+
+	/* A shared.css a fejlécet sorba rendezi; a cím ne törjön több sorra,
+	   a leírás kapja a maradék helyet. */
+	.page .page-header,
+	.settings-section .section-header {
+		gap: 1.5rem;
+	}
+
+	.settings-section .section-header {
+		justify-content: flex-start;
+	}
+
+	.page-header h2,
+	.section-header h3 {
+		flex-shrink: 0;
+		white-space: nowrap;
 	}
 
 	.settings-section {
@@ -421,7 +434,12 @@
 
 	.save-row {
 		display: flex;
-		justify-content: flex-end;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	.save-row .btn-primary {
+		margin-left: auto;
 	}
 
 	.policy-fields {

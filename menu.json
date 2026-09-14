@@ -117,7 +117,7 @@
 				"href": "#settings/leave",
 				"icon": "BellRing",
 				"component": "LeaveSettings",
-				"requiredCapability": "org.manage"
+				"requiredCapability": "leave.balance.manage"
 			},
 			{
 				"labelKey": "menu.settings.businessTrips",
@@ -127,18 +127,18 @@
 				"requiredCapability": "trip.manage"
 			},
 			{
+				"labelKey": "menu.settings.notifications",
+				"href": "#settings/notifications",
+				"icon": "Mail",
+				"component": "NotificationSettings",
+				"requiredCapability": "org.manage"
+			},
+			{
 				"labelKey": "menu.settings.permissions",
 				"href": "#settings/permissions",
 				"icon": "ShieldCheck",
 				"component": "PermissionsSettings",
 				"requiredCapability": "roles.manage"
-			},
-			{
-				"labelKey": "menu.settings.general",
-				"href": "#settings/general",
-				"icon": "SlidersHorizontal",
-				"component": "GeneralSettings",
-				"requiredCapability": "org.manage"
 			}
 		]
 	}

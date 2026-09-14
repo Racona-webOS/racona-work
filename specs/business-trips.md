@@ -711,7 +711,7 @@ A `leave-notifications.ts` mintája: csak alkalmazáson belüli értesítés, le
 - Jóváhagyás (a bizonylatszámmal), visszaküldés, kifizetés, visszanyitás → a dolgozó.
 - Az elrendelő felülbírálása → a dolgozó („A HR 3 útnál módosította az elrendelőt”), műveletenként egy értesítés, nem soronként.
 
-E-mail a 2. fázisban (`email-templates/trip_settlement_*.json`).
+E-mail: `trip_settlement_submitted`, `trip_settlement_status`, `trip_orderer_changed` sablonok, a Beállítások → Értesítések oldalon kapcsolható (specs/notifications.md, alapból ki).
 
 ## 14. Adatvédelem
 
@@ -784,7 +784,7 @@ E-mail a 2. fázisban (`email-templates/trip_settlement_*.json`).
 - [ ] Hely választása kattintással a térképen (fordított geokódolás)
 - [ ] HR havi összesítő (dolgozónként km és Ft), CSV a bérszámfejtésnek
 - [ ] Dashboard: „Saját utak ebben a hónapban”, HR: „Jóváhagyásra váró rendelvények”
-- [ ] E-mail értesítések
+- [x] E-mail értesítések (specs/notifications.md)
 - [ ] Figyelmeztetés, ha az út szabadságos napra esik
 - [ ] A személyes adatok dolgozói bejelentése (a meglévő `leave_data_requests` mechanizmussal, új `kind` értékekkel), hogy a dolgozó maga kérhesse a hiányzó adatok pótlását
 

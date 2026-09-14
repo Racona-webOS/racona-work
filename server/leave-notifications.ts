@@ -6,25 +6,86 @@
  *   - elbírálás, függő kérelem törlése → a kérelmet beadó dolgozó kapja (8.9)
  *   - jóváhagyott szabadság törlése → a dolgozó kapja (külön szöveg: az már nem kérelem)
  *   - naptáras mentés (napok törölve, szabadság rögzítve) → a dolgozó kapja
- *   - visszavonás → a beadásról értesített dolgozók kapják (csak rendszeren belül)
+ *   - visszavonás → a beadásról értesített dolgozók kapják
  *
  * Minden küldés best-effort: a hibát naplózzuk, de a kérelem művelete nem
  * gördül vissza, és a hívó nem kap hibát. A műveletet végző felhasználó nem
- * kap értesítést a saját lépéséről.
+ * kap értesítést a saját lépéséről. Az email csak akkor megy ki, ha a
+ * szervezet az eseményhez bekapcsolta (specs/notifications.md).
  */
 
 import type { RemoteContext, LocalizedText } from './context.js';
 import { resolveUserId } from './context.js';
 import { isLeaveType, LEAVE_TYPE_LABELS } from './leave-types.js';
-
-/** Az email nyelve. A felhasználóknak nincs tárolt nyelvi beállítása, ezért fix. */
-const EMAIL_LOCALE: keyof LocalizedText = 'hu';
+import {
+	EMAIL_LOCALE,
+	escapeHtml,
+	itemsHtml,
+	itemsText,
+	loadOrganizationName,
+	loadRecipientsByUserIds,
+	noteBlockHtml,
+	sendEmails,
+	toRecipient
+} from './notification-email.js';
+import type { Recipient } from './notification-email.js';
+import { requireCapability } from './permissions.js';
+import { requireOrganizationId } from './trip-access.js';
 
 const SCHEMA = 'app__racona_work';
 
 /** Az értesítendő dolgozók listájának kulcsa (LeaveSettings ezzel menti). */
 function notifiersSettingsKey(organizationId: number): string {
 	return `settings:leave_request_notifiers:org_${organizationId}`;
+}
+
+// ---------------------------------------------------------------------------
+// Beállítás: kik kapnak értesítést az új kérelmekről (Beállítások → Szabadság)
+// ---------------------------------------------------------------------------
+
+/** Az új szabadságkérelemről értesítendő dolgozók azonosítói. */
+export async function getLeaveNotifiers(
+	params: { organizationId: number },
+	context: RemoteContext
+): Promise<number[]> {
+	const organizationId = requireOrganizationId(params?.organizationId);
+	await requireCapability(context, organizationId, 'leave.balance.manage');
+	const r = await context.db.query(`SELECT value FROM ${SCHEMA}.kv_store WHERE key = $1`, [
+		notifiersSettingsKey(organizationId)
+	]);
+	return toIdList(r.rows[0]?.value);
+}
+
+/**
+ * Az értesítendők mentése. Csak a szervezet dolgozói kerülhetnek a listába;
+ * a visszaadott érték a ténylegesen mentett lista.
+ */
+export async function saveLeaveNotifiers(
+	params: { organizationId: number; employeeIds: number[] },
+	context: RemoteContext
+): Promise<number[]> {
+	const organizationId = requireOrganizationId(params?.organizationId);
+	await requireCapability(context, organizationId, 'leave.balance.manage');
+
+	const requested = [...new Set(toIdList(params.employeeIds))];
+	let employeeIds: number[] = [];
+	if (requested.length > 0) {
+		const r = await context.db.query(
+			`SELECT id FROM ${SCHEMA}.employees
+			  WHERE id = ANY($1::int[]) AND organization_id = $2
+			  ORDER BY id`,
+			[requested, organizationId]
+		);
+		employeeIds = r.rows.map((row: any) => Number(row.id));
+	}
+
+	await context.db.query(
+		`INSERT INTO ${SCHEMA}.kv_store (key, value, updated_at)
+		 VALUES ($1, $2::jsonb, NOW())
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+		[notifiersSettingsKey(organizationId), JSON.stringify(employeeIds)]
+	);
+	return employeeIds;
 }
 
 export type LeaveDecision = 'approved' | 'rejected' | 'deleted';
@@ -76,12 +137,6 @@ export interface LeaveNotificationRequest {
 	endDate: string;
 	days: number;
 	reason?: string | null;
-}
-
-interface Recipient {
-	userId: number;
-	name: string;
-	email: string | null;
 }
 
 /**
@@ -163,11 +218,13 @@ export async function notifyLeaveRequestsCreated(
 		});
 
 		const reason = request.reason?.trim() || '';
-		await sendEmails(
-			context,
+		const reasonLabel = EMAIL_LOCALE === 'hu' ? 'Indoklás' : 'Reason';
+		await sendEmails(context, {
+			organizationId: request.organizationId,
+			event: 'leave.requestCreated',
+			template: 'leave_request_new',
 			recipients,
-			'leave_request_new',
-			(recipient) => ({
+			buildData: (recipient) => ({
 				recipientName: recipient.name,
 				recipientNameHtml: escapeHtml(recipient.name),
 				employeeName,
@@ -177,10 +234,10 @@ export async function notifyLeaveRequestsCreated(
 				leaveTypeLabel: leaveType[EMAIL_LOCALE],
 				period: period[EMAIL_LOCALE],
 				days,
-				reasonHtml: reason ? reasonBlockHtml(reason) : '',
-				reasonText: reason ? `${EMAIL_LOCALE === 'hu' ? 'Indoklás' : 'Reason'}: ${reason}\n` : ''
+				reasonHtml: reason ? noteBlockHtml(reasonLabel, reason) : '',
+				reasonText: reason ? `${reasonLabel}: ${reason}\n` : ''
 			})
-		);
+		});
 	} catch (err) {
 		console.error('[Work] Új szabadságkérelem értesítés sikertelen:', err);
 	}
@@ -218,18 +275,24 @@ export async function notifyLeaveRequestDecision(
 		});
 
 		const organizationName = await loadOrganizationName(context, request.organizationId);
-		await sendEmails(context, [employee], 'leave_request_status', (recipient) => ({
-			recipientName: recipient.name,
-			recipientNameHtml: escapeHtml(recipient.name),
-			organizationName,
-			organizationNameHtml: escapeHtml(organizationName),
-			statusLabel: texts.label[EMAIL_LOCALE],
-			statusSentence: texts.sentence[EMAIL_LOCALE],
-			statusColor: texts.color,
-			leaveTypeLabel: leaveType[EMAIL_LOCALE],
-			period: period[EMAIL_LOCALE],
-			days: request.days
-		}));
+		await sendEmails(context, {
+			organizationId: request.organizationId,
+			event: decision === 'deleted' ? 'leave.deleted' : 'leave.requestDecided',
+			template: 'leave_request_status',
+			recipients: [employee],
+			buildData: (recipient) => ({
+				recipientName: recipient.name,
+				recipientNameHtml: escapeHtml(recipient.name),
+				organizationName,
+				organizationNameHtml: escapeHtml(organizationName),
+				statusLabel: texts.label[EMAIL_LOCALE],
+				statusSentence: texts.sentence[EMAIL_LOCALE],
+				statusColor: texts.color,
+				leaveTypeLabel: leaveType[EMAIL_LOCALE],
+				period: period[EMAIL_LOCALE],
+				days: request.days
+			})
+		});
 	} catch (err) {
 		console.error(`[Work] Szabadságkérelem értesítés sikertelen (${decision}):`, err);
 	}
@@ -260,39 +323,6 @@ async function sendInApp(
 	}
 }
 
-/**
- * Címzettenként külön email, hogy egy hibás cím ne akassza meg a többit.
- * Email cím nélküli címzett kimarad.
- */
-async function sendEmails(
-	context: RemoteContext,
-	recipients: Recipient[],
-	template: string,
-	buildData: (recipient: Recipient) => Record<string, unknown>
-): Promise<void> {
-	if (!context.email) return;
-
-	const withEmail = recipients.filter((r): r is Recipient & { email: string } => !!r.email);
-	const results = await Promise.allSettled(
-		withEmail.map((recipient) =>
-			context.email!.send({
-				to: recipient.email,
-				template,
-				data: buildData(recipient),
-				locale: EMAIL_LOCALE
-			})
-		)
-	);
-
-	results.forEach((result, i) => {
-		const failed = result.status === 'rejected' || !result.value.success;
-		if (failed) {
-			const reason = result.status === 'rejected' ? result.reason : result.value.error;
-			console.error(`[Work] ${template} email sikertelen (${withEmail[i].email}):`, reason);
-		}
-	});
-}
-
 // ---------------------------------------------------------------------------
 // Adatok
 // ---------------------------------------------------------------------------
@@ -315,21 +345,6 @@ async function loadEmployee(context: RemoteContext, employeeId: number): Promise
 		[employeeId]
 	);
 	return result.rows[0] ? toRecipient(result.rows[0]) : null;
-}
-
-async function loadOrganizationName(context: RemoteContext, organizationId: number): Promise<string> {
-	const result = await context.db.query(`SELECT name FROM ${SCHEMA}.organizations WHERE id = $1`, [
-		organizationId
-	]);
-	return result.rows[0]?.name ?? '';
-}
-
-function toRecipient(row: { user_id: number; full_name: string | null; email: string | null }): Recipient {
-	return {
-		userId: Number(row.user_id),
-		name: row.full_name?.trim() || row.email || '—',
-		email: row.email ?? null
-	};
 }
 
 /** A kv_store-ban tárolt értéket pozitív egész ID listává alakítja. */
@@ -371,29 +386,8 @@ function formatPeriod(startDay: string, endDay: string): LocalizedText {
 }
 
 /**
- * A core template engine nem escape-el, ezért minden felhasználói szöveget
- * (név, indoklás) itt kell HTML-biztossá tenni.
- */
-function escapeHtml(value: string): string {
-	return value
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
-}
-
-function reasonBlockHtml(reason: string): string {
-	const label = EMAIL_LOCALE === 'hu' ? 'Indoklás' : 'Reason';
-	return (
-		`<p style="margin: 8px 0 0; font-size: 14px; color: #18181b;"><strong>${label}:</strong> ` +
-		`${escapeHtml(reason).replace(/\n/g, '<br>')}</p>`
-	);
-}
-
-/**
- * A dolgozó visszavonta a függő kérelmét: rendszeren belüli értesítés azoknak,
- * akik a beadásról is értesültek. Email nincs, mert nincs teendő.
+ * A dolgozó visszavonta a függő kérelmét: értesítés azoknak, akik a
+ * beadásról is értesültek. Email csak bekapcsolt beállításnál (alapból ki).
  *
  * @param context - Remote hívás kontextus.
  * @param request - A visszavont kérelem.
@@ -420,11 +414,10 @@ export async function notifyLeaveRequestWithdrawn(
 			    AND e.status = 'active'`,
 			[notifierEmployeeIds, request.organizationId]
 		);
-		const userIds = recipientResult.rows
+		const recipients = recipientResult.rows
 			.map(toRecipient)
-			.filter((r) => r.userId !== actorUserId)
-			.map((r) => r.userId);
-		if (userIds.length === 0) return;
+			.filter((r) => r.userId !== actorUserId);
+		if (recipients.length === 0) return;
 
 		const employee = await loadEmployee(context, request.employeeId);
 		const employeeName = employee?.name ?? '—';
@@ -432,7 +425,7 @@ export async function notifyLeaveRequestWithdrawn(
 		const period = formatPeriod(request.startDate, request.endDate);
 
 		await sendInApp(context, {
-			userIds,
+			userIds: recipients.map((r) => r.userId),
 			title: { hu: 'Szabadságkérelem visszavonva', en: 'Leave request withdrawn' },
 			message: {
 				hu: `${employeeName}: ${leaveType.hu}, ${period.hu} (${request.days} munkanap)`,
@@ -440,6 +433,25 @@ export async function notifyLeaveRequestWithdrawn(
 			},
 			type: 'info',
 			data: { leaveRequestId: request.id, organizationId: request.organizationId }
+		});
+
+		const organizationName = await loadOrganizationName(context, request.organizationId);
+		await sendEmails(context, {
+			organizationId: request.organizationId,
+			event: 'leave.requestWithdrawn',
+			template: 'leave_request_withdrawn',
+			recipients,
+			buildData: (recipient) => ({
+				recipientName: recipient.name,
+				recipientNameHtml: escapeHtml(recipient.name),
+				employeeName,
+				employeeNameHtml: escapeHtml(employeeName),
+				organizationName,
+				organizationNameHtml: escapeHtml(organizationName),
+				leaveTypeLabel: leaveType[EMAIL_LOCALE],
+				period: period[EMAIL_LOCALE],
+				days: request.days
+			})
 		});
 	} catch (err) {
 		console.error('[Work] Szabadságkérelem visszavonás értesítés sikertelen:', err);
@@ -480,14 +492,20 @@ export async function notifyLeaveDeleted(
 			hu: [`Típus: ${leaveType.hu}`, `Időszak: ${period.hu}`, `Munkanapok: ${request.days}`],
 			en: [`Type: ${leaveType.en}`, `Period: ${period.en}`, `Working days: ${request.days}`]
 		};
-		await sendEmails(context, [employee], 'leave_deleted', (recipient) => ({
-			recipientName: recipient.name,
-			recipientNameHtml: escapeHtml(recipient.name),
-			organizationName,
-			organizationNameHtml: escapeHtml(organizationName),
-			itemsHtml: itemsHtml(lines[EMAIL_LOCALE]),
-			itemsText: lines[EMAIL_LOCALE].map((l) => `  ${l}`).join('\n')
-		}));
+		await sendEmails(context, {
+			organizationId: request.organizationId,
+			event: 'leave.deleted',
+			template: 'leave_deleted',
+			recipients: [employee],
+			buildData: (recipient) => ({
+				recipientName: recipient.name,
+				recipientNameHtml: escapeHtml(recipient.name),
+				organizationName,
+				organizationNameHtml: escapeHtml(organizationName),
+				itemsHtml: itemsHtml(lines[EMAIL_LOCALE]),
+				itemsText: itemsText(lines[EMAIL_LOCALE])
+			})
+		});
 	} catch (err) {
 		console.error('[Work] Jóváhagyott szabadság törlése értesítés sikertelen:', err);
 	}
@@ -510,6 +528,11 @@ export interface LeaveDaysAddedNotice {
 	leaveType: string;
 	/** A létrehozott kérelmek időszakai. */
 	periods: { startDate: string; endDate: string; days: number }[];
+	/**
+	 * Melyik email-beállítás vonatkozik rá: a HR naptáras rögzítése (alapértelmezett)
+	 * vagy a kötelező szabadság kiírása.
+	 */
+	event?: 'leave.calendarChanged' | 'leave.mandatoryAssigned';
 }
 
 /**
@@ -554,15 +577,21 @@ export async function notifyLeaveDaysRemoved(
 		});
 
 		const organizationName = await loadOrganizationName(context, notice.organizationId);
-		await sendEmails(context, [employee], 'leave_days_removed', (recipient) => ({
-			recipientName: recipient.name,
-			recipientNameHtml: escapeHtml(recipient.name),
-			organizationName,
-			organizationNameHtml: escapeHtml(organizationName),
-			dayCount: count,
-			itemsHtml: itemsHtml(lines.map((l) => l[EMAIL_LOCALE])),
-			itemsText: lines.map((l) => `  ${l[EMAIL_LOCALE]}`).join('\n')
-		}));
+		await sendEmails(context, {
+			organizationId: notice.organizationId,
+			event: 'leave.calendarChanged',
+			template: 'leave_days_removed',
+			recipients: [employee],
+			buildData: (recipient) => ({
+				recipientName: recipient.name,
+				recipientNameHtml: escapeHtml(recipient.name),
+				organizationName,
+				organizationNameHtml: escapeHtml(organizationName),
+				dayCount: count,
+				itemsHtml: itemsHtml(lines.map((l) => l[EMAIL_LOCALE])),
+				itemsText: itemsText(lines.map((l) => l[EMAIL_LOCALE]))
+			})
+		});
 	} catch (err) {
 		console.error('[Work] Szabadságnapok törlése értesítés sikertelen:', err);
 	}
@@ -605,33 +634,29 @@ export async function notifyLeaveDaysAdded(
 		});
 
 		const organizationName = await loadOrganizationName(context, notice.organizationId);
-		await sendEmails(context, [employee], 'leave_days_added', (recipient) => ({
-			recipientName: recipient.name,
-			recipientNameHtml: escapeHtml(recipient.name),
-			organizationName,
-			organizationNameHtml: escapeHtml(organizationName),
-			leaveTypeLabel: leaveType[EMAIL_LOCALE],
-			dayCount: count,
-			itemsHtml: itemsHtml(lines.map((l) => l[EMAIL_LOCALE])),
-			itemsText: lines.map((l) => `  ${l[EMAIL_LOCALE]}`).join('\n')
-		}));
+		await sendEmails(context, {
+			organizationId: notice.organizationId,
+			event: notice.event ?? 'leave.calendarChanged',
+			template: 'leave_days_added',
+			recipients: [employee],
+			buildData: (recipient) => ({
+				recipientName: recipient.name,
+				recipientNameHtml: escapeHtml(recipient.name),
+				organizationName,
+				organizationNameHtml: escapeHtml(organizationName),
+				leaveTypeLabel: leaveType[EMAIL_LOCALE],
+				dayCount: count,
+				itemsHtml: itemsHtml(lines.map((l) => l[EMAIL_LOCALE])),
+				itemsText: itemsText(lines.map((l) => l[EMAIL_LOCALE]))
+			})
+		});
 	} catch (err) {
 		console.error('[Work] Szabadság rögzítése értesítés sikertelen:', err);
 	}
 }
 
-/** Felsorolás az emailbe; a sorok saját formázásból jönnek, de a nevek miatt escape-elünk. */
-function itemsHtml(lines: string[]): string {
-	return lines
-		.map(
-			(line) =>
-				`<p style="margin: 0 0 4px; font-size: 14px; color: #18181b;">${escapeHtml(line)}</p>`
-		)
-		.join('');
-}
-
 // --- Dolgozói adatbejelentések ------------------------------------------------
-// Csak rendszeren belüli értesítés (email nincs): az adatbejelentés ritka és nem sürgős.
+// Email csak bekapcsolt beállításnál (alapból ki): az adatbejelentés ritka és nem sürgős.
 
 export interface LeaveDataRequestNotice {
 	id: number;
@@ -676,6 +701,24 @@ export async function notifyLeaveDataRequestCreated(
 				organizationId: request.organizationId
 			}
 		});
+
+		const organizationName = await loadOrganizationName(context, request.organizationId);
+		await sendEmails(context, {
+			organizationId: request.organizationId,
+			event: 'leave.dataRequestCreated',
+			template: 'leave_data_request_new',
+			recipients: await loadRecipientsByUserIds(context, userIds),
+			buildData: (recipient) => ({
+				recipientName: recipient.name,
+				recipientNameHtml: escapeHtml(recipient.name),
+				employeeName: name,
+				employeeNameHtml: escapeHtml(name),
+				organizationName,
+				organizationNameHtml: escapeHtml(organizationName),
+				summary: request.summary[EMAIL_LOCALE],
+				summaryHtml: escapeHtml(request.summary[EMAIL_LOCALE])
+			})
+		});
 	} catch (err) {
 		console.error('[Work] Adatbejelentés értesítés sikertelen:', err);
 	}
@@ -705,6 +748,29 @@ export async function notifyLeaveDataRequestDecision(
 			},
 			type: approved ? 'success' : 'warning',
 			data: { leaveDataRequestId: request.id, organizationId: request.organizationId }
+		});
+
+		const texts = DECISION_TEXTS[decision];
+		const noteLabel = EMAIL_LOCALE === 'hu' ? 'Megjegyzés' : 'Note';
+		const organizationName = await loadOrganizationName(context, request.organizationId);
+		await sendEmails(context, {
+			organizationId: request.organizationId,
+			event: 'leave.dataRequestDecided',
+			template: 'leave_data_request_status',
+			recipients: [employee],
+			buildData: (recipient) => ({
+				recipientName: recipient.name,
+				recipientNameHtml: escapeHtml(recipient.name),
+				organizationName,
+				organizationNameHtml: escapeHtml(organizationName),
+				statusLabel: texts.label[EMAIL_LOCALE],
+				statusSentence: texts.sentence[EMAIL_LOCALE],
+				statusColor: texts.color,
+				summary: request.summary[EMAIL_LOCALE],
+				summaryHtml: escapeHtml(request.summary[EMAIL_LOCALE]),
+				noteHtml: note ? noteBlockHtml(noteLabel, note) : '',
+				noteText: note ? `\n  ${noteLabel}: ${note}` : ''
+			})
 		});
 	} catch (err) {
 		console.error('[Work] Adatbejelentés döntés értesítés sikertelen:', err);

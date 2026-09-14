@@ -2,7 +2,6 @@
 	"name": "Új dolgozó üdvözlése",
 	"requiredData": ["name", "email"],
 	"optionalData": [
-		"companyName",
 		"organizationName",
 		"pluginName",
 		"positionHtml",
