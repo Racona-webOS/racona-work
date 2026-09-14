@@ -21,8 +21,8 @@ BEGIN
 
         -- employees rekord (ha még nincs)
         IF NOT employee_exists THEN
-            INSERT INTO app__racona_work.employees (user_id, organization_id, position, department, hire_date, status, created_at, updated_at)
-            VALUES (dev_user_id, default_org_id, 'Developer', 'IT', CURRENT_DATE, 'active', NOW(), NOW());
+            INSERT INTO app__racona_work.employees (user_id, organization_id, position, hire_date, status, created_at, updated_at)
+            VALUES (dev_user_id, default_org_id, 'Developer', CURRENT_DATE, 'active', NOW(), NOW());
         ELSE
             -- Ha már létezik, frissítjük az organization_id-t
             UPDATE app__racona_work.employees SET organization_id = default_org_id WHERE user_id = dev_user_id AND organization_id IS NULL;

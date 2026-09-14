@@ -324,8 +324,8 @@
 											<button class="name-link" onclick={() => openEmployee(row.employeeId)}>
 												{row.userName}
 											</button>
-											{#if row.position || row.department}
-												<span class="meta">{[row.position, row.department].filter(Boolean).join(' · ')}</span>
+											{#if row.position}
+												<span class="meta">{row.position}</span>
 											{/if}
 											{#each warnings as warning, i (i)}
 												<span class="warning">⚠ {warning}</span>

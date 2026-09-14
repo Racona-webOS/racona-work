@@ -89,7 +89,6 @@ export interface OrganizationMemberRow extends OrganizationMember {
 	employeeEmail: string;
 	employeeImage: string | null;
 	employeePosition: string | null;
-	employeeDepartment: string | null;
 }
 
 /**
@@ -448,8 +447,7 @@ export async function getOrganizationMembers(
 			u.full_name AS employee_name,
 			u.email AS employee_email,
 			u.image AS employee_image,
-			e.position AS employee_position,
-			e.department AS employee_department
+			e.position AS employee_position
 		 FROM app__racona_work.employees e JOIN auth.users u ON e.user_id = u.id
 		 ${whereClause}
 		 ORDER BY u.full_name ASC
@@ -466,8 +464,7 @@ export async function getOrganizationMembers(
 		employeeName: row.employee_name,
 		employeeEmail: row.employee_email,
 		employeeImage: row.employee_image ?? null,
-		employeePosition: row.employee_position ?? null,
-		employeeDepartment: row.employee_department ?? null
+		employeePosition: row.employee_position ?? null
 	}));
 
 	return {
@@ -511,8 +508,8 @@ export async function addEmployeeToOrganization(
 	// ÚJ: Új employee rekord létrehozása az adott szervezetben
 	// (egy user több szervezetben is lehet dolgozó)
 	const result = await context.db.query(
-		`INSERT INTO app__racona_work.employees (user_id, organization_id, position, department, hire_date, status, created_at, updated_at)
-		 SELECT user_id, $1, position, department, hire_date, status, NOW(), NOW()
+		`INSERT INTO app__racona_work.employees (user_id, organization_id, position, hire_date, status, created_at, updated_at)
+		 SELECT user_id, $1, position, hire_date, status, NOW(), NOW()
 		 FROM app__racona_work.employees
 		 WHERE id = $2
 		 RETURNING id, organization_id, id AS employee_id, created_at AS joined_at`,
@@ -644,7 +641,6 @@ export async function getAvailableEmployeesForOrganization(
 				e.id,
 				e.user_id,
 				e.position,
-				e.department,
 				e.hire_date,
 				e.status,
 				e.created_at,
@@ -666,7 +662,6 @@ export async function getAvailableEmployeesForOrganization(
 		id: row.id,
 		userId: row.user_id,
 		position: row.position ?? null,
-		department: row.department ?? null,
 		hireDate: row.hire_date ?? null,
 		status: row.status,
 		createdAt: row.created_at,

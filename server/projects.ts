@@ -64,7 +64,6 @@ export interface ProjectMemberRow {
 	userEmail: string;
 	userImage: string | null;
 	position: string | null;
-	department: string | null;
 	role: string;
 	assignedAt: string;
 }
@@ -452,7 +451,7 @@ export async function listProjectMembers(
 	const result = await context.db.query(
 		`SELECT pm.project_id, pm.employee_id, pm.role, pm.assigned_at,
 		        e.user_id, u.full_name AS user_name, u.email AS user_email, u.image AS user_image,
-		        e.position, e.department
+		        e.position
 		   FROM app__racona_work.project_members pm
 		   JOIN app__racona_work.employees e ON e.id = pm.employee_id
 		   JOIN auth.users u ON u.id = e.user_id
@@ -469,7 +468,6 @@ export async function listProjectMembers(
 		userEmail: r.user_email,
 		userImage: r.user_image ?? null,
 		position: r.position ?? null,
-		department: r.department ?? null,
 		role: r.role,
 		assignedAt: r.assigned_at
 	}));

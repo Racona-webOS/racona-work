@@ -74,7 +74,6 @@
 	let newName = $state('');
 	let newEmail = $state('');
 	let newPosition = $state('');
-	let newDepartment = $state('');
 	let formLoading = $state(false);
 	let formError = $state<string | null>(null);
 
@@ -366,7 +365,6 @@
 		newName = '';
 		newEmail = '';
 		newPosition = '';
-		newDepartment = '';
 		formError = null;
 	}
 
@@ -418,7 +416,6 @@
 			await sdk?.remote?.call('createEmployeeFromUser', {
 				userId: selectedUserId,
 				position: newPosition || undefined,
-				department: newDepartment || undefined,
 				organizationId: currentOrganization.id
 			});
 			sdk?.ui?.toast(t('employees.addEmployee') + ' ✓', 'success');
@@ -450,7 +447,6 @@
 				name: newName,
 				email: newEmail,
 				position: newPosition || undefined,
-				department: newDepartment || undefined,
 				organizationId: currentOrganization.id
 			});
 			sdk?.ui?.toast(t('employees.addEmployee') + ' ✓', 'success');
@@ -677,10 +673,6 @@
 					{t('employeeDetail.position')}
 					<input class="form-input" type="text" bind:value={newPosition} placeholder="pl. Fejlesztő" />
 				</label>
-				<label class="form-label">
-					{t('employeeDetail.department')}
-					<input class="form-input" type="text" bind:value={newDepartment} placeholder="pl. IT" />
-				</label>
 			</div>
 			{#if formError}
 				<p class="form-error">{formError}</p>
@@ -712,10 +704,6 @@
 				<label class="form-label">
 					{t('employeeDetail.position')}
 					<input class="form-input" type="text" bind:value={newPosition} placeholder="pl. Fejlesztő" />
-				</label>
-				<label class="form-label">
-					{t('employeeDetail.department')}
-					<input class="form-input" type="text" bind:value={newDepartment} placeholder="pl. IT" />
 				</label>
 			</div>
 			{#if formError}
@@ -772,10 +760,8 @@
 								<div class="employee-details">
 									<span class="employee-name">{employee.userName}</span>
 									<span class="employee-email">{employee.userEmail}</span>
-									{#if employee.position || employee.department}
-										<span class="employee-meta">
-											{[employee.position, employee.department].filter(Boolean).join(' • ')}
-										</span>
+									{#if employee.position}
+										<span class="employee-meta">{employee.position}</span>
 									{/if}
 								</div>
 							</div>

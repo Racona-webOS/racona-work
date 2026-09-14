@@ -20,7 +20,6 @@ export interface Employee {
 	id: number;
 	userId: number;
 	position: string | null;
-	department: string | null;
 	hireDate: string | null;
 	status: string;
 	createdAt: string;
@@ -157,7 +156,7 @@ export async function getUnlinkedUsers(
 }
 
 export async function createEmployeeFromUser(
-	params: { userId: number; organizationId: number; position?: string; department?: string },
+	params: { userId: number; organizationId: number; position?: string },
 	context: RemoteContext
 ): Promise<Employee> {
 	console.log('[createEmployeeFromUser] Params:', params);
@@ -171,10 +170,10 @@ export async function createEmployeeFromUser(
 
 	// Employee rekord létrehozása organization_id-val
 	const empResult = await context.db.query(
-		`INSERT INTO app__racona_work.employees (user_id, organization_id, position, department, hire_date, status)
-		 VALUES ($1, $2, $3, $4, CURRENT_DATE, 'active')
-		 RETURNING id, user_id, position, department, hire_date, status, created_at, updated_at`,
-		[params.userId, params.organizationId, params.position ?? null, params.department ?? null]
+		`INSERT INTO app__racona_work.employees (user_id, organization_id, position, hire_date, status)
+		 VALUES ($1, $2, $3, CURRENT_DATE, 'active')
+		 RETURNING id, user_id, position, hire_date, status, created_at, updated_at`,
+		[params.userId, params.organizationId, params.position ?? null]
 	);
 
 	const row = empResult.rows[0];
@@ -183,7 +182,6 @@ export async function createEmployeeFromUser(
 		id: row.id,
 		userId: row.user_id,
 		position: row.position ?? null,
-		department: row.department ?? null,
 		hireDate: row.hire_date ?? null,
 		status: row.status,
 		createdAt: row.created_at,
@@ -204,7 +202,6 @@ export async function createEmployeeWithUser(
 		email: string;
 		organizationId: number;
 		position?: string;
-		department?: string;
 	},
 	context: RemoteContext
 ): Promise<Employee> {
@@ -241,10 +238,10 @@ export async function createEmployeeWithUser(
 
 		// 3. Dolgozó rekord létrehozása az új user_id-val és organization_id-val
 		const empResult = await client.query(
-			`INSERT INTO app__racona_work.employees (user_id, organization_id, position, department, hire_date, status)
-			 VALUES ($1, $2, $3, $4, CURRENT_DATE, 'active')
-			 RETURNING id, user_id, position, department, hire_date, status, created_at, updated_at`,
-			[userId, params.organizationId, params.position ?? null, params.department ?? null]
+			`INSERT INTO app__racona_work.employees (user_id, organization_id, position, hire_date, status)
+			 VALUES ($1, $2, $3, CURRENT_DATE, 'active')
+			 RETURNING id, user_id, position, hire_date, status, created_at, updated_at`,
+			[userId, params.organizationId, params.position ?? null]
 		);
 
 		const row = empResult.rows[0];
@@ -252,7 +249,6 @@ export async function createEmployeeWithUser(
 			id: row.id,
 			userId: row.user_id,
 			position: row.position ?? null,
-			department: row.department ?? null,
 			hireDate: row.hire_date ?? null,
 			status: row.status,
 			createdAt: row.created_at,
@@ -307,11 +303,7 @@ export async function createEmployeeWithUser(
 		const positionHtml = params.position
 			? `<p style="margin: 0 0 4px; font-size: 14px; color: #18181b;"><strong>Beosztás:</strong> ${params.position}</p>`
 			: '';
-		const departmentHtml = params.department
-			? `<p style="margin: 0; font-size: 14px; color: #18181b;"><strong>Részleg:</strong> ${params.department}</p>`
-			: '';
 		const positionText = params.position ? `  Beosztás: ${params.position}\n` : '';
-		const departmentText = params.department ? `  Részleg: ${params.department}\n` : '';
 
 		await context.email?.send({
 			to: params.email,
@@ -322,9 +314,7 @@ export async function createEmployeeWithUser(
 				organizationName,
 				pluginName,
 				positionHtml,
-				departmentHtml,
-				positionText,
-				departmentText
+				positionText
 			},
 			locale: 'hu'
 		});
@@ -359,7 +349,6 @@ export async function getEmployees(
 		userName: 'u.full_name',
 		userEmail: 'u.email',
 		position: 'e.position',
-		department: 'e.department',
 		status: 'e.status',
 		hireDate: 'e.hire_date',
 		roles: 'role_names'
@@ -406,7 +395,6 @@ export async function getEmployees(
 			e.id,
 			e.user_id,
 			e.position,
-			e.department,
 			e.hire_date,
 			e.status,
 			e.created_at,
@@ -433,7 +421,6 @@ export async function getEmployees(
 		id: row.id,
 		userId: row.user_id,
 		position: row.position ?? null,
-		department: row.department ?? null,
 		hireDate: row.hire_date ?? null,
 		status: row.status,
 		createdAt: row.created_at,
@@ -519,7 +506,6 @@ export async function getEmployeeDetails(
 			e.id,
 			e.user_id,
 			e.position,
-			e.department,
 			e.hire_date,
 			e.status,
 			e.created_at,
@@ -552,7 +538,6 @@ export async function getEmployeeDetails(
 		id: empRow.id,
 		userId: empRow.user_id,
 		position: empRow.position ?? null,
-		department: empRow.department ?? null,
 		hireDate: empRow.hire_date ?? null,
 		status: empRow.status,
 		createdAt: empRow.created_at,
@@ -774,7 +759,6 @@ export async function updateEmployee(
 	params: {
 		id: number;
 		position?: string;
-		department?: string;
 		status?: string;
 		/** A belépés napja. Mentéskor ellenőrzöttnek számít (hire_date_confirmed). */
 		hireDate?: string;
@@ -786,13 +770,12 @@ export async function updateEmployee(
 	// Legalább egy mezőt meg kell adni
 	if (
 		params.position === undefined &&
-		params.department === undefined &&
 		params.status === undefined &&
 		params.hireDate === undefined &&
 		params.employmentEndDate === undefined
 	) {
 		throw new Error(
-			'Legalább egy mezőt meg kell adni a frissítéshez (position, department, status, hireDate, employmentEndDate).'
+			'Legalább egy mezőt meg kell adni a frissítéshez (position, status, hireDate, employmentEndDate).'
 		);
 	}
 
@@ -828,12 +811,6 @@ export async function updateEmployee(
 		paramIndex++;
 	}
 
-	if (params.department !== undefined) {
-		setClauses.push(`department = $${paramIndex}`);
-		queryParams.push(params.department);
-		paramIndex++;
-	}
-
 	if (params.status !== undefined) {
 		setClauses.push(`status = $${paramIndex}`);
 		queryParams.push(params.status);
@@ -862,7 +839,7 @@ export async function updateEmployee(
 		`UPDATE app__racona_work.employees
 		 SET ${setClauses.join(', ')}
 		 WHERE id = $${paramIndex}
-		 RETURNING id, user_id, position, department, hire_date, status, created_at, updated_at`,
+		 RETURNING id, user_id, position, hire_date, status, created_at, updated_at`,
 		queryParams
 	);
 
@@ -876,7 +853,6 @@ export async function updateEmployee(
 		id: row.id,
 		userId: row.user_id,
 		position: row.position ?? null,
-		department: row.department ?? null,
 		hireDate: row.hire_date ?? null,
 		status: row.status,
 		createdAt: row.created_at,
@@ -904,7 +880,7 @@ export async function getMyEmployee(
 	const userId = await resolveUserId(context);
 
 	const result = await context.db.query(
-		`SELECT e.id, e.user_id, e.position, e.department, e.hire_date, e.status,
+		`SELECT e.id, e.user_id, e.position, e.hire_date, e.status,
 		        e.created_at, e.updated_at,
 		        u.full_name AS user_name, u.email AS user_email, u.image AS user_image
 		   FROM app__racona_work.employees e
@@ -919,7 +895,6 @@ export async function getMyEmployee(
 		id: row.id,
 		userId: row.user_id,
 		position: row.position ?? null,
-		department: row.department ?? null,
 		hireDate: row.hire_date ?? null,
 		status: row.status,
 		createdAt: row.created_at,

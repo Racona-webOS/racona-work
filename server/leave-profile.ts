@@ -948,7 +948,6 @@ export interface BulkEntitlementRow {
 	employeeId: number;
 	userName: string;
 	position: string | null;
-	department: string | null;
 	hireDateConfirmed: boolean;
 	calculation: EntitlementResult;
 	previousBalance: PreviousYearBalance | null;
@@ -978,7 +977,7 @@ const MAX_BULK_ROWS = 1000;
 /** A szervezet aktív (nem kilépett) dolgozói, és hogy van-e már keretük az évre. */
 async function loadActiveEmployees(context: RemoteContext, organizationId: number, year: number) {
 	const r = await context.db.query(
-		`SELECT e.id, u.full_name, e.position, e.department,
+		`SELECT e.id, u.full_name, e.position,
 		        EXISTS (SELECT 1 FROM ${SCHEMA}.leave_balances lb
 		                 WHERE lb.employee_id = e.id AND lb.year = $2) AS has_balance
 		   FROM ${SCHEMA}.employees e
@@ -991,7 +990,6 @@ async function loadActiveEmployees(context: RemoteContext, organizationId: numbe
 		id: number;
 		full_name: string;
 		position: string | null;
-		department: string | null;
 		has_balance: boolean;
 	}>;
 }
@@ -1027,7 +1025,6 @@ export async function previewBulkEntitlements(
 			employeeId: e.id,
 			userName: e.full_name,
 			position: e.position ?? null,
-			department: e.department ?? null,
 			hireDateConfirmed: profile.hireDateConfirmed,
 			calculation: calculate(toEntitlementBase(profile, policy), year).result,
 			previousBalance,
@@ -1234,7 +1231,7 @@ export async function saveLeavePolicy(
 	if (!params?.organizationId || params.organizationId <= 0) {
 		throw new Error('Érvénytelen szervezet azonosító');
 	}
-	await requireCapability(context, params.organizationId, 'org.manage');
+	await requireCapability(context, params.organizationId, 'leave.balance.manage');
 
 	const days = Number(params.extraDaysForAll ?? 0);
 	if (!Number.isInteger(days) || days < 0 || days > MAX_POLICY_EXTRA_DAYS) {

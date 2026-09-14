@@ -81,7 +81,6 @@
 	// Alapadatok szerkesztése
 	let editingBasic = $state(false);
 	let editPosition = $state('');
-	let editDepartment = $state('');
 	let editStatus = $state('');
 	let editHireDate = $state('');
 	let editEndDate = $state('');
@@ -159,7 +158,6 @@
 	function startEditBasic() {
 		if (!view) return;
 		editPosition = view.employee.position ?? '';
-		editDepartment = view.employee.department ?? '';
 		editStatus = view.employee.status;
 		editHireDate = view.employment.hireDate ?? '';
 		editEndDate = view.employment.employmentEndDate ?? '';
@@ -180,7 +178,6 @@
 			const updated = await sdk?.remote?.call('updateEmployee', {
 				id: view.employee.id,
 				position: editPosition || undefined,
-				department: editDepartment || undefined,
 				status: editStatus,
 				hireDate: hireChanged ? editHireDate : undefined,
 				employmentEndDate: endChanged ? editEndDate || null : undefined
@@ -362,10 +359,6 @@
 						<input class="form-input" type="text" bind:value={editPosition} />
 					</label>
 					<label class="form-label">
-						{t('employeeDetail.department')}
-						<input class="form-input" type="text" bind:value={editDepartment} />
-					</label>
-					<label class="form-label">
 						{t('employeeDetail.status')}
 						<select class="form-input" bind:value={editStatus}>
 							<option value="active">{t('employees.status.active')}</option>
@@ -396,10 +389,6 @@
 					<div class="field-row">
 						<span class="field-label">{t('employeeDetail.position')}</span>
 						<span class="field-value">{view.employee.position ?? '—'}</span>
-					</div>
-					<div class="field-row">
-						<span class="field-label">{t('employeeDetail.department')}</span>
-						<span class="field-value">{view.employee.department ?? '—'}</span>
 					</div>
 					<div class="field-row">
 						<span class="field-label">{t('employeeDetail.hireDate')}</span>
