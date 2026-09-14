@@ -9,7 +9,6 @@
 	"menu.employees": "Dolgozók",
 	"menu.leaveRequests": "Szabadság nyilvántartó",
 	"menu.businessTrips": "Kiküldetések",
-	"menu.timeTracking": "Munkaidő nyilvántartó",
 	"menu.organizations": "Szervezetek",
 	"menu.projects": "Projektek",
 	"menu.projects.list": "Projekt lista",
@@ -428,10 +427,6 @@
 	"tripSettings.providers.geocoder": "Nominatim címe",
 	"tripSettings.providers.countries": "Országkódok (vesszővel)",
 	"tripSettings.providers.router": "Valhalla címe",
-
-	"timeTracking.title": "Munkaidő nyilvántartó",
-	"timeTracking.comingSoon": "Ez a funkció fejlesztés alatt áll",
-	"timeTracking.description": "A munkaidő nyilvántartó modul lehetővé teszi majd a napi be- és kijelentkezés rögzítését, a késések és hiányzások nyomon követését.",
 
 	"settings.title": "Beállítások",
 	"settings.subtitle": "Az Work alkalmazás konfigurációja",

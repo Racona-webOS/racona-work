@@ -10,7 +10,6 @@
 	"menu.employees": "Employees",
 	"menu.leaveRequests": "Leave Requests",
 	"menu.businessTrips": "Business Trips",
-	"menu.timeTracking": "Time Tracking",
 	"menu.organizations": "Organizations",
 	"menu.projects": "Projects",
 	"menu.projects.list": "Project list",
@@ -429,10 +428,6 @@
 	"tripSettings.providers.geocoder": "Nominatim URL",
 	"tripSettings.providers.countries": "Country codes (comma separated)",
 	"tripSettings.providers.router": "Valhalla URL",
-
-	"timeTracking.title": "Time Tracking",
-	"timeTracking.comingSoon": "This feature is under development",
-	"timeTracking.description": "The time tracking module will allow recording daily check-ins and check-outs, tracking tardiness and absences.",
 
 	"settings.title": "Settings",
 	"settings.subtitle": "Work application configuration",

@@ -98,12 +98,6 @@
 				"icon": "CalendarCog",
 				"component": "WorkCalendar",
 				"requiredCapability": "leave.calendar.manage"
-			},
-			{
-				"labelKey": "menu.timeTracking",
-				"href": "#time-tracking",
-				"icon": "Timer",
-				"component": "TimeTracking"
 			}
 		]
 	},
