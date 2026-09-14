@@ -152,7 +152,7 @@ A Térkép app (`racona-core/apps/web/src/apps/map/index.svelte`) **három kül�
 | D4 | Km-kerekítés | Egész km-re, a fél felfelé kerekedik. | javasolt |
 | D5 | Összeg-kerekítés | A soronkénti összeg két tizedesre marad, a végösszeg egész forintra kerekedik, a különbség a „Kerekítés” sorba kerül (mint ma). | javasolt |
 | D6 | Honnan jön a norma? | A 60/1992. rendelet táblázatából, a hengerűrtartalom és az üzemanyag alapján. Egyedi értéket csak a HR adhat meg indoklással. | javasolt |
-| D7 | Ki rögzíti a NAV-árat? | **A HR, havonta**, szervezetenként (`trip_fuel_prices`). Automatikus letöltés a 3. fázisban. | javasolt |
+| D7 | Ki rögzíti a NAV-árat? | **A HR, havonta**, szervezetenként (`trip_fuel_prices`), kézzel vagy **félautomata lekéréssel** a NAV oldaláról (K14). Ütemezett letöltés nincs. Ha a NAV egy hónapra két árat közöl (védett vagy hatósági és piaci), egyet tárolunk: a HR a lekéréskor ártípusonként kiválasztja az elsődleges és a tartalék NAV-oszlopot, alapból a védett ár az elsődleges. | **eldöntve** |
 | D8 | Jóváhagyási lépések | Beküldés → **jóváhagyás** („Igazolta”) → **kifizetve** („Utalványozta”). Utanként nincs előzetes jóváhagyás. | javasolt |
 | D9 | Ki hagy jóvá? | Aki `trip.approve` joggal rendelkezik, szervezeti szinten (mint a szabadságkérelmeknél). Vezetőnkénti útvonal nincs, mert nincs vezető-dolgozó kapcsolat az adatmodellben. | javasolt |
 | D10 | Mi zárolódik? | Beküldés után az adott dolgozó, autó és hónap útjai nem szerkeszthetők. A dolgozó a jóváhagyásig visszavonhatja a beküldést. A HR a kifizetésig visszanyithatja. Kifizetés után semmi nem módosítható. | javasolt |
@@ -275,6 +275,12 @@ A norma a felvételkor azonnal látszik („6,7 l/100 km a 60/1992. Korm. rendel
 **K13. HR áttekintés.** A HR a szervezet összes dolgozójának útjait, autóit és rendelvényeit látja. Bármelyik dolgozó nevében rögzíthet utat.
 
 **K14. NAV-árak.** A HR évenkénti táblázatban rögzíti a havi árakat ártípusonként (1. fázis: benzin, gázolaj). A rögzített ár módosítható, amíg nincs rá jóváhagyott rendelvény.
+
+- **Félautomata lekérés.** A „Lekérés a NAV-tól” gomb a szerveren letölti a kiválasztott év NAV-oldalát, és előnézetet mutat. A NAV-nak nincs API-ja, az árak egy HTML-táblázatban vannak (`nav.gov.hu/ugyfeliranytu/uzemanyag`). Az év oldalát a gyűjtőoldal, régebbi évnél a „Korábbi években” oldal linkjeiből keressük ki, mert az URL évente más.
+- **Oszlop-hozzárendelés.** A NAV táblázatának oszlopai évről évre változnak (2022: hatósági és piaci árszabás, 2026: védett ár és piaci árszabás). Ártípusonként a HR kiválaszt egy elsődleges és egy tartalék NAV-oszlopot: ha az elsődlegesben nincs ár az adott hónapra, a tartalékból töltünk. A javaslat a fejlécek alapján készül, a védett vagy hatósági ár az elsődleges. A választást a beállításokban megjegyezzük (`navPriceMapping`); ha a következő évben az oszlop már nincs meg, újra javaslatot adunk, és jelezzük, hogy ellenőrizni kell.
+- **Kitöltés.** Az üres hónapokat kitöltjük. Az eltérő árat csak bejelölve írjuk felül: a korábban is NAV-ból jött árak alapból be vannak jelölve, a kézzel beírtak nem. Jóváhagyott rendelvény árát nem módosítjuk. A kitöltött ár forrása `nav` lesz; ha a HR átírja, `manual`. A táblázatban a NAV-ból jött árak jelölve vannak.
+- **Hiba esetén nem írunk semmit.** Ha a táblázat nem ismerhető fel (nincs hónapsor, összevont cellák, más év), a lekérés hibát ad, az árakat kézzel kell rögzíteni. Az értelmezhetetlen cellát (szöveg szám helyett, 0 vagy 10 000 Ft fölötti ár) hibásnak jelöljük, és nem lépünk tovább a tartalék oszlopra.
+- **Egy adat az előnézetre és a kitöltésre.** A letöltött táblázat 10 percig a szerver közös gyorsítótárában marad. A kitöltés a táblázat ujjlenyomatával (`version`) ellenőrzi, hogy ugyanarra az adatra vonatkozik, amit a HR az előnézetben látott. Az árat a szerver számolja a NAV adataiból, a klienstől nem fogad el árat.
 
 **K15. Hiányzó adatok ellenőrzése.** A rendszer minden rendelvényre kiszámolja a figyelmeztetések listáját (`warnings`):
 
@@ -437,6 +443,8 @@ CREATE TABLE IF NOT EXISTS app__racona_work.trip_fuel_prices (
     price_type       VARCHAR(16) NOT NULL
         CHECK (price_type IN ('petrol', 'diesel', 'mixed', 'lpg', 'cng', 'electricity')),
     price_huf        NUMERIC(8,2) NOT NULL CHECK (price_huf > 0),
+    source           VARCHAR(8) NOT NULL DEFAULT 'manual'   -- 018: kézzel vagy a NAV-tól (K14)
+        CHECK (source IN ('manual', 'nav')),
     updated_by       INTEGER REFERENCES auth.users(id),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (organization_id, year, month, price_type)
@@ -620,6 +628,8 @@ A „saját vagy HR” elérést a `work-entries.ts` mintája szerint oldjuk meg
 | `getTripOrderers({ organizationId })` | `trip.record` | A szervezet aktív tagjai az elrendelő választóhoz. |
 | `getFuelPrices({ organizationId, year })` / `saveFuelPrice({ ... })` | olvasás: `trip.record`; írás: `trip.manage` | Csak engedélyezett ártípus írható. |
 | `getTripPolicy` / `saveTripPolicy` | olvasás: `trip.record`; írás: `trip.manage` | Kulcs: `settings:business_trip_policy:org_<id>`. |
+| `previewNavFuelPrices({ organizationId, year, refresh? })` | `trip.manage` | Letölti és feldolgozza a NAV-oldalt (K14). Visszaadja a NAV-táblázatot, a hozzárendelést (a mentett vagy a javasolt), a mostani árakat a forrásukkal és a zárolt hónapokat. |
+| `applyNavFuelPrices({ organizationId, year, version, mapping, overwrite })` | `trip.manage` | Egy tranzakcióban kitölti az üres hónapokat és a kijelölt eltérő árakat, a zároltakat kihagyja, és elmenti a hozzárendelést. Ha a NAV-adat közben megváltozott (`version`), hibát ad. |
 
 **A beállítások tartalma (`getTripPolicy`)**
 
@@ -628,6 +638,7 @@ A „saját vagy HR” elérést a `work-entries.ts` mintája szerint oldjuk meg
 - `geocoder.baseUrl`: a Nominatim címe (alapértelmezés: a nyilvános szerver).
 - `geocoder.countryCodes`: `'hu'`.
 - `router.baseUrl`: a Valhalla címe.
+- `navPriceMapping`: ártípusonként a NAV-oszlopok kulcsa elsőbbségi sorrendben (legfeljebb kettő), a legutóbbi NAV-lekérésből.
 
 **Módosuló meglévő függvények**
 
@@ -791,7 +802,7 @@ E-mail: `trip_settlement_submitted`, `trip_settlement_status`, `trip_orderer_cha
 ### 3. fázis
 
 - [ ] Átállás a core geo szolgáltatására, ha elkészül (16. fejezet)
-- [ ] A NAV-árak automatikus letöltése
+- [x] A NAV-árak félautomata lekérése oszlop-hozzárendeléssel (`server/nav-fuel.ts`, `server/nav-fuel-import.ts`, `NavPriceImport.svelte`, `migrations/018_fuel_price_source.sql`, teszt: `tests/nav-fuel.test.ts`). Ütemezett letöltés nem kell.
 - [ ] LPG, CNG, hibrid és elektromos autók bekapcsolása (szabály, ártípus, választható érték; szakmai ellenőrzés után)
 
 ## 16. Javaslatok a core-nak

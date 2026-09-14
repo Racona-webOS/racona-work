@@ -10,8 +10,10 @@ import type { RemoteContext } from './context.js';
 import { resolveUserId } from './context.js';
 import { requireCapability } from './permissions.js';
 import { SCHEMA, num, requireOrganizationId } from './trip-access.js';
-import { ENABLED_PRICE_TYPES, isPriceType } from './trip-calc.js';
+import { ENABLED_PRICE_TYPES, PRICE_TYPES, isPriceType } from './trip-calc.js';
 import type { PriceType } from './trip-calc.js';
+import { normalizeMapping } from './nav-fuel.js';
+import type { NavPriceMapping } from './nav-fuel.js';
 
 export interface TripPolicy {
 	/** Általános személygépkocsi-normaköltség, Ft/km. */
@@ -20,6 +22,8 @@ export interface TripPolicy {
 	documentNumberPrefix: string;
 	geocoder: { baseUrl: string; countryCodes: string };
 	router: { baseUrl: string };
+	/** A NAV-árak lekérésekor melyik NAV-oszlop melyik ártípust tölti ki (a legutóbbi lekérésből). */
+	navPriceMapping: NavPriceMapping;
 }
 
 /** Nyilvános szolgáltatók (D22). A cím beállítás, hogy kódmódosítás nélkül cserélhető legyen. */
@@ -30,7 +34,8 @@ export const DEFAULT_TRIP_POLICY: TripPolicy = {
 	normCostPerKm: 15,
 	documentNumberPrefix: 'KR',
 	geocoder: { baseUrl: DEFAULT_GEOCODER_URL, countryCodes: 'hu' },
-	router: { baseUrl: DEFAULT_ROUTER_URL }
+	router: { baseUrl: DEFAULT_ROUTER_URL },
+	navPriceMapping: {}
 };
 
 function policyKey(organizationId: number): string {
@@ -57,8 +62,23 @@ function normalizePolicy(raw: unknown): TripPolicy {
 				? value.documentNumberPrefix.trim().slice(0, 10)
 				: DEFAULT_TRIP_POLICY.documentNumberPrefix,
 		geocoder: { baseUrl: normalizeUrl(value.geocoder?.baseUrl, DEFAULT_GEOCODER_URL), countryCodes },
-		router: { baseUrl: normalizeUrl(value.router?.baseUrl, DEFAULT_ROUTER_URL) }
+		router: { baseUrl: normalizeUrl(value.router?.baseUrl, DEFAULT_ROUTER_URL) },
+		navPriceMapping: normalizeMapping(value.navPriceMapping, PRICE_TYPES)
 	};
+}
+
+/** Belső segéd: a beállítások mentése (a hívó ellenőrzi a jogot). */
+export async function storeTripPolicy(
+	db: Pick<RemoteContext['db'], 'query'>,
+	organizationId: number,
+	policy: TripPolicy
+): Promise<void> {
+	await db.query(
+		`INSERT INTO ${SCHEMA}.kv_store (key, value, updated_at)
+		 VALUES ($1, $2::jsonb, NOW())
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+		[policyKey(organizationId), JSON.stringify(policy)]
+	);
 }
 
 /** Belső segéd: a szervezet beállításai jogosultság-ellenőrzés nélkül. */
@@ -103,12 +123,7 @@ export async function saveTripPolicy(
 	}
 
 	const policy = normalizePolicy({ ...(await loadTripPolicy(context, organizationId)), ...input });
-	await context.db.query(
-		`INSERT INTO ${SCHEMA}.kv_store (key, value, updated_at)
-		 VALUES ($1, $2::jsonb, NOW())
-		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-		[policyKey(organizationId), JSON.stringify(policy)]
-	);
+	await storeTripPolicy(context.db, organizationId, policy);
 	return policy;
 }
 
@@ -119,6 +134,8 @@ export interface FuelPrice {
 	month: number;
 	priceType: PriceType;
 	priceHuf: number;
+	/** Kézzel rögzítették, vagy a NAV oldaláról kérték le. */
+	source: 'manual' | 'nav';
 }
 
 export async function getFuelPrices(
@@ -131,7 +148,7 @@ export async function getFuelPrices(
 	if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new Error('Érvénytelen év');
 
 	const r = await context.db.query(
-		`SELECT year, month, price_type, price_huf
+		`SELECT year, month, price_type, price_huf, source
 		   FROM ${SCHEMA}.trip_fuel_prices
 		  WHERE organization_id = $1 AND year = $2
 		  ORDER BY month, price_type`,
@@ -141,7 +158,8 @@ export async function getFuelPrices(
 		year: row.year,
 		month: row.month,
 		priceType: row.price_type,
-		priceHuf: num(row.price_huf) ?? 0
+		priceHuf: num(row.price_huf) ?? 0,
+		source: row.source === 'nav' ? 'nav' : 'manual'
 	}));
 }
 
@@ -208,11 +226,11 @@ export async function saveFuelPrice(
 	}
 	const userId = await resolveUserId(context);
 	await context.db.query(
-		`INSERT INTO ${SCHEMA}.trip_fuel_prices (organization_id, year, month, price_type, price_huf, updated_by, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		`INSERT INTO ${SCHEMA}.trip_fuel_prices (organization_id, year, month, price_type, price_huf, source, updated_by, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, 'manual', $6, NOW())
 		 ON CONFLICT (organization_id, year, month, price_type)
-		 DO UPDATE SET price_huf = EXCLUDED.price_huf, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+		 DO UPDATE SET price_huf = EXCLUDED.price_huf, source = 'manual', updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
 		[organizationId, year, month, priceType, Math.round(price * 100) / 100, userId]
 	);
-	return { year, month, priceType, priceHuf: Math.round(price * 100) / 100 };
+	return { year, month, priceType, priceHuf: Math.round(price * 100) / 100, source: 'manual' };
 }

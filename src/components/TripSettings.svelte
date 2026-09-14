@@ -17,11 +17,20 @@
 	 */
 	import { onMount, untrack } from 'svelte';
 	import type {} from '@racona/sdk/types';
-	import type { FuelPrice, Organization, PlaceResult, PriceType, TripPlace, TripPolicy } from '../../server/functions.js';
+	import type {
+		FuelPrice,
+		NavFuelApplyResult,
+		Organization,
+		PlaceResult,
+		PriceType,
+		TripPlace,
+		TripPolicy
+	} from '../../server/functions.js';
 	import { ENABLED_PRICE_TYPES } from '../../server/trip-calc.js';
 	import { getOrganizationStore, createOrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
+	import NavPriceImport from './trips/NavPriceImport.svelte';
 	import { errorMessage, monthName, priceTypeLabel } from './trips/format.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
@@ -47,7 +56,11 @@
 	// NAV-árak
 	let priceYear = $state(new Date().getFullYear());
 	let prices = $state<Record<string, string>>({});
+	/** Cellánként: kézzel rögzítették, vagy a NAV oldaláról kérték le. */
+	let priceSources = $state<Record<string, FuelPrice['source']>>({});
 	let savingCell = $state<string | null>(null);
+	let showNavImport = $state(false);
+	const hasNavPrices = $derived(Object.values(priceSources).includes('nav'));
 
 	// Céges helyek
 	let places = $state<TripPlace[]>([]);
@@ -81,8 +94,22 @@
 		if (!currentOrganization) return;
 		const list: FuelPrice[] = await sdk.remote.call('getFuelPrices', { organizationId: currentOrganization.id, year: priceYear });
 		const next: Record<string, string> = {};
-		for (const p of list) next[cellKey(p.month, p.priceType)] = String(p.priceHuf);
+		const sources: Record<string, FuelPrice['source']> = {};
+		for (const p of list) {
+			next[cellKey(p.month, p.priceType)] = String(p.priceHuf);
+			sources[cellKey(p.month, p.priceType)] = p.source;
+		}
 		prices = next;
+		priceSources = sources;
+	}
+
+	async function handleNavImported(result: NavFuelApplyResult) {
+		showNavImport = false;
+		sdk?.ui?.toast(
+			t('tripSettings.nav.done', { filled: result.filled, overwritten: result.overwritten }),
+			'success'
+		);
+		await loadPrices();
 	}
 
 	async function savePolicy() {
@@ -114,6 +141,8 @@
 				priceType: type,
 				priceHuf: raw === '' ? null : Number(raw)
 			});
+			const { [key]: _, ...rest } = priceSources;
+			priceSources = raw === '' ? rest : { ...rest, [key]: 'manual' };
 		} catch (err) {
 			sdk?.ui?.toast(errorMessage(err, t('error.saveFailed')), 'error');
 			await loadPrices();
@@ -249,6 +278,8 @@
 		{#if loading || !policy}
 			<div class="loading-state"><div class="spinner"></div><span>{t('loading')}</span></div>
 		{:else}
+			<div class="columns">
+			<div class="column">
 			<div class="settings-section">
 				<div class="section-head">
 					<h3>{t('tripSettings.reimbursement.title')}</h3>
@@ -266,7 +297,7 @@
 					</label>
 				</div>
 				<div class="save-row">
-					<button class="btn-secondary" onclick={savePolicy} disabled={policySaving}>{t('settings.save')}</button>
+					<button class="btn-primary" onclick={savePolicy} disabled={policySaving}>{t('settings.save')}</button>
 				</div>
 			</div>
 
@@ -279,6 +310,9 @@
 					<button class="icon-btn" onclick={() => shiftYear(-1)} aria-label="‹">‹</button>
 					<strong>{priceYear}</strong>
 					<button class="icon-btn" onclick={() => shiftYear(1)} aria-label="›">›</button>
+					<button class="btn-secondary btn-sm nav-fetch" onclick={() => (showNavImport = true)}>
+						{t('tripSettings.nav.fetch')}
+					</button>
 				</div>
 				<div class="table-wrap">
 					<table class="price-table">
@@ -294,15 +328,21 @@
 									<td>{monthName(month, locale)}</td>
 									{#each ENABLED_PRICE_TYPES as type (type)}
 										<td>
-											<input
-												class="input price-input"
-												class:saving={savingCell === cellKey(month, type)}
-												type="text"
-												inputmode="decimal"
-												placeholder="—"
-												bind:value={prices[cellKey(month, type)]}
-												onchange={() => savePrice(month, type)}
-											/>
+											<span class="price-cell">
+												<input
+													class="input price-input"
+													class:saving={savingCell === cellKey(month, type)}
+													title={priceSources[cellKey(month, type)] === 'nav' ? t('tripSettings.nav.cellHint') : undefined}
+													type="text"
+													inputmode="decimal"
+													placeholder="—"
+													bind:value={prices[cellKey(month, type)]}
+													onchange={() => savePrice(month, type)}
+												/>
+												{#if priceSources[cellKey(month, type)] === 'nav'}
+													<span class="nav-badge" aria-hidden="true">NAV</span>
+												{/if}
+											</span>
 										</td>
 									{/each}
 								</tr>
@@ -310,8 +350,14 @@
 						</tbody>
 					</table>
 				</div>
+				{#if hasNavPrices}
+					<p class="hint legend"><span class="nav-badge static">NAV</span>{t('tripSettings.nav.legend')}</p>
+				{/if}
 			</div>
 
+			</div>
+
+			<div class="column">
 			<div class="settings-section">
 				<div class="section-head">
 					<h3>{t('tripSettings.places.title')}</h3>
@@ -343,11 +389,11 @@
 						<input
 							class="input"
 							type="text"
-							placeholder={t('trips.place.searchPlaceholder')}
+							placeholder={t('tripSettings.places.searchPlaceholder')}
 							bind:value={placeQuery}
 							onkeydown={(e) => e.key === 'Enter' && searchPlace()}
 						/>
-						<button class="btn-secondary btn-sm" onclick={searchPlace} disabled={placeSearching}>{t('trips.place.searchButton')}</button>
+						<button class="btn-primary" onclick={searchPlace} disabled={placeSearching}>{t('trips.place.searchButton')}</button>
 					</div>
 					{#if placeResults}
 						{#if placeResults.length === 0}
@@ -365,7 +411,7 @@
 						<div class="row">
 							<input class="input" type="text" maxlength="100" placeholder={t('trips.place.saveLabel')} bind:value={newPlace.label} />
 							<label class="inline-check"><input type="checkbox" bind:checked={newPlace.isWorkplace} /><span>{t('tripSettings.places.workplace')}</span></label>
-							<button class="btn-primary btn-sm" onclick={addPlace} disabled={!newPlace.label.trim()}>{t('form.save')}</button>
+							<button class="btn-primary" onclick={addPlace} disabled={!newPlace.label.trim()}>{t('form.save')}</button>
 						</div>
 						<p class="hint">{newPlace.result.address}</p>
 					{/if}
@@ -381,21 +427,37 @@
 					<label>
 						<span>{t('tripSettings.providers.geocoder')}</span>
 						<input class="input" type="url" bind:value={policy.geocoder.baseUrl} />
+						<small class="hint">{t('tripSettings.providers.geocoderHint')}</small>
 					</label>
 					<label>
 						<span>{t('tripSettings.providers.countries')}</span>
 						<input class="input" type="text" bind:value={policy.geocoder.countryCodes} />
+						<small class="hint">{t('tripSettings.providers.countriesHint')}</small>
 					</label>
 					<label>
 						<span>{t('tripSettings.providers.router')}</span>
 						<input class="input" type="url" bind:value={policy.router.baseUrl} />
+						<small class="hint">{t('tripSettings.providers.routerHint')}</small>
 					</label>
 				</div>
+				<p class="hint change-hint">{t('tripSettings.providers.changeHint')}</p>
 				<div class="save-row">
-					<button class="btn-secondary" onclick={savePolicy} disabled={policySaving}>{t('settings.save')}</button>
+					<button class="btn-primary" onclick={savePolicy} disabled={policySaving}>{t('settings.save')}</button>
 				</div>
 			</div>
+			</div>
+			</div>
 		{/if}
+	{/if}
+
+	{#if showNavImport && currentOrganization}
+		<NavPriceImport
+			{pluginId}
+			organizationId={currentOrganization.id}
+			year={priceYear}
+			onDone={handleNavImported}
+			onClose={() => (showNavImport = false)}
+		/>
 	{/if}
 </section>
 </div>
@@ -404,7 +466,22 @@
 	@import '../styles/shared.css';
 
 	.page {
-		max-width: 760px;
+		max-width: 1280px;
+	}
+
+	/* Két oszlop; ha nincs elég hely, a konténer szélessége alapján egymás alá kerülnek. */
+	.columns {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+		gap: 1.25rem;
+		align-items: start;
+	}
+
+	.column {
+		display: flex;
+		flex-direction: column;
+		gap: 1.25rem;
+		min-width: 0;
 	}
 
 	.settings-section {
@@ -488,6 +565,50 @@
 		opacity: 0.6;
 	}
 
+	.price-cell {
+		position: relative;
+		display: inline-block;
+	}
+
+	/* A NAV-ból lekért ár jelölése: kis címke a mező bal oldalán (a szám jobbra van igazítva). */
+	.nav-badge {
+		position: absolute;
+		left: 0.4rem;
+		top: 50%;
+		transform: translateY(-50%);
+		pointer-events: none;
+		padding: 0.05rem 0.3rem;
+		border-radius: 0.25rem;
+		font-size: 0.6rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		line-height: 1.3;
+		color: var(--color-primary, #3730a3);
+		background: color-mix(in oklab, var(--color-primary, #3730a3) 12%, transparent);
+	}
+
+	.nav-badge.static {
+		position: static;
+		transform: none;
+		flex-shrink: 0;
+	}
+
+	.change-hint {
+		padding: 0.625rem 0.75rem;
+		border-radius: 0.5rem;
+		background: var(--color-muted, #f1f5f9);
+	}
+
+	.nav-fetch {
+		margin-left: auto;
+	}
+
+	.legend {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+	}
+
 	.place-list {
 		list-style: none;
 		margin: 0;
@@ -536,7 +657,7 @@
 	.add-place .row {
 		display: flex;
 		gap: 0.5rem;
-		align-items: center;
+		align-items: stretch;
 	}
 
 	.add-place .row .input {

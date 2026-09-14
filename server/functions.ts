@@ -349,6 +349,9 @@ export type {
 export { getTripPolicy, saveTripPolicy, getFuelPrices, saveFuelPrice } from './trip-settings.js';
 export type { TripPolicy, FuelPrice } from './trip-settings.js';
 
+export { previewNavFuelPrices, applyNavFuelPrices } from './nav-fuel-import.js';
+export type { NavFuelPreview, NavFuelApplyResult } from './nav-fuel-import.js';
+
 export { searchPlaces, calculateRoute } from './geo.js';
 export type { PlaceResult, RouteResult } from './geo.js';
 
