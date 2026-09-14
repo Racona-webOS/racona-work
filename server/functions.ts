@@ -18,6 +18,7 @@
  *   leave-days.ts    — a jóváhagyott szabadság napjai és a szabadságnaptár
  *   leave-closing.ts — év lezárása és megnyitása (csak nyitott évre lehet szabadságot rögzíteni)
  *   leave-year-opening.ts — évnyitás: keretek és a kötelező szabadságok kiírása
+ *   leave-usage-plan.ts — szabadságfelhasználási terv (évenként; a tiszta rész: leave-usage-plan-utils.ts)
  *   leave-entitlement.ts — éves szabadságkeret számítása (tiszta függvény)
  *   leave-profile.ts — a számítás adatai (születési dátum, gyerekek, távollétek) és a számított keretek
  *   leave-allowances.ts — betegszabadság, apasági és szülői szabadság kerete
@@ -134,6 +135,9 @@ export type {
 	MandatoryLeaveResult,
 	OpenLeaveYearResult
 } from './leave-year-opening.js';
+export { getLeaveUsagePlan, saveLeaveUsagePlan } from './leave-usage-plan.js';
+export type { UsagePlanSource, ResolvedUsagePlan, LeaveUsagePlanView } from './leave-usage-plan.js';
+export type { UsagePlan, PlanError, PlanErrorCode } from './leave-usage-plan-utils.js';
 export type {
 	LeaveCalendar,
 	LeaveCalendarDay,

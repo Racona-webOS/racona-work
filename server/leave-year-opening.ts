@@ -28,6 +28,8 @@ import {
 import type { Queryable } from './leave-days.js';
 import { BALANCE_LEAVE_TYPES } from './leave-types.js';
 import { notifyLeaveDaysAdded } from './leave-notifications.js';
+import { copyUsagePlanToYear, resolveUsagePlan } from './leave-usage-plan.js';
+import type { UsagePlanSource } from './leave-usage-plan.js';
 
 const SCHEMA = 'app__racona_work';
 const MANDATORY_TYPE = 'company_mandatory';
@@ -82,6 +84,8 @@ export interface OpenLeaveYearPreview extends MandatoryLeavePlan {
 	blockedReason: string | null;
 	/** Ennyi dolgozónak készül új keret. */
 	newBalances: number;
+	/** A felhasználási terv, amit az évnyitás az évre átvesz (specs/leave-balance-overview.md, K8). */
+	usagePlan: { source: UsagePlanSource; inheritedFromYear: number | null };
 }
 
 export interface MandatoryLeaveResult {
@@ -325,7 +329,8 @@ async function notifyAll(
 			employeeId: item.employeeId,
 			organizationId,
 			leaveType: MANDATORY_TYPE,
-			periods: item.periods
+			periods: item.periods,
+			event: 'leave.mandatoryAssigned'
 		});
 	}
 }
@@ -358,6 +363,7 @@ export async function previewOpenLeaveYear(
 		balances.filter((b) => b.calculatedTotal !== null).map((b) => [b.employeeId, b.calculatedTotal!])
 	);
 	const plan = await planMandatoryLeave(context.db, context, organizationId, year, prospective);
+	const usagePlan = await resolveUsagePlan(context.db, organizationId, year);
 	const byEmployee = new Map(balances.map((b) => [b.employeeId, b]));
 	for (const row of plan.rows) {
 		const b = byEmployee.get(row.employeeId);
@@ -369,7 +375,8 @@ export async function previewOpenLeaveYear(
 		...plan,
 		canOpen: blockedReason === null,
 		blockedReason,
-		newBalances: prospective.size
+		newBalances: prospective.size,
+		usagePlan: { source: usagePlan.source, inheritedFromYear: usagePlan.inheritedFromYear }
 	};
 }
 
@@ -401,6 +408,7 @@ export async function openLeaveYear(
 			 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
 			[openedYearKey(organizationId), JSON.stringify(year)]
 		);
+		await copyUsagePlanToYear(client, organizationId, year);
 		createdBalances = await createYearBalances(client, context, organizationId, year, userId);
 		const plan = await planMandatoryLeave(client, context, organizationId, year);
 		done = await executeMandatoryLeave(client, organizationId, plan, approverEmployeeId);

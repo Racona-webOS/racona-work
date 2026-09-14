@@ -16,6 +16,7 @@
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
 	import Checkbox from './ui/Checkbox.svelte';
+	import UsagePlanEditor from './leave-balance/UsagePlanEditor.svelte';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
@@ -282,6 +283,17 @@
 					</button>
 				</div>
 			</div>
+
+			<!-- Szabadságfelhasználási terv (specs/leave-balance-overview.md, K9) -->
+			{#if currentOrganization}
+				<div class="settings-section">
+					<div class="section-header">
+						<h3>{t('settings.leaveUsagePlan.title')}</h3>
+						<p class="section-description">{t('settings.leaveUsagePlan.description')}</p>
+					</div>
+					<UsagePlanEditor {pluginId} organizationId={currentOrganization.id} />
+				</div>
+			{/if}
 		{/if}
 	{/if}
 </section>

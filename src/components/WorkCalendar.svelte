@@ -99,6 +99,16 @@
 	let yearRunning = $state(false);
 
 	const openPreview = $derived(yearDialog === 'open' ? (yearPlan as OpenLeaveYearPreview | null) : null);
+	/** Évnyitásnál: melyik felhasználási terv kerül át az évre (specs/leave-balance-overview.md, K8). */
+	const usagePlanLine = $derived.by(() => {
+		const plan = openPreview?.usagePlan;
+		if (!plan) return '';
+		if (plan.source === 'own') return t('workCalendar.opening.usagePlan.own', { year });
+		if (plan.source === 'inherited') {
+			return t('workCalendar.opening.usagePlan.inherited', { from: plan.inheritedFromYear ?? '', year });
+		}
+		return t('workCalendar.opening.usagePlan.default');
+	});
 	/** Van-e mit végrehajtani: évnyitásnál ha nyitható, ellenőrzésnél ha van kiírandó nap. */
 	const yearCanRun = $derived(
 		!!yearPlan && (yearDialog === 'open' ? openPreview?.canOpen === true : yearPlan.daysToAssign > 0)
@@ -587,6 +597,9 @@
 						? t('workCalendar.mandatory.days', { days: mandatoryRanges })
 						: t('workCalendar.mandatory.noDays')}
 				</p>
+				{#if usagePlanLine}
+					<p class="plan-days">{usagePlanLine}</p>
+				{/if}
 				{#if yearDialog === 'mandatory' && yearPlan.daysToAssign === 0}
 					<p class="notice">{t('workCalendar.mandatory.nothingToDo')}</p>
 				{/if}
