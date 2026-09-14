@@ -93,6 +93,13 @@
 				"requiredCapability": "leave.balance.manage"
 			},
 			{
+				"labelKey": "menu.leaveBalance",
+				"href": "#leave-balance",
+				"icon": "ChartLine",
+				"component": "LeaveBalance",
+				"requiredCapability": "leave.approve"
+			},
+			{
 				"labelKey": "menu.workCalendar",
 				"href": "#work-calendar",
 				"icon": "CalendarCog",

@@ -49,6 +49,7 @@
 		canManage = false,
 		ownEmployeeId = null,
 		refreshKey = 0,
+		initialEmployeeId = null,
 		onSaved
 	}: {
 		pluginId?: string;
@@ -61,6 +62,8 @@
 		refreshKey?: number;
 		/** Sikeres naptáras mentés után (a kérelmek listája frissülhet). */
 		onSaved?: () => void;
+		/** Megnyitáskor erre a dolgozóra szűr, jóváhagyóként (a Szabadság egyenleg oldalról). */
+		initialEmployeeId?: number | null;
 	} = $props();
 
 	const sdk = $derived(resolveSdk(pluginId));
@@ -85,6 +88,11 @@
 
 	let employees = $state<EmployeeRow[]>([]);
 	let selectedEmployeeId = $state<number | null>(null);
+
+	// A Szabadság egyenleg oldalról a dolgozóra szűrve nyílik (specs/leave-balance-overview.md, K16)
+	$effect(() => {
+		if (canManage && initialEmployeeId) selectedEmployeeId = initialEmployeeId;
+	});
 
 	/** A tényleges szűrő: rögzítve a saját dolgozó, egyébként a választott. */
 	const filterEmployeeId = $derived(lockEmployee ? employeeId : selectedEmployeeId);

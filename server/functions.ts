@@ -19,6 +19,7 @@
  *   leave-closing.ts — év lezárása és megnyitása (csak nyitott évre lehet szabadságot rögzíteni)
  *   leave-year-opening.ts — évnyitás: keretek és a kötelező szabadságok kiírása
  *   leave-usage-plan.ts — szabadságfelhasználási terv (évenként; a tiszta rész: leave-usage-plan-utils.ts)
+ *   leave-balance-overview.ts — szabadság egyenleg (a tiszta számítás: leave-balance-utils.ts, a kliens is importálja)
  *   leave-entitlement.ts — éves szabadságkeret számítása (tiszta függvény)
  *   leave-profile.ts — a számítás adatai (születési dátum, gyerekek, távollétek) és a számított keretek
  *   leave-allowances.ts — betegszabadság, apasági és szülői szabadság kerete
@@ -138,6 +139,18 @@ export type {
 export { getLeaveUsagePlan, saveLeaveUsagePlan } from './leave-usage-plan.js';
 export type { UsagePlanSource, ResolvedUsagePlan, LeaveUsagePlanView } from './leave-usage-plan.js';
 export type { UsagePlan, PlanError, PlanErrorCode } from './leave-usage-plan-utils.js';
+export { getLeaveBalanceOverview } from './leave-balance-overview.js';
+export type { LeaveBalanceOverview, BalanceOverviewProject } from './leave-balance-overview.js';
+export type {
+	BalanceEmployeeRow,
+	BalanceStatus,
+	BalanceFilter,
+	BalanceSummary,
+	EmployeeFigures,
+	SeriesPoint,
+	MonthDetail,
+	TrendPoint
+} from './leave-balance-utils.js';
 export type {
 	LeaveCalendar,
 	LeaveCalendarDay,

@@ -23,7 +23,14 @@
 	import AccessDenied from './AccessDenied.svelte';
 	import LeaveCalendar from './leave-calendar/LeaveCalendar.svelte';
 
-	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
+	let {
+		pluginId = 'racona-work',
+		employeeId = null
+	}: {
+		pluginId?: string;
+		/** A Szabadság egyenleg oldalról: a naptár erre a dolgozóra szűr. */
+		employeeId?: number | null;
+	} = $props();
 
 	const sdk = $derived(
 		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
@@ -648,6 +655,7 @@
 						organizationId={currentOrganization.id}
 						canManage={canApprove}
 						ownEmployeeId={myEmployee?.id ?? null}
+						initialEmployeeId={employeeId}
 						refreshKey={calendarRefresh}
 						onSaved={() => loadData()}
 					/>
