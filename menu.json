@@ -52,6 +52,13 @@
 		"icon": "Car",
 		"children": [
 			{
+				"labelKey": "menu.businessTrips.vehicles",
+				"href": "#business-trips/vehicles",
+				"icon": "CarFront",
+				"component": "TripVehicles",
+				"requiredCapability": "trip.record"
+			},
+			{
 				"labelKey": "menu.businessTrips.trips",
 				"href": "#business-trips",
 				"icon": "Route",
@@ -63,13 +70,6 @@
 				"href": "#business-trips/settlements",
 				"icon": "FileText",
 				"component": "TripSettlements",
-				"requiredCapability": "trip.record"
-			},
-			{
-				"labelKey": "menu.businessTrips.vehicles",
-				"href": "#business-trips/vehicles",
-				"icon": "CarFront",
-				"component": "TripVehicles",
 				"requiredCapability": "trip.record"
 			}
 		]

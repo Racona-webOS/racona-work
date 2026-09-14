@@ -27,7 +27,8 @@ async function initDevSDK() {
 			{ DataTable: SimpleDataTable }
 		);
 
-		const DEV_SERVER_URL = 'http://localhost:5175';
+		// Párhuzamos fejlesztői példányhoz felülírható (lásd .claude/launch.json *-alt)
+		const DEV_SERVER_URL = import.meta.env.VITE_DEV_SERVER_URL ?? 'http://localhost:5175';
 		if ((window as any).webOS?.remote) {
 			(window as any).webOS.remote.call = async (functionName: string, params: unknown) => {
 				try {
