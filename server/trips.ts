@@ -41,6 +41,8 @@ export interface TripRow {
 	purpose: string;
 	waypoints: Waypoint[];
 	returnMode: ReturnMode;
+	/** Az útvonaltervező kerülje a fizetős utakat (K5). */
+	avoidTolls: boolean;
 	routedKm: number | null;
 	routeLegsKm: number[] | null;
 	distanceKm: number;
@@ -100,6 +102,7 @@ function mapTrip(row: any): TripDetail {
 		purpose: row.purpose,
 		waypoints: Array.isArray(row.waypoints) ? row.waypoints : [],
 		returnMode: row.return_mode,
+		avoidTolls: row.avoid_tolls === true,
 		routedKm: num(row.routed_km),
 		routeLegsKm: Array.isArray(row.route_legs_km) ? row.route_legs_km : null,
 		distanceKm: row.distance_km,
@@ -254,6 +257,8 @@ export interface SaveTripParams {
 	purpose: string;
 	waypoints: Waypoint[];
 	returnMode: ReturnMode;
+	/** Az útvonaltervező kerülje a fizetős utakat (K5). */
+	avoidTolls?: boolean;
 	distanceKm: number;
 	distanceReason?: string | null;
 	orderedByUserId?: number | null;
@@ -291,6 +296,7 @@ export async function saveTrip(params: SaveTripParams, context: RemoteContext): 
 
 	const returnMode: ReturnMode = ['origin', 'other', 'none'].includes(params.returnMode) ? params.returnMode : 'origin';
 	const waypoints = parseWaypoints(params.waypoints, returnMode);
+	const avoidTolls = params.avoidTolls === true;
 
 	// Zárolás: az új és (szerkesztésnél) a régi hónap is nyitott legyen
 	const { year, month } = monthKey(startedAt);
@@ -319,7 +325,7 @@ export async function saveTrip(params: SaveTripParams, context: RemoteContext): 
 	let legsKm: number[] | null = null;
 	let geometry: string | null = null;
 	if (!params.manualDistance) {
-		const route = await routeThrough(context, organizationId, routePoints(waypoints, returnMode));
+		const route = await routeThrough(context, organizationId, routePoints(waypoints, returnMode), { avoidTolls });
 		routedKm = route.km;
 		legsKm = route.legsKm;
 		geometry = route.geometry;
@@ -362,7 +368,8 @@ export async function saveTrip(params: SaveTripParams, context: RemoteContext): 
 		keptReason,
 		orderedBy,
 		overriddenBy,
-		overriddenAt
+		overriddenAt,
+		avoidTolls
 	];
 	let id: number;
 	if (existing) {
@@ -375,8 +382,8 @@ export async function saveTrip(params: SaveTripParams, context: RemoteContext): 
 			        routed_km = $7, route_legs_km = $8::jsonb, route_geometry = $9,
 			        distance_km = $10, distance_reason = $11,
 			        ordered_by_user_id = $12, ordered_by_overridden_by = $13, ordered_by_overridden_at = $14,
-			        updated_at = NOW()
-			  WHERE id = $15
+			        avoid_tolls = $15, updated_at = NOW()
+			  WHERE id = $16
 			  RETURNING id`,
 			[...values, existing.id]
 		);
@@ -386,10 +393,10 @@ export async function saveTrip(params: SaveTripParams, context: RemoteContext): 
 			`INSERT INTO ${SCHEMA}.trips
 			   (vehicle_id, started_at, ended_at, purpose, waypoints, return_mode,
 			    routed_km, route_legs_km, route_geometry, distance_km, distance_reason,
-			    ordered_by_user_id, ordered_by_overridden_by, ordered_by_overridden_at,
+			    ordered_by_user_id, ordered_by_overridden_by, ordered_by_overridden_at, avoid_tolls,
 			    organization_id, employee_id, created_by)
 			 VALUES ($1, ($2::timestamp AT TIME ZONE ${TZ}), ($3::timestamp AT TIME ZONE ${TZ}), $4, $5::jsonb, $6,
-			         $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			         $7, $8::jsonb, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 			 RETURNING id`,
 			[...values, organizationId, employeeId, callerId]
 		);

@@ -230,6 +230,7 @@ A norma a felvételkor azonnal látszik („6,7 l/100 km a 60/1992. Korm. rendel
 - Megjelenik az útvonaltervező szerinti táv (pl. „61,7 km, kb. 45 perc”), a szakaszok (oda 30,9 km, vissza 30,8 km) és az útvonal a térképen.
 - Az elszámolt km (62) szerkeszthető. Ha eltér a kerekített tervezett értéktől, az indoklás kötelező (pl. „terelés az M7-en”).
 - Ha az útvonaltervező nem elérhető, az út kézi km-rel is menthető, kötelező indoklással, „kézi” jelöléssel.
+- **Fizetős utak elkerülése.** Útonként bekapcsolható, hogy az útvonaltervező kerülje a fizetős utakat (Magyarországon a matricás autópályákat). Például az iroda és Martonvásár között alapból 39,1 km az autópályán, bekapcsolva 42,6 km a 70-es úton. Az így számolt hosszabb út a tervezett km, eltérésnek nem számít, indoklás nem kell, a HR-nek nem jelezzük külön. Új útnál az alapértelmezés a dolgozó legutóbb rögzített útjának beállítása, ha még nincs útja, kikapcsolt; másolásnál a másolt úté. A Valhalla „puha” kerülést kap (`use_tolls: 0`): ha nincs más út, a fizetőst is használja, nem ad hibát. Az út eltárolja a beállítást (`avoid_tolls`), az útvonal gyorsítótárában külön kulcson van.
 
 **K6. Ellenőrzések mentéskor.**
 
@@ -382,6 +383,7 @@ CREATE TABLE IF NOT EXISTS app__racona_work.trips (
     routed_km        NUMERIC(8,1),                  -- útvonaltervező szerint; NULL = kézi
     route_legs_km    JSONB,                         -- [30.9, 30.8]
     route_geometry   TEXT,                          -- encoded polyline6, a térképhez
+    avoid_tolls      BOOLEAN NOT NULL DEFAULT false, -- 019: fizetős utak elkerülése (K5)
     distance_km      INTEGER NOT NULL CHECK (distance_km BETWEEN 1 AND 5000),
     distance_reason  TEXT,                          -- kötelező, ha eltér a tervezettől
     ordered_by_user_id INTEGER REFERENCES auth.users(id),
@@ -603,15 +605,15 @@ A „saját vagy HR” elérést a `work-entries.ts` mintája szerint oldjuk meg
 | Függvény | Jogosultság | Leírás |
 |---|---|---|
 | `searchPlaces({ organizationId, query })` | `trip.record` | Legfeljebb 5 találat (`label`, `lat`, `lng`). Gyorsítótár 90 nap. |
-| `calculateRoute({ organizationId, points, returnMode })` | `trip.record` | `{ km, legsKm, durationMin, geometry }`. `origin` esetén a kiindulópontot a pontsor végére teszi. Gyorsítótár 30 nap. |
+| `calculateRoute({ organizationId, points, returnMode, avoidTolls? })` | `trip.record` | `{ km, legsKm, durationMin, geometry }`. `origin` esetén a kiindulópontot a pontsor végére teszi. `avoidTolls`: fizetős utak elkerülése (K5). Gyorsítótár 30 nap. |
 | `getTripVehicles({ organizationId, scope, employeeId?, includeArchived? })` | saját: `trip.record`; mind: `trip.manage` | Az autók listája, számított fogyasztással és mértékegységgel. |
 | `saveTripVehicle({ ... })` | saját vagy `trip.manage` | Felvétel vagy módosítás. Nem engedélyezett üzemanyagot elutasít. `consumption_override` csak `trip.manage` joggal. |
 | `archiveTripVehicle({ id })` | saját vagy `trip.manage` | Ha nincs rá út, törli; ha van, archiválja. |
-| `getTripPlaces({ organizationId, employeeId? })` | saját: `trip.record`; más dolgozóé: `trip.manage` | A céges és a saját helyek, plusz a lakcím és a munkahely. |
+| `getTripPlaces({ organizationId, employeeId? })` | saját: `trip.record`; más dolgozóé: `trip.manage` | A céges és a saját helyek, plusz a lakcím és a munkahely. `lastAvoidTolls`: a dolgozó legutóbb rögzített útjának „fizetős utak elkerülése” beállítása, az új út alapértelmezése (K5). |
 | `getCompanyTripPlaces({ organizationId })` | `trip.record` | Csak a céges helyek (beállítások oldal). |
 | `saveTripPlace` / `deleteTripPlace` | saját; céges: `trip.manage` | |
 | `getTrips({ organizationId, scope, year, month, employeeId?, vehicleId? })` | saját: `trip.record`; mind: `trip.approve` | Az utak és a sorokra számolt összegek. |
-| `saveTrip({ ... })` | saját vagy `trip.manage` | A K6 ellenőrzései. A `routed_km` értéket a szerver a pontokból kéri le (gyorsítótárból), nem a klienstől fogadja el. |
+| `saveTrip({ ... })` | saját vagy `trip.manage` | A K6 ellenőrzései. A `routed_km` értéket a szerver a pontokból kéri le (gyorsítótárból), nem a klienstől fogadja el; az `avoidTolls` beállítással tervez, és eltárolja. |
 | `deleteTrip({ id })` | saját vagy `trip.manage` | Csak nem zárolt hónapban. |
 | `getSettlementPreview({ employeeId, vehicleId, year, month })` | saját vagy `trip.approve` | Élő számítás mentés nélkül, `warnings` listával. |
 | `submitSettlement({ employeeId, vehicleId, year, month })` | saját vagy `trip.manage` | Pillanatképet készít a figyelmeztetésekkel, `submitted` állapotba teszi. A figyelmeztetések nem akadályozzák. |
@@ -793,6 +795,7 @@ E-mail: `trip_settlement_submitted`, `trip_settlement_status`, `trip_orderer_cha
 - [ ] Napidíj, szállásköltség, reggeli miatti levonás a sorokban (a szabályok szakmai ellenőrzés után)
 - [ ] Több napra ismételt út rögzítése egy lépésben
 - [ ] Hely választása kattintással a térképen (fordított geokódolás)
+- [x] Fizetős utak (autópálya) elkerülése útonként, a dolgozó legutóbbi választásával (K5; `migrations/019_trip_avoid_tolls.sql`)
 - [ ] HR havi összesítő (dolgozónként km és Ft), CSV a bérszámfejtésnek
 - [ ] Dashboard: „Saját utak ebben a hónapban”, HR: „Jóváhagyásra váró rendelvények”
 - [x] E-mail értesítések (specs/notifications.md)

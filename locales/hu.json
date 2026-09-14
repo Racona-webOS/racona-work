@@ -272,6 +272,8 @@
 	"trips.form.addStop": "Köztes megálló",
 	"trips.form.return": "Visszaút",
 	"trips.form.returnTo": "Hova érkeztél vissza",
+	"trips.form.avoidTolls": "Fizetős utak (autópálya) elkerülése",
+	"trips.form.avoidTollsManual": "Kézi km-nél nincs útvonaltervezés.",
 	"trips.form.distance": "Távolság",
 	"trips.form.routing": "Útvonal tervezése…",
 	"trips.form.routeHint": "Add meg a kiindulópontot és a célt, a távolságot az útvonaltervező számolja.",

@@ -34,6 +34,11 @@ export interface TripPlaces {
 	workplace: Waypoint | null;
 	company: TripPlace[];
 	personal: TripPlace[];
+	/**
+	 * A dolgozó legutóbb rögzített útjának „fizetős utak elkerülése” beállítása:
+	 * új útnál ez az alapértelmezés (K5). Ha még nincs útja, false.
+	 */
+	lastAvoidTolls: boolean;
 }
 
 export const HOME_LABEL = 'Lakcím';
@@ -111,11 +116,16 @@ export async function getTripPlaces(
 		[organizationId, employee.id]
 	);
 	const places = r.rows.map(mapPlace);
+	const last = await context.db.query(
+		`SELECT avoid_tolls FROM ${SCHEMA}.trips WHERE employee_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1`,
+		[employee.id]
+	);
 	return {
 		home,
 		workplace,
 		company: places.filter((p) => p.employeeId === null),
-		personal: places.filter((p) => p.employeeId !== null)
+		personal: places.filter((p) => p.employeeId !== null),
+		lastAvoidTolls: last.rows[0]?.avoid_tolls === true
 	};
 }
 

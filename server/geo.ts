@@ -40,6 +40,11 @@ export interface PlaceResult {
 	lng: number;
 }
 
+export interface RouteOptions {
+	/** A fizetős utak (Magyarországon a matricás autópályák) kerülése (K5). */
+	avoidTolls?: boolean;
+}
+
 export interface RouteResult {
 	/** Útvonaltervező szerinti távolság, km, 1 tizedesre. */
 	km: number;
@@ -227,18 +232,22 @@ function parsePoints(points: unknown): { lat: number; lng: number }[] {
 export async function routeThrough(
 	context: RemoteContext,
 	organizationId: number,
-	rawPoints: { lat: number; lng: number }[]
+	rawPoints: { lat: number; lng: number }[],
+	options: RouteOptions = {}
 ): Promise<RouteResult> {
 	const points = parsePoints(rawPoints);
 	const policy = await loadTripPolicy(context, organizationId);
 	const coordKey = points.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join(';');
-	const key = await sha256(`route|${policy.router.baseUrl}|auto|${coordKey}`);
+	const profile = options.avoidTolls ? 'auto-notolls' : 'auto';
+	const key = await sha256(`route|${policy.router.baseUrl}|${profile}|${coordKey}`);
 	const cached = await readCache<RouteResult>(context, key, ROUTE_TTL_DAYS);
 	if (cached) return cached;
 
 	const body = {
 		locations: points.map((p) => ({ lat: p.lat, lon: p.lng })),
 		costing: 'auto',
+		// A fizetős utak kerülése „puha”: ha nincs más út, a fizetőst is használja, nem ad hibát
+		...(options.avoidTolls ? { costing_options: { auto: { use_tolls: 0 } } } : {}),
 		units: 'kilometers',
 		directions_type: 'none'
 	};
@@ -277,12 +286,14 @@ export async function routeThrough(
 
 /** Útvonal a „Távolság számítása” gombhoz (K5). */
 export async function calculateRoute(
-	params: { organizationId: number; waypoints: Waypoint[]; returnMode: ReturnMode },
+	params: { organizationId: number; waypoints: Waypoint[]; returnMode: ReturnMode; avoidTolls?: boolean },
 	context: RemoteContext
 ): Promise<RouteResult> {
 	const organizationId = requireOrganizationId(params?.organizationId);
 	await requireCapability(context, organizationId, 'trip.record');
 	const returnMode: ReturnMode = ['origin', 'other', 'none'].includes(params.returnMode) ? params.returnMode : 'origin';
 	const waypoints = Array.isArray(params.waypoints) ? params.waypoints : [];
-	return routeThrough(context, organizationId, routePoints(waypoints, returnMode));
+	return routeThrough(context, organizationId, routePoints(waypoints, returnMode), {
+		avoidTolls: params.avoidTolls === true
+	});
 }

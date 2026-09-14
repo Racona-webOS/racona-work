@@ -69,6 +69,8 @@
 	let purpose = $state(untrack(() => source?.purpose ?? ''));
 	let orderedByUserId = $state<number | null>(untrack(() => source?.orderedByUserId ?? null));
 	let returnMode = $state<ReturnMode>(untrack(() => source?.returnMode ?? 'origin'));
+	/** Új útnál a dolgozó legutóbbi választása (a helyekkel együtt töltődik be), különben az úté. */
+	let avoidTolls = $state(untrack(() => source?.avoidTolls ?? false));
 
 	function splitWaypoints(): { origin: Waypoint | null; stops: (Waypoint | null)[]; destination: Waypoint | null; back: Waypoint | null } {
 		if (!source) return { origin: null, stops: [], destination: null, back: null };
@@ -123,6 +125,7 @@
 		try {
 			places = await sdk.remote.call('getTripPlaces', { organizationId, employeeId: employeeId ?? undefined });
 			if (!origin) origin = rememberedOrigin() ?? places?.home ?? places?.workplace ?? null;
+			if (!source && places) avoidTolls = places.lastAvoidTolls;
 		} catch (err) {
 			sdk?.ui?.toast(errorMessage(err, t('error.loadFailed')), 'error');
 		}
@@ -155,23 +158,29 @@
 
 	// Útvonal újraszámolása, amikor a pontok változnak (a szerver gyorsítótáraz)
 	let routeTimer: ReturnType<typeof setTimeout> | undefined;
-	let lastRouteKey = untrack(() => (trip && waypoints ? JSON.stringify([waypoints, returnMode]) : ''));
+	let lastRouteKey = untrack(() => (trip && waypoints ? JSON.stringify([waypoints, returnMode, avoidTolls]) : ''));
 	$effect(() => {
 		const points = waypoints;
 		const mode = returnMode;
+		const tolls = avoidTolls;
 		if (!points || manualDistance) return;
-		const key = JSON.stringify([points, mode]);
+		const key = JSON.stringify([points, mode, tolls]);
 		if (key === lastRouteKey) return;
 		clearTimeout(routeTimer);
-		routeTimer = setTimeout(() => calculate(points, mode, key), 300);
+		routeTimer = setTimeout(() => calculate(points, mode, tolls, key), 300);
 		return () => clearTimeout(routeTimer);
 	});
 
-	async function calculate(points: Waypoint[], mode: ReturnMode, key: string) {
+	async function calculate(points: Waypoint[], mode: ReturnMode, tolls: boolean, key: string) {
 		routing = true;
 		routeError = null;
 		try {
-			const result: RouteResult = await sdk.remote.call('calculateRoute', { organizationId, waypoints: points, returnMode: mode });
+			const result: RouteResult = await sdk.remote.call('calculateRoute', {
+				organizationId,
+				waypoints: points,
+				returnMode: mode,
+				avoidTolls: tolls
+			});
 			lastRouteKey = key;
 			route = result;
 			if (kmFollowsRoute || !distanceKm) {
@@ -187,7 +196,7 @@
 	}
 
 	function recalculate() {
-		if (waypoints) calculate(waypoints, returnMode, JSON.stringify([waypoints, returnMode]));
+		if (waypoints) calculate(waypoints, returnMode, avoidTolls, JSON.stringify([waypoints, returnMode, avoidTolls]));
 	}
 
 	function setOrigin(point: Waypoint | null) {
@@ -223,6 +232,7 @@
 				purpose,
 				waypoints,
 				returnMode,
+				avoidTolls,
 				distanceKm: distanceNumber,
 				distanceReason: reasonRequired ? distanceReason : null,
 				orderedByUserId,
@@ -327,6 +337,11 @@
 				{#if returnMode === 'other'}
 					<PlacePicker {pluginId} {organizationId} {employeeId} label={t('trips.form.returnTo')} value={backPoint} {places} onChange={(w) => (backPoint = w)} onPlacesChanged={reloadPlaces} />
 				{/if}
+
+				<label class="route-option" title={manualDistance ? t('trips.form.avoidTollsManual') : undefined}>
+					<input type="checkbox" bind:checked={avoidTolls} disabled={manualDistance} />
+					<span>{t('trips.form.avoidTolls')}</span>
+				</label>
 			</fieldset>
 
 			<fieldset class="route-block">
@@ -495,6 +510,19 @@
 		background: #fef3c7;
 		color: #92400e;
 		font-size: 0.8rem;
+	}
+
+	.route-option {
+		flex-direction: row;
+		align-items: center;
+		align-self: flex-start;
+		gap: 0.5rem;
+		cursor: pointer;
+	}
+
+	.route-option:has(input:disabled) {
+		opacity: 0.55;
+		cursor: default;
 	}
 
 	.manual-toggle {

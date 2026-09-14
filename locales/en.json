@@ -273,6 +273,8 @@
 	"trips.form.addStop": "Add stop",
 	"trips.form.return": "Return",
 	"trips.form.returnTo": "Returned to",
+	"trips.form.avoidTolls": "Avoid toll roads (motorways)",
+	"trips.form.avoidTollsManual": "No route planning with manual km.",
 	"trips.form.distance": "Distance",
 	"trips.form.routing": "Planning route…",
 	"trips.form.routeHint": "Set the start and destination; the route planner calculates the distance.",
