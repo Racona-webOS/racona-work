@@ -50,7 +50,7 @@ export function settlementPrintHtml(doc: SettlementDocument, options: { watermar
 				<td class="c">${r.index}</td>
 				<td class="c when">${dateTimeCell(r.startedAt)}</td>
 				<td class="c when">${dateTimeCell(r.endedAt)}</td>
-				<td>${esc(r.route)}<div class="purpose">${esc(r.purpose)}</div>${
+				<td>${esc(r.route)}${r.purpose ? `<div class="purpose">${esc(r.purpose)}</div>` : ''}${
 					r.distanceReason ? `<div class="note">Eltérés oka: ${esc(r.distanceReason)}</div>` : ''
 				}</td>
 				<td class="sign">${esc(r.orderedByName)}</td>

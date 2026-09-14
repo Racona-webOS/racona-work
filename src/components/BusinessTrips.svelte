@@ -337,7 +337,7 @@
 										<td class="nowrap">{formatTimeRange(row.startedAt, row.endedAt)}</td>
 										<td>
 											{routeLabel(row.waypoints, row.returnMode)}
-											<div class="muted">{row.purpose}</div>
+											{#if row.purpose}<div class="muted">{row.purpose}</div>{/if}
 										</td>
 										<td class="r">
 											<span class:warn={!!row.distanceReason} title={row.distanceReason ?? ''}>{row.distanceKm}</span>

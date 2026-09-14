@@ -291,8 +291,8 @@ export async function saveTrip(params: SaveTripParams, context: RemoteContext): 
 	const startedAt = parseLocalDateTime(params.startedAt, 'Kezdete');
 	const endedAt = parseLocalDateTime(params.endedAt, 'Vége');
 	if (endedAt <= startedAt) throw new Error('A vége a kezdete után legyen.');
-	const purpose = text(params.purpose, 1000);
-	if (!purpose) throw new Error('A kiküldetés célja kötelező.');
+	// A cél nem kötelező; üresen üres szöveg marad (az oszlop NOT NULL)
+	const purpose = text(params.purpose, 1000) ?? '';
 
 	const returnMode: ReturnMode = ['origin', 'other', 'none'].includes(params.returnMode) ? params.returnMode : 'origin';
 	const waypoints = parseWaypoints(params.waypoints, returnMode);

@@ -216,7 +216,6 @@
 	async function save() {
 		if (!vehicleId) return sdk?.ui?.toast(t('trips.form.vehicleRequired'), 'error');
 		if (!waypoints) return sdk?.ui?.toast(t('trips.form.routeRequired'), 'error');
-		if (!purpose.trim()) return sdk?.ui?.toast(t('trips.form.purposeRequired'), 'error');
 		if (!Number.isInteger(distanceNumber) || distanceNumber < 1) return sdk?.ui?.toast(t('trips.form.kmRequired'), 'error');
 		if (reasonRequired && !distanceReason.trim()) return sdk?.ui?.toast(t('trips.form.reasonRequired'), 'error');
 

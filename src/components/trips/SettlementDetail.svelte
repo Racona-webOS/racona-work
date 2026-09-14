@@ -229,7 +229,7 @@
 									<td class="nowrap">{formatDateTime(row.startedAt)}<br /><span class="muted">{formatDateTime(row.endedAt)}</span></td>
 									<td>
 										{row.route}
-										<div class="muted">{row.purpose}</div>
+										{#if row.purpose}<div class="muted">{row.purpose}</div>{/if}
 										{#if row.distanceReason}
 											<div class="deviation">
 												{t('trips.table.deviation', { planned: row.routedKm !== null ? formatKm(row.routedKm) : t('trips.table.manual') })}: {row.distanceReason}

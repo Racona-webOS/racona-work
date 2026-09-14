@@ -56,7 +56,7 @@ export function settlementTemplateData(doc: SettlementDocument) {
 		'trip.index': row.index,
 		'trip.start': { date: row.startedAt },
 		'trip.end': { date: row.endedAt },
-		'trip.route': `${row.route}\n${row.purpose}`,
+		'trip.route': row.purpose ? `${row.route}\n${row.purpose}` : row.route,
 		'trip.orderedBy': row.orderedByName ?? '',
 		'trip.km': row.km,
 		'trip.price': row.price,

@@ -221,7 +221,7 @@ A norma a felvételkor azonnal látszik („6,7 l/100 km a 60/1992. Korm. rendel
   - vissza a kiindulópontra;
   - máshová, ekkor egy további helyválasztó jelenik meg (pl. a munkahelyről indult, haza érkezett);
   - csak odaút;
-- cél (kötelező szöveg, pl. „Ügyféltalálkozó, rendszerbevezetés”);
+- cél (nem kötelező szöveg, pl. „Ügyféltalálkozó, rendszerbevezetés”; üresen a nyomtatványon és az xlsx-ben csak az útvonal áll);
 - elrendelő (nem kötelező; alapértelmezés: a dolgozó előző útjának elrendelője).
 
 **K5. Távolság.**
