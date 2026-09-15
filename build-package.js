@@ -7,7 +7,7 @@
  * Használat: bun run package
  */
 
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import AdmZip from 'adm-zip';
 
@@ -62,6 +62,18 @@ function addDirectoryToZip(zip, dirPath, zipPath = '') {
 		} else {
 			zip.addLocalFile(fullPath, zipPath);
 		}
+	}
+}
+
+// A core a szerver modulokat a server/functions.ts módosítási ideje szerinti
+// pillanatképből tölti be (.server-<mtime>). A zip megőrzi a dátumot, így ha
+// csak a többi szerverfájl változott, frissítés után a régi kód futna tovább.
+// Ezért minden csomagoláskor friss dátumot kap a belépő fájl.
+for (const entryFile of ['functions.ts', 'functions.js']) {
+	const entryFilePath = join(ROOT, 'server', entryFile);
+	if (existsSync(entryFilePath)) {
+		const now = new Date();
+		utimesSync(entryFilePath, now, now);
 	}
 }
 
