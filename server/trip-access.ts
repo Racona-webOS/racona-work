@@ -8,7 +8,7 @@
 
 import type { RemoteContext } from './context.js';
 import { resolveUserId } from './context.js';
-import { hasCapability } from './permissions.js';
+import { hasCapability, ensureNotExternalEmployee } from './permissions.js';
 import type { Capability } from './permissions.js';
 
 export const SCHEMA = 'app__racona_work';
@@ -49,7 +49,7 @@ export async function loadEmployeeRef(context: RemoteContext, employeeId: number
 export async function callerEmployee(context: RemoteContext, organizationId: number): Promise<EmployeeRef | null> {
 	const userId = await resolveUserId(context);
 	const r = await context.db.query(
-		`SELECT e.id FROM ${SCHEMA}.employees e WHERE e.user_id = $1 AND e.organization_id = $2 LIMIT 1`,
+		`SELECT e.id FROM ${SCHEMA}.employees e WHERE e.user_id = $1 AND e.organization_id = $2 AND e.is_external = FALSE LIMIT 1`,
 		[userId, organizationId]
 	);
 	return r.rows.length === 0 ? null : loadEmployeeRef(context, r.rows[0].id);
@@ -81,6 +81,7 @@ export async function requireTripAccess(
 	elevated: Capability | Capability[]
 ): Promise<{ employee: EmployeeRef; isSelf: boolean }> {
 	const employee = await loadEmployeeRef(context, employeeId);
+	await ensureNotExternalEmployee(context, employeeId);
 	const isSelf = employee.userId === (await resolveUserId(context));
 	const caps = Array.isArray(elevated) ? elevated : [elevated];
 
@@ -122,6 +123,7 @@ export async function resolveScope(
 		const id = requireId(employeeId, 'dolgozó azonosító');
 		const ref = await loadEmployeeRef(context, id);
 		if (ref.organizationId !== organizationId) throw new Error('A dolgozó nem ennek a szervezetnek a tagja.');
+		await ensureNotExternalEmployee(context, id);
 		return id;
 	}
 	await requireAnyCapability(context, organizationId, ['trip.record']);

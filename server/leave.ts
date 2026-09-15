@@ -9,7 +9,7 @@
 
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
-import { requireCapability, requireSelfOrCapability } from './permissions.js';
+import { requireCapability, requireSelfOrCapability, ensureNotExternalEmployee, EXTERNAL_EMPLOYEE_ERROR } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
 import {
 	notifyLeaveDeleted,
@@ -217,7 +217,7 @@ export async function getLeaveRequests(
 
 	const sortColumn = sortColumnMap[params.sortBy ?? 'createdAt'] ?? 'lr.created_at';
 
-	const conditions: string[] = ['e.organization_id = $1'];
+	const conditions: string[] = ['e.organization_id = $1', 'e.is_external = FALSE'];
 	const queryParams: unknown[] = [params.organizationId];
 	let paramIndex = 2;
 
@@ -325,6 +325,7 @@ export async function createLeaveRequest(
 	// annak leave.approve-ra is szüksége van — ezt alább, az employee id
 	// ismeretében ellenőrizzük.
 	await requireCapability(context, organizationId, 'leave.request');
+	await ensureNotExternalEmployee(context, employeeId);
 
 	// Ha az employee nem a hívó saját rekordja → leave.approve szükséges.
 	// Core admin / dev mód automatikusan ok.
@@ -839,6 +840,13 @@ export async function setLeaveBalance(
 
 	await requireCapability(context, params.organizationId, 'leave.balance.manage');
 	const userId = await resolveUserId(context);
+
+	const employee = await context.db.query(
+		`SELECT is_external FROM app__racona_work.employees WHERE id = $1 AND organization_id = $2`,
+		[params.employeeId, params.organizationId]
+	);
+	if (employee.rows.length === 0) throw new Error('A dolgozó nem található ebben a szervezetben');
+	if (employee.rows[0].is_external === true) throw new Error(EXTERNAL_EMPLOYEE_ERROR);
 
 	const existing = await context.db.query(
 		`SELECT ${BALANCE_COLUMNS} FROM app__racona_work.leave_balances WHERE employee_id = $1 AND year = $2`,

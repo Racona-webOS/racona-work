@@ -100,7 +100,7 @@ export async function getCarryOverAlerts(
 		          WHERE organization_id = $1 AND carried_over_days > 0 AND year >= $2) b
 		   JOIN ${SCHEMA}.employees e ON e.id = b.employee_id
 		   JOIN auth.users u ON u.id = e.user_id
-		  WHERE e.status <> 'inactive'`,
+		  WHERE e.status <> 'inactive' AND e.is_external = FALSE`,
 		[params.organizationId, currentYear() - 1]
 	);
 	const names = new Map<number, string>(r.rows.map((row: any) => [row.id, row.employee_name]));

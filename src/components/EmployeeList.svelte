@@ -102,7 +102,8 @@
 				pageSize: tableState.pageSize,
 				sortBy: tableState.sortBy,
 				sortOrder: tableState.sortOrder,
-				search: debouncedSearch || undefined
+				search: debouncedSearch || undefined,
+				includeExternal: true
 			});
 			data = result?.data ?? [];
 			paginationInfo = result?.pagination ?? { page: 1, pageSize: 20, totalCount: 0, totalPages: 0 };
@@ -242,7 +243,10 @@
 				}),
 				cell: ({ row }: any) => {
 					const name = row.original.userName ?? '—';
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="font-medium">${name}</span>` }));
+					const external = row.original.isExternal
+						? ` <span style="margin-left:0.375rem;font-size:0.7rem;font-weight:600;padding:0.05rem 0.45rem;border-radius:999px;background:#ede9fe;color:#6d28d9">${t('employees.external.badge')}</span>`
+						: '';
+					const snippet = createRawSnippet(() => ({ render: () => `<span><span class="font-medium">${name}</span>${external}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},

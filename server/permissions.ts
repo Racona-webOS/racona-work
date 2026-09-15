@@ -3,6 +3,7 @@
  *
  * Szerepek és képességek a plugin saját sémájában (app__racona_work.wp_*).
  * A core admin jogosultság (context.permissions.includes('admin')) felülírja ezeket.
+ * Külsős dolgozónál (employees.is_external) csak az EXTERNAL_CAPABILITIES érvényes.
  *
  * Publikus remote funkciók (a functions.ts reexportálja őket):
  *   - getMyCapabilities({ organizationId })
@@ -56,6 +57,45 @@ export const CAPABILITIES = [
 export type Capability = (typeof CAPABILITIES)[number];
 
 const CAPABILITY_SET: Set<string> = new Set(CAPABILITIES);
+
+/**
+ * A külsős dolgozóra csak ezek a képességek vonatkoznak (specs/external-employees.md):
+ * a projektek és a munkanapló. A szerepeiből jövő többi képességet figyelmen kívül hagyjuk.
+ */
+export const EXTERNAL_CAPABILITIES: ReadonlySet<string> = new Set<Capability>([
+	'project.create',
+	'project.manage',
+	'project.close',
+	'project.view.all',
+	'project.view.own',
+	'work.log',
+	'work.view.all'
+]);
+
+export const EXTERNAL_EMPLOYEE_ERROR = 'Külsős dolgozóra ez a funkció nem vonatkozik.';
+
+/** A felhasználó külsős dolgozó-e a szervezetben. */
+export async function isExternalMember(
+	context: RemoteContext,
+	organizationId: number,
+	userId: number
+): Promise<boolean> {
+	const r = await context.db.query(
+		`SELECT is_external FROM app__racona_work.employees
+		  WHERE organization_id = $1 AND user_id = $2 LIMIT 1`,
+		[organizationId, userId]
+	);
+	return r.rows[0]?.is_external === true;
+}
+
+/** Hibát dob, ha a dolgozó külsős: rá a projekteken kívül semmi nem vonatkozik. */
+export async function ensureNotExternalEmployee(context: RemoteContext, employeeId: number): Promise<void> {
+	const r = await context.db.query(
+		`SELECT is_external FROM app__racona_work.employees WHERE id = $1`,
+		[employeeId]
+	);
+	if (r.rows[0]?.is_external === true) throw new Error(EXTERNAL_EMPLOYEE_ERROR);
+}
 
 /** Rendszer szerep kulcsok — ezekhez a createOrganization automatikusan létrehoz szerepet. */
 export const SYSTEM_ROLE_DEFINITIONS: Array<{
@@ -137,7 +177,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 export async function getMyCapabilities(
 	params: { organizationId: number },
 	context: RemoteContext
-): Promise<{ capabilities: string[]; isCoreAdmin: boolean; isDevMode: boolean }> {
+): Promise<{ capabilities: string[]; isCoreAdmin: boolean; isDevMode: boolean; isExternal: boolean }> {
 	if (!params?.organizationId || params.organizationId <= 0) {
 		throw new Error('Érvénytelen szervezet azonosító');
 	}
@@ -149,7 +189,8 @@ export async function getMyCapabilities(
 		return {
 			capabilities: [...CAPABILITIES],
 			isCoreAdmin: coreAdmin,
-			isDevMode: devMode
+			isDevMode: devMode,
+			isExternal: false
 		};
 	}
 
@@ -163,10 +204,13 @@ export async function getMyCapabilities(
 		[params.organizationId, userId]
 	);
 
+	const capabilities = result.rows.map((r: any) => String(r.capability));
+	const external = await isExternalMember(context, params.organizationId, userId);
 	return {
-		capabilities: result.rows.map((r: any) => String(r.capability)),
+		capabilities: external ? capabilities.filter((c) => EXTERNAL_CAPABILITIES.has(c)) : capabilities,
 		isCoreAdmin: false,
-		isDevMode: false
+		isDevMode: false,
+		isExternal: external
 	};
 }
 
@@ -183,6 +227,11 @@ export async function hasCapability(
 	if (isDevMode(context) || isCoreAdmin(context)) return true;
 
 	const userId = await resolveUserId(context);
+
+	// Külsős dolgozónál a projekt- és munkanapló-képességeken kívül semmi nem érvényes
+	if (!EXTERNAL_CAPABILITIES.has(capability) && (await isExternalMember(context, organizationId, userId))) {
+		return false;
+	}
 
 	// Projektszintű felülbírálás (ha van)
 	if (projectId) {
@@ -232,12 +281,13 @@ export async function requireSelfOrCapability(
 	capability: Capability | Capability[]
 ): Promise<number> {
 	const r = await context.db.query(
-		`SELECT organization_id, user_id FROM app__racona_work.employees WHERE id = $1`,
+		`SELECT organization_id, user_id, is_external FROM app__racona_work.employees WHERE id = $1`,
 		[employeeId]
 	);
 	if (r.rows.length === 0) {
 		throw new Error(`Nem található dolgozó a megadott azonosítóval: ${employeeId}`);
 	}
+	if (r.rows[0].is_external === true) throw new Error(EXTERNAL_EMPLOYEE_ERROR);
 	const { organization_id: orgId, user_id: ownerId } = r.rows[0] as {
 		organization_id: number;
 		user_id: number;

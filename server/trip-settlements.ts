@@ -405,7 +405,10 @@ export async function getSettlements(
 		return { data: [], pagination: { page, pageSize, totalCount: 0, totalPages: 0 } };
 	}
 
-	const conditions = ['s.organization_id = $1'];
+	const conditions = [
+		's.organization_id = $1',
+		`NOT EXISTS (SELECT 1 FROM ${SCHEMA}.employees x WHERE x.id = s.employee_id AND x.is_external)`
+	];
 	const values: unknown[] = [organizationId];
 	const add = (sql: string, value: unknown) => {
 		values.push(value);
@@ -676,7 +679,7 @@ export async function getTripOrderers(
 	const r = await context.db.query(
 		`SELECT u.id AS user_id, COALESCE(NULLIF(TRIM(u.full_name), ''), u.email) AS name
 		   FROM ${SCHEMA}.employees e JOIN auth.users u ON u.id = e.user_id
-		  WHERE e.organization_id = $1 AND e.status = 'active'
+		  WHERE e.organization_id = $1 AND e.status = 'active' AND e.is_external = FALSE
 		  ORDER BY name`,
 		[organizationId]
 	);

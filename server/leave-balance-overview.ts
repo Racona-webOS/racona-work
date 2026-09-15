@@ -75,7 +75,7 @@ export async function getLeaveBalanceOverview(
 				   FROM ${SCHEMA}.employees e
 				   JOIN auth.users u ON u.id = e.user_id
 				   LEFT JOIN ${SCHEMA}.leave_balances b ON b.employee_id = e.id AND b.year = $2
-				  WHERE e.organization_id = $1 AND e.status <> 'inactive'
+				  WHERE e.organization_id = $1 AND e.status <> 'inactive' AND e.is_external = FALSE
 				  ORDER BY u.full_name, e.id`,
 				[organizationId, year]
 			),

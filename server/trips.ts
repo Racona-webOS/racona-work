@@ -142,7 +142,7 @@ export async function loadMonthTrips(
 	filter: { organizationId: number; year: number; month: number; employeeId: number | null; vehicleId?: number }
 ): Promise<TripRow[]> {
 	const values: unknown[] = [filter.organizationId, filter.year, filter.month];
-	const conditions = ['t.organization_id = $1', MONTH_RANGE_SQL];
+	const conditions = ['t.organization_id = $1', 'e.is_external = FALSE', MONTH_RANGE_SQL];
 	if (filter.employeeId !== null) {
 		values.push(filter.employeeId);
 		conditions.push(`t.employee_id = $${values.length}`);
@@ -226,7 +226,7 @@ async function requireOrgMemberUser(context: RemoteContext, organizationId: numb
 	if (userId === null || userId === undefined || userId === '') return null;
 	const id = requireId(userId, 'elrendelő');
 	const r = await context.db.query(
-		`SELECT 1 FROM ${SCHEMA}.employees WHERE organization_id = $1 AND user_id = $2 LIMIT 1`,
+		`SELECT 1 FROM ${SCHEMA}.employees WHERE organization_id = $1 AND user_id = $2 AND is_external = FALSE LIMIT 1`,
 		[organizationId, id]
 	);
 	if (r.rows.length === 0) throw new Error('Az elrendelő nem tagja a szervezetnek.');

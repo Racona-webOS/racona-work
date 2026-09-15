@@ -16,6 +16,8 @@ export class OrganizationStore {
 
 	// Szervezet-szintű képességek (getMyCapabilities). Szervezet váltáskor frissül.
 	capabilities = $state<Set<string>>(new Set());
+	/** A hívó külsős dolgozó a jelenlegi szervezetben: csak a projektekben vesz részt. */
+	isExternal = $state(false);
 
 	// Derived state
 	hasMultipleOrganizations = $derived(this.availableOrganizations.length > 1);
@@ -69,6 +71,7 @@ export class OrganizationStore {
 	/** getMyCapabilities hívás; hiba esetén dob (a hívó dönti el, mi legyen). */
 	private async fetchCapabilities(organizationId: number): Promise<Set<string>> {
 		const result = await this.sdk.remote.call('getMyCapabilities', { organizationId });
+		this.isExternal = result?.isExternal === true;
 		const list: string[] = Array.isArray(result?.capabilities) ? result.capabilities : [];
 		return new Set(list);
 	}

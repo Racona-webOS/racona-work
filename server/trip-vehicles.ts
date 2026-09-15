@@ -85,7 +85,7 @@ export async function getTripVehicles(
 	]);
 	if (employeeId === undefined) return [];
 
-	const conditions = ['v.organization_id = $1'];
+	const conditions = ['v.organization_id = $1', 'e.is_external = FALSE'];
 	const values: unknown[] = [organizationId];
 	if (employeeId !== null) {
 		values.push(employeeId);

@@ -84,6 +84,7 @@
 	let editStatus = $state('');
 	let editHireDate = $state('');
 	let editEndDate = $state('');
+	let editIsExternal = $state(false);
 	let basicSaving = $state(false);
 
 	// Születési dátum (Személyes adatok)
@@ -161,6 +162,7 @@
 		editStatus = view.employee.status;
 		editHireDate = view.employment.hireDate ?? '';
 		editEndDate = view.employment.employmentEndDate ?? '';
+		editIsExternal = view.employee.isExternal === true;
 		editingBasic = true;
 	}
 
@@ -180,7 +182,8 @@
 				position: editPosition || undefined,
 				status: editStatus,
 				hireDate: hireChanged ? editHireDate : undefined,
-				employmentEndDate: endChanged ? editEndDate || null : undefined
+				employmentEndDate: endChanged ? editEndDate || null : undefined,
+				isExternal: editIsExternal
 			});
 			editingBasic = false;
 			if (hireChanged || endChanged) afterDatesChanged(updated?.recalculated);
@@ -349,6 +352,9 @@
 				<div class="profile-info">
 					<span class="profile-name">{view.employee.userName}</span>
 					<span class="profile-email">{view.employee.userEmail}</span>
+					{#if view.employee.isExternal}
+						<span class="badge badge-external">{t('employees.external.badge')}</span>
+					{/if}
 				</div>
 			</div>
 
@@ -366,6 +372,11 @@
 							<option value="onLeave">{t('employees.status.onLeave')}</option>
 						</select>
 					</label>
+					<label class="checkbox-label">
+						<input type="checkbox" bind:checked={editIsExternal} />
+						{t('employeeDetail.external')}
+					</label>
+					<p class="field-hint">{t('employeeDetail.external.hint')}</p>
 					<div class="date-pair">
 						<label class="form-label">
 							{t('employeeDetail.hireDate')}
@@ -405,7 +416,9 @@
 						</span>
 					</div>
 				</div>
-				{#if !view.employment.hireDateConfirmed}
+				{#if view.employee.isExternal}
+					<div class="notice"><span>{t('employees.external.notice')}</span></div>
+				{:else if !view.employment.hireDateConfirmed}
 					<div class="notice">
 						<span>{t('leaveEntitlement.profile.hireDateUnconfirmed')}</span>
 						{#if canManageEmployee && view.employment.hireDate}
@@ -528,7 +541,7 @@
 			</div><!-- /col-main -->
 
 			<!-- Jobb hasáb: szabadságkeret és a számítás adatai -->
-			{#if canManageBalance}
+			{#if canManageBalance && !view.employee.isExternal}
 				<div class="col-side">
 					<DataRequestReview {pluginId} employeeId={view.employee.id} onDecided={onLeaveProfileChanged} />
 					<LeaveBalanceCard {pluginId} employeeId={view.employee.id} refreshKey={balanceRefreshKey} />
@@ -548,6 +561,24 @@
 
 <style>
 	@import '../styles/shared.css';
+
+	.badge-external {
+		align-self: flex-start;
+		background: #ede9fe;
+		color: #6d28d9;
+	}
+
+	:global(.dark) .badge-external {
+		background: rgba(124, 58, 237, 0.2);
+		color: #c4b5fd;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.875rem;
+	}
 
 	.page {
         --max-col-width: 600px;

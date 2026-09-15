@@ -353,6 +353,7 @@ export async function getLeaveDataRequests(
 	const r = await context.db.query(
 		`${REQUEST_SELECT}
 		  WHERE r.organization_id = $1 AND ($2::boolean = FALSE OR r.status = 'pending')
+		    AND NOT EXISTS (SELECT 1 FROM app__racona_work.employees x WHERE x.id = r.employee_id AND x.is_external)
 		  ORDER BY r.created_at ${onlyPending ? 'ASC' : 'DESC'}, r.id
 		  LIMIT 200`,
 		[params.organizationId, onlyPending]

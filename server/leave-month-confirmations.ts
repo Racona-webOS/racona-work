@@ -156,7 +156,7 @@ async function loadMonthData(
 		        (e.status = 'active' AND NOT (COALESCE(e.hire_date_confirmed, FALSE) AND e.hire_date > $2::date)) AS eligible
 		   FROM ${SCHEMA}.employees e
 		   JOIN auth.users u ON u.id = e.user_id
-		  WHERE e.organization_id = $1 ${employeeId ? 'AND e.id = $3' : ''}
+		  WHERE e.organization_id = $1 AND e.is_external = FALSE ${employeeId ? 'AND e.id = $3' : ''}
 		  ORDER BY u.full_name, e.id`,
 		employeeId ? [organizationId, to, employeeId] : [organizationId, to]
 	);

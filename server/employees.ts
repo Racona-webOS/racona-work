@@ -24,6 +24,8 @@ export interface Employee {
 	status: string;
 	createdAt: string;
 	updatedAt: string;
+	/** Külsős dolgozó: csak a projektekben vesz részt (specs/external-employees.md). */
+	isExternal?: boolean;
 }
 
 export interface EmployeeRow extends Employee {
@@ -99,6 +101,11 @@ export interface EmployeeListParams {
 	sortOrder?: 'asc' | 'desc';
 	search?: string;
 	status?: string;
+	/**
+	 * A külsős dolgozók is kellenek-e (Dolgozók lista, projekt tagválasztó,
+	 * szerepek). Alapból kimaradnak, mert a többi funkcióra nem vonatkoznak.
+	 */
+	includeExternal?: boolean;
 }
 
 export interface UnlinkedUser {
@@ -373,6 +380,10 @@ export async function getEmployees(
 		paramIndex++;
 	}
 
+	if (!params.includeExternal) {
+		conditions.push('e.is_external = FALSE');
+	}
+
 	const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
 	// Összes találat száma a lapozáshoz
@@ -397,6 +408,7 @@ export async function getEmployees(
 			e.position,
 			e.hire_date,
 			e.status,
+			e.is_external,
 			e.created_at,
 			e.updated_at,
 			u.full_name AS user_name,
@@ -428,6 +440,7 @@ export async function getEmployees(
 		userName: row.user_name,
 		userEmail: row.user_email,
 		userImage: row.user_image ?? null,
+		isExternal: row.is_external === true,
 		roles: row.role_names ?? []
 	}));
 
@@ -508,6 +521,7 @@ export async function getEmployeeDetails(
 			e.position,
 			e.hire_date,
 			e.status,
+			e.is_external,
 			e.created_at,
 			e.updated_at,
 			to_char(e.hire_date, 'YYYY-MM-DD') AS hire_day,
@@ -544,7 +558,8 @@ export async function getEmployeeDetails(
 		updatedAt: empRow.updated_at,
 		userName: empRow.user_name,
 		userEmail: empRow.user_email,
-		userImage: empRow.user_image ?? null
+		userImage: empRow.user_image ?? null,
+		isExternal: empRow.is_external === true
 	};
 
 	// Adatlap részletek lekérdezése
@@ -764,6 +779,8 @@ export async function updateEmployee(
 		hireDate?: string;
 		/** A kilépés napja; null törli. */
 		employmentEndDate?: string | null;
+		/** Külsős dolgozó: csak a projektekben vesz részt. */
+		isExternal?: boolean;
 	},
 	context: RemoteContext
 ): Promise<Employee & { recalculated: RecalculatedBalance[] }> {
@@ -772,10 +789,11 @@ export async function updateEmployee(
 		params.position === undefined &&
 		params.status === undefined &&
 		params.hireDate === undefined &&
-		params.employmentEndDate === undefined
+		params.employmentEndDate === undefined &&
+		params.isExternal === undefined
 	) {
 		throw new Error(
-			'Legalább egy mezőt meg kell adni a frissítéshez (position, status, hireDate, employmentEndDate).'
+			'Legalább egy mezőt meg kell adni a frissítéshez (position, status, hireDate, employmentEndDate, isExternal).'
 		);
 	}
 
@@ -826,6 +844,12 @@ export async function updateEmployee(
 	if (endDate !== undefined) {
 		setClauses.push(`employment_end_date = $${paramIndex}`);
 		queryParams.push(endDate);
+		paramIndex++;
+	}
+
+	if (params.isExternal !== undefined) {
+		setClauses.push(`is_external = $${paramIndex}`);
+		queryParams.push(params.isExternal === true);
 		paramIndex++;
 	}
 
@@ -880,7 +904,7 @@ export async function getMyEmployee(
 	const userId = await resolveUserId(context);
 
 	const result = await context.db.query(
-		`SELECT e.id, e.user_id, e.position, e.hire_date, e.status,
+		`SELECT e.id, e.user_id, e.position, e.hire_date, e.status, e.is_external,
 		        e.created_at, e.updated_at,
 		        u.full_name AS user_name, u.email AS user_email, u.image AS user_image
 		   FROM app__racona_work.employees e
@@ -901,6 +925,7 @@ export async function getMyEmployee(
 		updatedAt: row.updated_at,
 		userName: row.user_name,
 		userEmail: row.user_email,
-		userImage: row.user_image ?? null
+		userImage: row.user_image ?? null,
+		isExternal: row.is_external === true
 	};
 }

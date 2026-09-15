@@ -75,6 +75,8 @@
 
   // --- Self-service nézet állapota ---
   let myEmployee = $state<EmployeeRow | null>(null);
+  /** Külsős dolgozó: az irányítópult csak a projektekhez irányít (specs/external-employees.md). */
+  let isExternal = $state(false);
   let myBalance = $state<LeaveBalance | null>(null);
   /** Az idei, még el nem bírált, a keretet terhelő kérelmek napjai. */
   let myPendingDays = $state(0);
@@ -191,6 +193,7 @@
   }
 
   function reload() {
+    if (isExternal) return;
     // A vezető is lehet dolgozó: neki a saját adatai a vezetői nézet alatt jelennek meg
     if (canManagerView) loadManagerStats();
     loadSelfOverview();
@@ -216,6 +219,7 @@
 
   function syncCapabilities() {
     if (!orgStore) return;
+    isExternal = orgStore.isExternal;
     canApprove = orgStore.can("leave.approve");
     canManageBalance = orgStore.can("leave.balance.manage");
     canManagerView =
@@ -369,6 +373,22 @@
   <section class="page">
     {#if !hasAccess}
       <AccessDenied />
+    {:else if isExternal}
+      <!-- ========== Külsős dolgozó: csak a projektek ========== -->
+      <div class="page-header">
+        <div class="page-header_title">
+          <h2>{t("dashboard.external.title")}</h2>
+          <p class="subtitle">{t("dashboard.external.message")}</p>
+        </div>
+      </div>
+      <div>
+        <button
+          class="btn-primary"
+          onclick={() => sdk?.ui?.navigateTo?.("ProjectList", {})}
+        >
+          {t("dashboard.external.openProjects")}
+        </button>
+      </div>
     {:else if isDataLoading && !stats && !myEmployee}
       <div class="loading-state">
         <div class="spinner"></div>

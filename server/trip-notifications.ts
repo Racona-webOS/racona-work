@@ -122,7 +122,9 @@ export async function notifySettlementSubmitted(
 			`SELECT DISTINCT mr.user_id
 			   FROM ${SCHEMA}.wp_member_roles mr
 			   JOIN ${SCHEMA}.wp_role_capabilities rc ON rc.role_id = mr.role_id
-			  WHERE mr.organization_id = $1 AND rc.capability = 'trip.approve'`,
+			  WHERE mr.organization_id = $1 AND rc.capability = 'trip.approve'
+			    AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.employees x
+			                     WHERE x.organization_id = mr.organization_id AND x.user_id = mr.user_id AND x.is_external)`,
 			[notice.organizationId]
 		);
 		const userIds = r.rows.map((row: any) => Number(row.user_id)).filter((id: number) => id !== actor);

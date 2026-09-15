@@ -55,7 +55,7 @@ export async function getDashboardStats(
 			COUNT(*) AS total_employees,
 			COUNT(*) FILTER (WHERE e.status = 'active') AS active_employees
 		 FROM app__racona_work.employees e
-		 WHERE e.organization_id = $1`,
+		 WHERE e.organization_id = $1 AND e.is_external = FALSE`,
 		[params.organizationId]
 	);
 
@@ -64,7 +64,7 @@ export async function getDashboardStats(
 		`SELECT COUNT(*) AS pending_leave_requests
 		 FROM app__racona_work.leave_requests lr
 		 JOIN app__racona_work.employees e ON e.id = lr.employee_id
-		 WHERE lr.status = 'pending' AND e.organization_id = $1`,
+		 WHERE lr.status = 'pending' AND e.organization_id = $1 AND e.is_external = FALSE`,
 		[params.organizationId]
 	);
 
@@ -72,6 +72,7 @@ export async function getDashboardStats(
 	const onLeaveResult = await context.db.query(
 		`SELECT COUNT(DISTINCT ld.employee_id) AS on_leave_this_month
 		 FROM app__racona_work.leave_days ld
+		 JOIN app__racona_work.employees e ON e.id = ld.employee_id AND e.is_external = FALSE
 		 WHERE ld.organization_id = $3
 		   AND ld.day >= $2::date
 		   AND ld.day < $1::date`,
@@ -88,7 +89,7 @@ export async function getDashboardStats(
 		 FROM app__racona_work.leave_requests lr
 		 JOIN app__racona_work.employees e ON e.id = lr.employee_id
 		 JOIN auth.users u ON u.id = e.user_id
-		 WHERE lr.status = 'pending' AND e.organization_id = $1
+		 WHERE lr.status = 'pending' AND e.organization_id = $1 AND e.is_external = FALSE
 		 ORDER BY lr.created_at DESC
 		 LIMIT 5`,
 		[params.organizationId]

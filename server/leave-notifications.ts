@@ -72,7 +72,7 @@ export async function saveLeaveNotifiers(
 	if (requested.length > 0) {
 		const r = await context.db.query(
 			`SELECT id FROM ${SCHEMA}.employees
-			  WHERE id = ANY($1::int[]) AND organization_id = $2
+			  WHERE id = ANY($1::int[]) AND organization_id = $2 AND is_external = FALSE
 			  ORDER BY id`,
 			[requested, organizationId]
 		);
@@ -184,7 +184,8 @@ export async function notifyLeaveRequestsCreated(
 			   JOIN auth.users u ON u.id = e.user_id
 			  WHERE e.id = ANY($1::int[])
 			    AND e.organization_id = $2
-			    AND e.status = 'active'`,
+			    AND e.status = 'active'
+			    AND e.is_external = FALSE`,
 			[notifierEmployeeIds, request.organizationId]
 		);
 		const recipients = recipientResult.rows
@@ -411,7 +412,8 @@ export async function notifyLeaveRequestWithdrawn(
 			   JOIN auth.users u ON u.id = e.user_id
 			  WHERE e.id = ANY($1::int[])
 			    AND e.organization_id = $2
-			    AND e.status = 'active'`,
+			    AND e.status = 'active'
+			    AND e.is_external = FALSE`,
 			[notifierEmployeeIds, request.organizationId]
 		);
 		const recipients = recipientResult.rows
@@ -680,7 +682,9 @@ export async function notifyLeaveDataRequestCreated(
 			`SELECT DISTINCT mr.user_id
 			   FROM ${SCHEMA}.wp_member_roles mr
 			   JOIN ${SCHEMA}.wp_role_capabilities rc ON rc.role_id = mr.role_id
-			  WHERE mr.organization_id = $1 AND rc.capability = 'leave.balance.manage'`,
+			  WHERE mr.organization_id = $1 AND rc.capability = 'leave.balance.manage'
+			    AND NOT EXISTS (SELECT 1 FROM ${SCHEMA}.employees x
+			                     WHERE x.organization_id = mr.organization_id AND x.user_id = mr.user_id AND x.is_external)`,
 			[request.organizationId]
 		);
 		const userIds = result.rows

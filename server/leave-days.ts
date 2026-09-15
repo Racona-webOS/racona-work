@@ -12,7 +12,7 @@
 
 import type { RemoteContext } from './context.js';
 import { isCoreAdmin, isDevMode, resolveUserId } from './context.js';
-import { hasCapability, requireCapability } from './permissions.js';
+import { hasCapability, requireCapability, EXTERNAL_EMPLOYEE_ERROR } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
 import {
 	notifyLeaveDaysAdded,
@@ -331,7 +331,7 @@ export async function getLeaveCalendar(
 			   FROM ${SCHEMA}.leave_days ld
 			   JOIN ${SCHEMA}.employees e ON e.id = ld.employee_id
 			   JOIN auth.users u ON u.id = e.user_id
-			  WHERE ${where} AND ld.day >= $2::date AND ld.day <= $3::date
+			  WHERE ${where} AND e.is_external = FALSE AND ld.day >= $2::date AND ld.day <= $3::date
 			  ORDER BY ld.day, u.full_name`,
 			queryParams
 		),
@@ -343,7 +343,7 @@ export async function getLeaveCalendar(
 			   FROM ${SCHEMA}.leave_requests lr
 			   JOIN ${SCHEMA}.employees e ON e.id = lr.employee_id
 			   JOIN auth.users u ON u.id = e.user_id
-			  WHERE ${pendingWhere} AND lr.status = 'pending'
+			  WHERE ${pendingWhere} AND e.is_external = FALSE AND lr.status = 'pending'
 			    AND lr.start_date <= $3::date AND lr.end_date >= $2::date
 			  ORDER BY lr.start_date, u.full_name`,
 			pendingParams
@@ -508,10 +508,11 @@ async function assertEmployeeInOrganization(
 	organizationId: number
 ): Promise<void> {
 	const r = await db.query(
-		`SELECT 1 FROM ${SCHEMA}.employees WHERE id = $1 AND organization_id = $2`,
+		`SELECT is_external FROM ${SCHEMA}.employees WHERE id = $1 AND organization_id = $2`,
 		[employeeId, organizationId]
 	);
 	if (r.rows.length === 0) throw new Error('A dolgozó nem található ebben a szervezetben');
+	if (r.rows[0].is_external === true) throw new Error(EXTERNAL_EMPLOYEE_ERROR);
 }
 
 /**
@@ -787,10 +788,11 @@ async function requireOwnOrApprover(context: RemoteContext, input: RequestBatchI
 	if (isDevMode(context) || isCoreAdmin(context)) return;
 	const callerUserId = await resolveUserId(context);
 	const r = await context.db.query(
-		`SELECT user_id FROM ${SCHEMA}.employees WHERE id = $1 AND organization_id = $2`,
+		`SELECT user_id, is_external FROM ${SCHEMA}.employees WHERE id = $1 AND organization_id = $2`,
 		[input.employeeId, input.organizationId]
 	);
 	if (r.rows.length === 0) throw new Error('A dolgozó nem található ebben a szervezetben');
+	if (r.rows[0].is_external === true) throw new Error(EXTERNAL_EMPLOYEE_ERROR);
 	if (Number(r.rows[0].user_id) !== Number(callerUserId)) {
 		await requireCapability(context, input.organizationId, 'leave.approve');
 	}

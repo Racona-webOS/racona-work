@@ -43,6 +43,8 @@
 
 	// --- Képességek ---
 	let canApprove = $state(false);
+	/** Külsős dolgozó: rá a szabadság nem vonatkozik. */
+	let isExternal = $state(false);
 	let canManageBalance = $state(false);
 	let isManagerView = $derived(canApprove);
 
@@ -172,6 +174,7 @@
 			if (store) {
 				currentOrganization = store.currentOrganization;
 				hasAccess = store.hasAccess;
+				isExternal = store.isExternal;
 				canApprove = store.can('leave.approve');
 				canManageBalance = store.can('leave.balance.manage');
 				viewMode = canApprove ? 'all' : 'mine';
@@ -547,13 +550,14 @@
 				hasAccess = orgStore.hasAccess;
 			}
 
+			isExternal = orgStore.isExternal;
 			canApprove = orgStore.can('leave.approve');
 			canManageBalance = orgStore.can('leave.balance.manage');
 			// Alap nézet: manager esetén 'all', dolgozó esetén 'mine'.
 			viewMode = canApprove ? 'all' : 'mine';
 
 			// Saját dolgozói rekord lekérése (self-service működéshez és szűréshez).
-			if (currentOrganization) {
+			if (currentOrganization && !isExternal) {
 				try {
 					myEmployee = (await sdk.remote.call('getMyEmployee', {
 						organizationId: currentOrganization.id
@@ -565,7 +569,7 @@
 		}
 
 		buildColumns();
-		if (sdk?.remote && currentOrganization) loadData();
+		if (sdk?.remote && currentOrganization && !isExternal) loadData();
 	});
 </script>
 
@@ -590,6 +594,8 @@
 <section class="page">
 	{#if !hasAccess}
 		<AccessDenied />
+	{:else if isExternal}
+		<p class="empty-state">{t('leaveRequests.external')}</p>
 	{:else}
 		<div class="page-header">
 			<div class="page-header-title">

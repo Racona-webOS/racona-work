@@ -125,7 +125,9 @@
 			const result = (await sdk.remote.call('getEmployees', {
 				organizationId: currentOrganization.id,
 				pageSize: 500,
-				status: 'active'
+				status: 'active',
+				// A külsősök is a projekt tagjai lehetnek
+				includeExternal: true
 			})) as PaginatedResult<EmployeeRow>;
 			orgEmployees = result?.data ?? [];
 		} catch {

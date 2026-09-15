@@ -251,7 +251,7 @@ export async function notifyMonthConfirmationDisputed(
 			   FROM auth.users u
 			  WHERE u.id = $1
 			     OR u.id IN (SELECT e.user_id FROM ${SCHEMA}.employees e
-			                  WHERE e.id = ANY($2::int[]) AND e.organization_id = $3 AND e.status = 'active')`,
+			                  WHERE e.id = ANY($2::int[]) AND e.organization_id = $3 AND e.status = 'active' AND e.is_external = FALSE)`,
 			[notice.sentBy ?? 0, notifierEmployeeIds, notice.organizationId]
 		);
 		const actor = await actorUserId(context);

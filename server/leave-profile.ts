@@ -15,7 +15,7 @@
 import type { RemoteContext } from './context.js';
 import { resolveUserId } from './context.js';
 import { currentYear, parseDay, todayInBudapest } from './dates.js';
-import { requireCapability, requireSelfOrCapability } from './permissions.js';
+import { requireCapability, requireSelfOrCapability, ensureNotExternalEmployee } from './permissions.js';
 import { getEmployeeOrganizationId } from './employees.js';
 import { BALANCE_COLUMNS, mapBalanceRow } from './leave.js';
 import type { LeaveBalance, LeaveBalanceCalculation } from './leave.js';
@@ -387,6 +387,7 @@ export async function recalculateEmployeeBalances(
 async function requireManageForEmployee(context: RemoteContext, employeeId: number): Promise<number> {
 	const orgId = await getEmployeeOrganizationId(context, employeeId);
 	await requireCapability(context, orgId, 'leave.balance.manage');
+	await ensureNotExternalEmployee(context, employeeId);
 	return orgId;
 }
 
@@ -982,7 +983,7 @@ async function loadActiveEmployees(context: RemoteContext, organizationId: numbe
 		                 WHERE lb.employee_id = e.id AND lb.year = $2) AS has_balance
 		   FROM ${SCHEMA}.employees e
 		   JOIN auth.users u ON u.id = e.user_id
-		  WHERE e.organization_id = $1 AND e.status <> 'inactive'
+		  WHERE e.organization_id = $1 AND e.status <> 'inactive' AND e.is_external = FALSE
 		  ORDER BY u.full_name, e.id`,
 		[organizationId, year]
 	);
