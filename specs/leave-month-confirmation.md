@@ -37,7 +37,7 @@ A HR a hónap végén bérszámfejtéshez zárja a szabadságokat. Ma nincs nyom
 | D9 | Az eltérés kezelése | A HR a naptárban javít, majd **újraküld**: új változat készül a mostani adatokkal, a régi `superseded` lesz, a dolgozónak újra el kell fogadnia. Ha az adat nem változott (a HR szerint a rögzítés helyes), az újraküldéshez kötelező a válasz a dolgozónak. A HR **lezárhatja elfogadás nélkül** is, kötelező indoklással; ez függő tételre is működik (pl. tartósan távol lévő dolgozó). A dolgozó mindkét esetben értesítést kap. | javasolt |
 | D10 | Mikor zárható a hónap? | Ha minden címzettnél van tétel, mindegyik elfogadott vagy lezárt, és egyik sem „változott”. Csak jelzés. | javasolt |
 | D11 | Előzmények | A felülírt változatok megmaradnak (`superseded`, `previous_id`), dolgozónként és hónaponként egyszerre egy él. | javasolt |
-| D12 | Értesítések | Kiküldés és újraküldés: a dolgozó, rendszeren belül és emailben (`leave.monthConfirmationRequested`, alapból be, mert az összesítő emailje a funkció lényege). Eltérés: a kiküldő és a Szabadságkérelem beállításoknál kijelöltek (`leave.monthConfirmationDisputed`, alapból be). Lezárás elfogadás nélkül: a dolgozó (`leave.monthConfirmationClosed`, alapból ki). Az elfogadásról nincs értesítés, a HR a csapatnézetben látja. | javasolt |
+| D12 | Értesítések | Kiküldés és újraküldés: a dolgozó, rendszeren belül és emailben (`leave.monthConfirmationRequested`, alapból be, mert az összesítő emailje a funkció lényege). Eltérés: a kiküldő és a Szabadság beállításoknál kijelöltek (`leave.monthConfirmationDisputed`, alapból be). Lezárás elfogadás nélkül: a dolgozó (`leave.monthConfirmationClosed`, alapból ki). Az elfogadásról nincs értesítés, a HR a csapatnézetben látja. | javasolt |
 
 ## 3. Folyamat
 

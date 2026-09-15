@@ -3,7 +3,7 @@
  *
  * Események:
  *   - kiküldés, újraküldés → a dolgozó kapja az összesítőt
- *   - eltérés → a kiküldő és a Szabadságkérelem beállításoknál kijelöltek
+ *   - eltérés → a kiküldő és a Szabadság beállításoknál kijelöltek
  *   - lezárás elfogadás nélkül → a dolgozó
  *
  * Minden küldés best-effort: a hibát naplózzuk, a művelet nem gördül vissza.

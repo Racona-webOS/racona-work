@@ -16,7 +16,7 @@ Ma az emailek fixen mennek: a szabadság-események egy része emailt is küld, 
 
 - A rendszeren belüli értesítések kikapcsolása: azok továbbra is mindig mennek.
 - Dolgozónkénti (személyes) leiratkozás.
-- A címzettek módosítása: az új kérelem értesítettjeit továbbra is a Szabadságkérelem beállításoknál kell kijelölni, a többi címzett a jogosultságból vagy az érintett dolgozóból adódik.
+- A címzettek módosítása: az új kérelem értesítettjeit továbbra is a Szabadság beállításoknál kell kijelölni, a többi címzett a jogosultságból vagy az érintett dolgozóból adódik.
 - Az email nyelve: továbbra is magyar (a felhasználóknak nincs tárolt nyelvi beállítása).
 
 ## 2. Döntések
@@ -34,7 +34,7 @@ Ma az emailek fixen mennek: a szabadság-események egy része emailt is küld, 
 | Kulcs | Esemény | Címzett | Sablon | Alap |
 |---|---|---|---|---|
 | `employee.welcome` | Új dolgozó felvétele | az új dolgozó | `employee_welcome` | be |
-| `leave.requestCreated` | Új szabadságkérelem | a Szabadságkérelem beállításoknál kijelöltek | `leave_request_new` | be |
+| `leave.requestCreated` | Új szabadságkérelem | a Szabadság beállításoknál kijelöltek | `leave_request_new` | be |
 | `leave.requestWithdrawn` | Kérelem visszavonása | ugyanők | `leave_request_withdrawn` | ki |
 | `leave.requestDecided` | Kérelem jóváhagyása vagy elutasítása | a dolgozó | `leave_request_status` | be |
 | `leave.deleted` | Függő kérelem vagy jóváhagyott szabadság törlése | a dolgozó | `leave_request_status`, `leave_deleted` | be |
@@ -43,7 +43,7 @@ Ma az emailek fixen mennek: a szabadság-események egy része emailt is küld, 
 | `leave.dataRequestCreated` | Új adatbejelentés | `leave.balance.manage` joggal rendelkezők | `leave_data_request_new` | ki |
 | `leave.dataRequestDecided` | Adatbejelentés elbírálása | a dolgozó | `leave_data_request_status` | ki |
 | `leave.monthConfirmationRequested` | Havi szabadság-ellenőrzés kiküldése, újraküldése | az érintett dolgozók | `leave_month_confirmation_request` | be |
-| `leave.monthConfirmationDisputed` | Eltérés a havi összesítőben | a kiküldő és a Szabadságkérelem beállításoknál kijelöltek | `leave_month_confirmation_disputed` | be |
+| `leave.monthConfirmationDisputed` | Eltérés a havi összesítőben | a kiküldő és a Szabadság beállításoknál kijelöltek | `leave_month_confirmation_disputed` | be |
 | `leave.monthConfirmationClosed` | Havi ellenőrzés lezárása elfogadás nélkül | a dolgozó | `leave_month_confirmation_closed` | ki |
 | `trip.settlementSubmitted` | Beküldött kiküldetési rendelvény | `trip.approve` joggal rendelkezők | `trip_settlement_submitted` | ki |
 | `trip.settlementStatus` | Rendelvény jóváhagyása, visszaküldése, kifizetése, visszanyitása | a dolgozó | `trip_settlement_status` | ki |
