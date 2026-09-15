@@ -383,7 +383,9 @@ export type {
 	ProjectReportEmployee,
 	ProjectReportEmployeeCategory,
 	ProjectReportCategory,
-	ProjectReportDaily
+	ProjectReportDaily,
+	ProjectReportBucket,
+	ProjectReportLifetime
 } from './project-report.js';
 
 // --- Kiküldetések -------------------------------------------------------------

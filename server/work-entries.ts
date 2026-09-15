@@ -12,6 +12,7 @@
  *
  * Lezárt projektnél (projects.closed_at) a bejegyzések nem rögzíthetők, nem
  * módosíthatók és nem törölhetők — a core adminnak és dev módban sem.
+ * Ha a projektnek van kezdő dátuma, a bejegyzés napja nem lehet korábbi nála.
  */
 
 import type { RemoteContext } from './context.js';
@@ -98,6 +99,18 @@ export function validateWorkDate(d: string): void {
 function validateHours(h: number): void {
 	if (typeof h !== 'number' || isNaN(h) || h < 0.25 || h > 24) {
 		throw new Error('Az órák száma 0,25 és 24 között kell legyen');
+	}
+}
+
+/**
+ * Belső segéd (nem remote függvény): ha a projektnek van kezdő dátuma, a
+ * bejegyzés napja nem lehet korábbi nála. Mindkét dátum YYYY-MM-DD.
+ */
+export function ensureNotBeforeProjectStart(workDate: string, startDate: string | null): void {
+	if (startDate && workDate < startDate) {
+		throw new Error(
+			`A nap nem lehet korábbi a projekt kezdő dátumánál (${startDate.replace(/-/g, '. ')}.)`
+		);
 	}
 }
 
@@ -285,16 +298,22 @@ export async function createWorkEntry(
 	validateWorkDate(params.workDate);
 
 	const proj = await context.db.query(
-		`SELECT organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
+		`SELECT organization_id, closed_at, to_char(start_date, 'YYYY-MM-DD') AS start_date
+		   FROM app__racona_work.projects WHERE id = $1`,
 		[params.projectId]
 	);
 	if (proj.rows.length === 0) throw new Error('Projekt nem található');
-	const projRow = proj.rows[0] as { organization_id: number; closed_at: string | null };
+	const projRow = proj.rows[0] as {
+		organization_id: number;
+		closed_at: string | null;
+		start_date: string | null;
+	};
 	const organizationId = projRow.organization_id;
 
 	// Minden hívónak legalább work.log kell.
 	await requireCapability(context, organizationId, 'work.log');
 	ensureProjectOpen(projRow.closed_at, 'A projekt le van zárva, nem rögzíthető hozzá feladat');
+	ensureNotBeforeProjectStart(params.workDate, projRow.start_date);
 
 	// Saját vs. más employee eldöntése
 	let targetEmployeeId = params.employeeId;
@@ -398,7 +417,9 @@ export async function updateWorkEntry(
 	if (!params?.id) throw new Error('Érvénytelen bejegyzés azonosító');
 
 	const existing = await context.db.query(
-		`SELECT we.id, we.project_id, we.employee_id, p.organization_id, p.closed_at, e.user_id
+		`SELECT we.id, we.project_id, we.employee_id, p.organization_id, p.closed_at, e.user_id,
+		        to_char(we.work_date, 'YYYY-MM-DD') AS work_date,
+		        to_char(p.start_date, 'YYYY-MM-DD') AS start_date
 		   FROM app__racona_work.work_entries we
 		   JOIN app__racona_work.projects p ON p.id = we.project_id
 		   JOIN app__racona_work.employees e ON e.id = we.employee_id
@@ -413,6 +434,8 @@ export async function updateWorkEntry(
 		organization_id: number;
 		closed_at: string | null;
 		user_id: number;
+		work_date: string;
+		start_date: string | null;
 	};
 
 	// Saját bejegyzését a hívó work.log-gal írhatja. Idegen bejegyzést
@@ -441,6 +464,8 @@ export async function updateWorkEntry(
 	}
 	if (params.hours !== undefined) validateHours(params.hours);
 	if (params.workDate !== undefined) validateWorkDate(params.workDate);
+	// A módosítás utáni nap számít: régi, kezdő dátum előtti bejegyzés csak jó napra tehető át.
+	ensureNotBeforeProjectStart(params.workDate ?? row.work_date, row.start_date);
 
 	// Kategória validáció (ha meg van adva és nem null)
 	if (params.categoryId !== undefined && params.categoryId !== null) {
@@ -504,7 +529,9 @@ export async function deleteWorkEntry(
 	if (!params?.id) throw new Error('Érvénytelen bejegyzés azonosító');
 
 	const existing = await context.db.query(
-		`SELECT we.id, we.project_id, we.employee_id, p.organization_id, p.closed_at, e.user_id
+		`SELECT we.id, we.project_id, we.employee_id, p.organization_id, p.closed_at, e.user_id,
+		        to_char(we.work_date, 'YYYY-MM-DD') AS work_date,
+		        to_char(p.start_date, 'YYYY-MM-DD') AS start_date
 		   FROM app__racona_work.work_entries we
 		   JOIN app__racona_work.projects p ON p.id = we.project_id
 		   JOIN app__racona_work.employees e ON e.id = we.employee_id
@@ -519,6 +546,8 @@ export async function deleteWorkEntry(
 		organization_id: number;
 		closed_at: string | null;
 		user_id: number;
+		work_date: string;
+		start_date: string | null;
 	};
 
 	const dev = isDevMode(context);

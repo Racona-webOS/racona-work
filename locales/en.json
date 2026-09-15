@@ -674,6 +674,7 @@
 	"work.deleteConfirm": "Delete this work entry?",
 	"work.notMember": "You are not a member of this project, you cannot log work",
 	"work.closedNotice": "This project is closed: no new tasks can be logged, and existing ones cannot be edited or deleted.",
+	"work.form.beforeStart": "The date cannot be earlier than the project start date ({date})",
 
 	"filter.from": "From",
 	"filter.to": "To",
@@ -709,6 +710,9 @@
 	"report.daily.title.filtered": "Daily breakdown (filtered period)",
 	"report.daily.empty": "No entries in the last 30 days",
 	"report.daily.hours": "h",
+	"report.lifetime.title": "Full period (first to last entry)",
+	"report.lifetime.empty": "No entries on this project yet",
+	"report.lifetime.bucketHint": "Each bar sums the hours of {days} days",
 
 	"report.recent.title": "Recent entries",
 	"report.recent.empty": "No entries yet",

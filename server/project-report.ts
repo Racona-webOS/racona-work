@@ -3,7 +3,8 @@
  *
  * Egy hívásban adja vissza a projekt összesítőit (összes óra, bejegyzések
  * száma, aktív tagok), a dolgozónkénti és kategóriánkénti bontást, a napi
- * időbeli lefutást, az inaktív tagokat és a legutóbbi bejegyzéseket.
+ * időbeli lefutást (utolsó 30 nap és a teljes időszak), az inaktív tagokat és a
+ * legutóbbi bejegyzéseket.
  *
  * Jog: `work.view.all` vagy `project.manage` (a részleteket a függvény
  * ellenőrzi). A nyers bejegyzés-lista és a CRUD a work-entries.ts-ben van.
@@ -41,6 +42,20 @@ export interface ProjectReportDaily {
 	entries: number;
 }
 
+/** A teljes időszak egy oszlopa: a `date`–`to` napok (mindkettő benne) összege. */
+export interface ProjectReportBucket {
+	date: string;
+	to: string;
+	hours: number;
+	entries: number;
+}
+
+export interface ProjectReportLifetime {
+	/** Hány napot fed le egy oszlop (1, ha az időszak elfér LIFETIME_MAX_BARS oszlopban). */
+	bucketDays: number;
+	points: ProjectReportBucket[];
+}
+
 export interface ProjectReportCategory {
 	categoryId: number | null;
 	categoryName: string;
@@ -75,6 +90,11 @@ export interface ProjectReport {
 	byCategory: ProjectReportCategory[];
 	/** Utolsó 30 nap napi bontásban. */
 	daily: ProjectReportDaily[];
+	/**
+	 * Az első és az utolsó bejegyzés közötti teljes időszak, a dátumszűrőtől
+	 * függetlenül — hogyan alakult a munka a projekt tényleges fejlesztése során.
+	 */
+	lifetime: ProjectReportLifetime;
 	/** Top 10 legutóbbi bejegyzés. */
 	recentEntries: WorkEntryRow[];
 	/** Azok a projekt-tagok, akik az utolsó 14 napban nem logoltak. */
@@ -86,6 +106,50 @@ function daysBetween(a: Date, b: Date): number {
 	const utcA = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
 	const utcB = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
 	return Math.round((utcB - utcA) / msPerDay);
+}
+
+/** A teljes időszak grafikonjának legtöbb oszlopa; hosszabb időszaknál napokat vonunk össze. */
+export const LIFETIME_MAX_BARS = 120;
+
+function addDays(ymd: string, days: number): string {
+	const d = new Date(`${ymd}T00:00:00Z`);
+	d.setUTCDate(d.getUTCDate() + days);
+	return d.toISOString().slice(0, 10);
+}
+
+/**
+ * A napi összegekből (csak az aktív napok, YYYY-MM-DD) folytonos sor az első
+ * és az utolsó bejegyzés között. Ha a napok száma több, mint `maxBars`, egy
+ * oszlop `bucketDays` egymást követő napot összegez.
+ */
+export function buildLifetimeSeries(
+	rows: Array<{ date: string; hours: number; entries: number }>,
+	maxBars = LIFETIME_MAX_BARS
+): ProjectReportLifetime {
+	if (rows.length === 0) return { bucketDays: 1, points: [] };
+	const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+	const first = sorted[0].date;
+	const dayIndex = (ymd: string) =>
+		daysBetween(new Date(`${first}T00:00:00Z`), new Date(`${ymd}T00:00:00Z`));
+	const totalDays = dayIndex(sorted[sorted.length - 1].date) + 1;
+	const bucketDays = Math.max(1, Math.ceil(totalDays / maxBars));
+
+	const points: ProjectReportBucket[] = Array.from(
+		{ length: Math.ceil(totalDays / bucketDays) },
+		(_, i) => ({
+			date: addDays(first, i * bucketDays),
+			to: addDays(first, Math.min(totalDays, (i + 1) * bucketDays) - 1),
+			hours: 0,
+			entries: 0
+		})
+	);
+	for (const r of sorted) {
+		const point = points[Math.floor(dayIndex(r.date) / bucketDays)];
+		point.hours += r.hours;
+		point.entries += r.entries;
+	}
+	for (const point of points) point.hours = Math.round(point.hours * 100) / 100;
+	return { bucketDays, points };
 }
 
 export async function getProjectReport(
@@ -275,6 +339,24 @@ export async function getProjectReport(
 		entries: r.entries
 	}));
 
+	// --- Teljes időszak (első–utolsó bejegyzés), a dátumszűrőtől függetlenül ---
+	const lifetimeR = await context.db.query(
+		`SELECT to_char(work_date, 'YYYY-MM-DD') AS date,
+		        COALESCE(SUM(hours), 0) AS hours,
+		        COUNT(*)::int AS entries
+		   FROM app__racona_work.work_entries
+		  WHERE project_id = $1
+		  GROUP BY work_date`,
+		[params.projectId]
+	);
+	const lifetime = buildLifetimeSeries(
+		lifetimeR.rows.map((r: any) => ({
+			date: r.date,
+			hours: typeof r.hours === 'string' ? parseFloat(r.hours) : Number(r.hours),
+			entries: r.entries
+		}))
+	);
+
 	// --- Top 10 legutóbbi bejegyzés ---
 	const recentR = await context.db.query(
 		`SELECT we.id, we.project_id, we.employee_id, we.title, we.description,
@@ -371,6 +453,7 @@ export async function getProjectReport(
 		byEmployee,
 		byCategory,
 		daily,
+		lifetime,
 		recentEntries,
 		inactiveMembers
 	};

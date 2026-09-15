@@ -43,6 +43,17 @@
 	/** A core által megosztott DatePicker; ha nincs, natív date inputra esünk vissza. */
 	const DatePickerComponent = $derived((sdk as any)?.components?.DatePicker ?? null);
 
+	/** A projekt kezdő dátuma (YYYY-MM-DD): ennél korábbi nap nem rögzíthető. */
+	const projectStart = $derived(toYmd(project.startDate));
+
+	function toYmd(raw: string | null): string {
+		if (!raw) return '';
+		if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+		const d = new Date(raw);
+		if (isNaN(d.getTime())) return '';
+		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+	}
+
 	// Szűrők
 	let workScope = $state<'mine' | 'all'>('mine');
 	let workFrom = $state('');
@@ -137,6 +148,15 @@
 		}
 		if (!workCategoryId) {
 			sdk?.ui?.toast?.(t('work.form.category') + ': ' + t('form.required'), 'error');
+			return;
+		}
+		if (projectStart && workWorkDate < projectStart) {
+			sdk?.ui?.toast?.(
+				t('work.form.beforeStart', {
+					date: new Date(`${projectStart}T00:00:00`).toLocaleDateString()
+				}),
+				'error'
+			);
 			return;
 		}
 		workSaving = true;
@@ -363,7 +383,12 @@
 				<div class="form-row-2">
 					<label>
 						<span>{t('work.form.workDate')} *</span>
-						<input class="input date-input" type="date" bind:value={workWorkDate} />
+						<input
+							class="input date-input"
+							type="date"
+							min={projectStart || undefined}
+							bind:value={workWorkDate}
+						/>
 					</label>
 					<label>
 						<span>{t('work.form.hours')} *</span>

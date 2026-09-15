@@ -1,6 +1,9 @@
 <!--
 	ProjectDetail — Riport fül
 
+	Lezárt projektnél nincs idővonal, és az utolsó 30 nap grafikonja is csak
+	dátumszűrővel látszik; a teljes időszak grafikonja mindig megjelenik.
+
 	Önálló, csak akkor mountol, amikor a fül aktív (a szülő így rendereli),
 	tehát a betöltést a mount és a dátumszűrők vezérlik. Tartalmazza a
 	CSV exportot is (a nyers bejegyzéseket kéri le, nem az aggregált riportot).
@@ -259,7 +262,7 @@
 	</div>
 
 	<!-- Projekt idővonal -->
-	{#if report.project.startDate || report.project.endDate}
+	{#if !project.closedAt && (report.project.startDate || report.project.endDate)}
 	<div class="report-section">
 		<div class="section-header">
 			<h3>{t('report.progress')}</h3>
@@ -451,7 +454,8 @@
 		{/if}
 	</div>
 
-	<!-- Utolsó 30 nap napi bontás -->
+	<!-- Utolsó 30 nap napi bontás (lezárt projektnél csak szűrt időszakra) -->
+	{#if !project.closedAt || reportFrom || reportTo}
 	<div class="report-section">
 		<h3>
 			{#if reportFrom || reportTo}
@@ -479,6 +483,43 @@
 				<span>
 					{new Date(
 						report.daily[report.daily.length - 1].date
+					).toLocaleDateString()}
+				</span>
+			</div>
+		{/if}
+	</div>
+	{/if}
+
+	<!-- Teljes időszak: az első és az utolsó bejegyzés között, a szűrőtől függetlenül -->
+	<div class="report-section">
+		<h3>{t('report.lifetime.title')}</h3>
+		{#if report.lifetime.points.length === 0}
+			<p class="empty-state">{t('report.lifetime.empty')}</p>
+		{:else}
+			{@const lifetimeMax = Math.max(1, ...report.lifetime.points.map((d) => d.hours))}
+			{#if report.lifetime.bucketDays > 1}
+				<p class="chart-hint">
+					{t('report.lifetime.bucketHint', { days: report.lifetime.bucketDays })}
+				</p>
+			{/if}
+			<div class="daily-chart">
+				{#each report.lifetime.points as d (d.date)}
+					<div
+						class="daily-bar"
+						title="{d.date === d.to ? d.date : `${d.date} – ${d.to}`}: {d.hours.toFixed(1)} {t('work.columns.hours').toLowerCase()}"
+					>
+						<div
+							class="daily-bar-fill"
+							style="height: {(d.hours / lifetimeMax) * 100}%"
+						></div>
+					</div>
+				{/each}
+			</div>
+			<div class="daily-range">
+				<span>{new Date(report.lifetime.points[0].date).toLocaleDateString()}</span>
+				<span>
+					{new Date(
+						report.lifetime.points[report.lifetime.points.length - 1].to
 					).toLocaleDateString()}
 				</span>
 			</div>
@@ -1169,6 +1210,12 @@
 
 	:global(.dark) .emp-cat-hours {
 		color: oklch(0.75 0.12 264);
+	}
+
+	.chart-hint {
+		font-size: 0.75rem;
+		color: var(--color-muted-foreground, #64748b);
+		margin: 0;
 	}
 
 	.daily-chart {

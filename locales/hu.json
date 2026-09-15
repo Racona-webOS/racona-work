@@ -673,6 +673,7 @@
 	"work.deleteConfirm": "Törlöd a munkabejegyzést?",
 	"work.notMember": "Nem vagy tag ezen a projekten, nem rögzíthetsz bejegyzést",
 	"work.closedNotice": "A projekt le van zárva: új feladat nem rögzíthető, a meglévők nem módosíthatók és nem törölhetők.",
+	"work.form.beforeStart": "A nap nem lehet korábbi a projekt kezdő dátumánál ({date})",
 
 	"filter.from": "-tól",
 	"filter.to": "-ig",
@@ -708,6 +709,9 @@
 	"report.daily.title.filtered": "Napi bontás (szűrt időszak)",
 	"report.daily.empty": "Nincs bejegyzés az utolsó 30 napban",
 	"report.daily.hours": "óra",
+	"report.lifetime.title": "Teljes időszak (első és utolsó bejegyzés között)",
+	"report.lifetime.empty": "Még nincs bejegyzés a projekten",
+	"report.lifetime.bucketHint": "Egy oszlop {days} nap munkaóráit összegzi",
 
 	"report.recent.title": "Legutóbbi bejegyzések",
 	"report.recent.empty": "Még nincs bejegyzés",

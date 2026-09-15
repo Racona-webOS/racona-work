@@ -15,7 +15,7 @@ Egy befejezett projekt munkanaplója ma bármikor utólag módosítható: új fe
 
 **Nincs benne**
 
-- A Riport fül változásai (később, külön kérés alapján).
+- A Riport fül változásai: [project-report.md](project-report.md).
 - Automatikus lezárás (pl. a záró dátum után).
 - Értesítés a lezárásról.
 
