@@ -206,7 +206,7 @@
 							</div>
 							<span class="card-badges">
 								{#if p.closedAt}
-									<span class="status status-closed">🔒 {t('projects.closed')}</span>
+									<span class="status status-closed"><svg class="lock-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> {t('projects.closed')}</span>
 								{/if}
 								<span class="status status-{p.status}">{t(`projects.status.${p.status}`)}</span>
 							</span>
@@ -408,7 +408,13 @@
 	.status-paused { background: #fef3c7; color: #a16207; }
 	.status-completed { background: #dbeafe; color: #1d4ed8; }
 	.status-archived { background: #e5e7eb; color: #374151; }
-	.status-closed { background: #fee2e2; color: #b91c1c; }
+	.status-closed {
+		background: #fee2e2;
+		color: #b91c1c;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
 
 	.card-badges {
 		display: flex;

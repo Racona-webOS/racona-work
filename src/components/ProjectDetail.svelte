@@ -355,14 +355,14 @@
 						{t(`projects.status.${project.status}`)}
 					</span>
 					{#if project.closedAt}
-						<span class="status status-closed" title={closedInfo}>🔒 {t('projects.closed')}</span>
+						<span class="status status-closed" title={closedInfo}><svg class="lock-icon" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> {t('projects.closed')}</span>
 					{/if}
 				</div>
 				{#if canManage}
 					<div class="title-actions">
 						{#if !editMode && activeTab === 'overview'}
-							<button class="btn-secondary" onclick={() => (editMode = true)}>
-								✏️ {t('projects.detail.edit')}
+							<button class="btn-primary" onclick={() => (editMode = true)}>
+								{t('projects.detail.edit')}
 							</button>
 						{/if}
 					</div>
@@ -484,7 +484,8 @@
 								<h3>{t('projects.detail.close.title')}</h3>
 								<p>{t('projects.detail.close.description')}</p>
 								<button class="btn-primary" onclick={() => setClosed(true)} disabled={closingBusy}>
-									🔒 {t('projects.detail.close.button')}
+									<svg class="lock-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+									{t('projects.detail.close.button')}
 								</button>
 							{/if}
 						</div>
@@ -586,7 +587,20 @@
 
 	.status-archived { background: #e5e7eb; color: #374151; }
 
-	.status-closed { background: #fee2e2; color: #b91c1c; margin-left: 0.25rem; }
+	.status-closed {
+		background: #fee2e2;
+		color: #b91c1c;
+		margin-left: 0.25rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.closing-zone .btn-primary {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
 
 	.closing-zone {
 		border: 1px solid var(--color-border, #e2e8f0);
