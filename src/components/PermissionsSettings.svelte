@@ -39,7 +39,7 @@
 		},
 		{
 			labelKey: 'capabilities.group.projects',
-			items: ['project.create', 'project.manage', 'project.view.all', 'project.view.own']
+			items: ['project.create', 'project.manage', 'project.close', 'project.view.all', 'project.view.own']
 		},
 		{
 			labelKey: 'capabilities.group.leave',

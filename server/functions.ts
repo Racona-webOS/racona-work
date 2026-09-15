@@ -336,6 +336,8 @@ export {
 	createProject,
 	updateProject,
 	deleteProject,
+	closeProject,
+	reopenProject,
 	listProjectMembers,
 	addProjectMember,
 	removeProjectMember,

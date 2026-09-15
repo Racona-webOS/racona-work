@@ -204,7 +204,12 @@
 							<div class="project-icon" data-status={p.status}>
 								{p.name.charAt(0).toUpperCase()}
 							</div>
-							<span class="status status-{p.status}">{t(`projects.status.${p.status}`)}</span>
+							<span class="card-badges">
+								{#if p.closedAt}
+									<span class="status status-closed">🔒 {t('projects.closed')}</span>
+								{/if}
+								<span class="status status-{p.status}">{t(`projects.status.${p.status}`)}</span>
+							</span>
 						</div>
 						<div class="project-body">
 							<span class="project-name">{p.name}</span>
@@ -403,6 +408,13 @@
 	.status-paused { background: #fef3c7; color: #a16207; }
 	.status-completed { background: #dbeafe; color: #1d4ed8; }
 	.status-archived { background: #e5e7eb; color: #374151; }
+	.status-closed { background: #fee2e2; color: #b91c1c; }
+
+	.card-badges {
+		display: flex;
+		gap: 0.25rem;
+		align-items: center;
+	}
 
 	:global(.dark) .project-card {
 		background: var(--color-card, oklch(0.205 0 0));
@@ -432,4 +444,5 @@
 	:global(.dark) .status-paused { background: rgba(202, 138, 4, 0.2); color: #fde68a; }
 	:global(.dark) .status-completed { background: rgba(37, 99, 235, 0.2); color: #bfdbfe; }
 	:global(.dark) .status-archived { background: oklch(0.3 0 0); color: oklch(0.75 0 0); }
+	:global(.dark) .status-closed { background: rgba(220, 38, 38, 0.2); color: #fca5a5; }
 </style>

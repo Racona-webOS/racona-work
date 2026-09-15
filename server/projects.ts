@@ -6,6 +6,7 @@
  *   - project.view.own / project.view.all  → olvasás
  *   - project.create                        → létrehozás
  *   - project.manage                        → módosítás, törlés, tagok
+ *   - project.close                         → lezárás, visszanyitás
  *
  * A publikus (remote hívható) funkciók a functions.ts-ben vannak reexportálva.
  */
@@ -29,11 +30,15 @@ export interface Project {
 	createdBy: number;
 	createdAt: string;
 	updatedAt: string;
+	/** A lezárás ideje; kitöltve a projekt feladatai zárolva vannak. */
+	closedAt: string | null;
+	closedBy: number | null;
 }
 
 export interface ProjectRow extends Project {
 	memberCount: number;
 	createdByName: string | null;
+	closedByName: string | null;
 }
 
 export interface ProjectListParams {
@@ -94,8 +99,11 @@ function mapProjectRow(row: any): ProjectRow {
 		createdBy: row.created_by,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
+		closedAt: row.closed_at ?? null,
+		closedBy: row.closed_by ?? null,
 		memberCount: Number(row.member_count ?? 0),
-		createdByName: row.created_by_name ?? null
+		createdByName: row.created_by_name ?? null,
+		closedByName: row.closed_by_name ?? null
 	};
 }
 
@@ -186,10 +194,13 @@ export async function listProjects(
 	const result = await context.db.query(
 		`SELECT p.id, p.organization_id, p.name, p.description, p.status,
 		        p.start_date, p.end_date, p.created_by, p.created_at, p.updated_at,
+		        p.closed_at, p.closed_by,
 		        u.full_name AS created_by_name,
+		        cu.full_name AS closed_by_name,
 		        COALESCE(mc.member_count, 0) AS member_count
 		   FROM app__racona_work.projects p
 		   LEFT JOIN auth.users u ON u.id = p.created_by
+		   LEFT JOIN auth.users cu ON cu.id = p.closed_by
 		   LEFT JOIN (
 		     SELECT project_id, COUNT(*)::int AS member_count
 		       FROM app__racona_work.project_members
@@ -223,10 +234,13 @@ export async function getProject(
 	const result = await context.db.query(
 		`SELECT p.id, p.organization_id, p.name, p.description, p.status,
 		        p.start_date, p.end_date, p.created_by, p.created_at, p.updated_at,
+		        p.closed_at, p.closed_by,
 		        u.full_name AS created_by_name,
+		        cu.full_name AS closed_by_name,
 		        COALESCE(mc.member_count, 0) AS member_count
 		   FROM app__racona_work.projects p
 		   LEFT JOIN auth.users u ON u.id = p.created_by
+		   LEFT JOIN auth.users cu ON cu.id = p.closed_by
 		   LEFT JOIN (
 		     SELECT project_id, COUNT(*)::int AS member_count
 		       FROM app__racona_work.project_members
@@ -425,16 +439,78 @@ export async function deleteProject(
 	if (!params?.id) throw new Error('Érvénytelen projekt azonosító');
 
 	const existing = await context.db.query(
-		`SELECT id, organization_id FROM app__racona_work.projects WHERE id = $1`,
+		`SELECT id, organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
 		[params.id]
 	);
 	if (existing.rows.length === 0) throw new Error('Projekt nem található');
-	const current = existing.rows[0] as { id: number; organization_id: number };
+	const current = existing.rows[0] as { id: number; organization_id: number; closed_at: string | null };
 
 	await requireCapability(context, current.organization_id, 'project.manage', params.id);
+	// A törlés a feladatokat is vinné, ezért lezárt projektnél előbb vissza kell nyitni.
+	ensureProjectOpen(current.closed_at, 'Lezárt projekt nem törölhető. A törléshez előbb nyisd vissza.');
 
 	await context.db.query(`DELETE FROM app__racona_work.projects WHERE id = $1`, [params.id]);
 	return { ok: true };
+}
+
+// --- Lezárás és visszanyitás ------------------------------------------------
+
+/**
+ * Belső segéd (nem remote függvény) — a work-entries.ts is használja.
+ * Lezárt projektnél (kitöltött `closed_at`) a megadott hibaüzenettel dob.
+ */
+export function ensureProjectOpen(closedAt: unknown, message: string): void {
+	if (closedAt) throw new Error(message);
+}
+
+async function loadProjectForClosing(
+	context: RemoteContext,
+	id: number
+): Promise<{ id: number; organization_id: number; closed_at: string | null }> {
+	if (!id) throw new Error('Érvénytelen projekt azonosító');
+	const r = await context.db.query(
+		`SELECT id, organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
+		[id]
+	);
+	if (r.rows.length === 0) throw new Error('Projekt nem található');
+	const row = r.rows[0] as { id: number; organization_id: number; closed_at: string | null };
+	await requireCapability(context, row.organization_id, 'project.close', row.id);
+	return row;
+}
+
+/** Projekt lezárása: a feladatai nem rögzíthetők, nem módosíthatók, nem törölhetők. */
+export async function closeProject(
+	params: { id: number },
+	context: RemoteContext
+): Promise<ProjectRow> {
+	const project = await loadProjectForClosing(context, params?.id);
+	if (project.closed_at) throw new Error('A projekt már le van zárva');
+
+	const userId = await resolveUserId(context);
+	await context.db.query(
+		`UPDATE app__racona_work.projects
+		    SET closed_at = NOW(), closed_by = $2, updated_at = NOW()
+		  WHERE id = $1 AND closed_at IS NULL`,
+		[project.id, userId]
+	);
+	return await getProject({ id: project.id }, context);
+}
+
+/** Lezárt projekt visszanyitása. */
+export async function reopenProject(
+	params: { id: number },
+	context: RemoteContext
+): Promise<ProjectRow> {
+	const project = await loadProjectForClosing(context, params?.id);
+	if (!project.closed_at) throw new Error('A projekt nincs lezárva');
+
+	await context.db.query(
+		`UPDATE app__racona_work.projects
+		    SET closed_at = NULL, closed_by = NULL, updated_at = NOW()
+		  WHERE id = $1`,
+		[project.id]
+	);
+	return await getProject({ id: project.id }, context);
 }
 
 // --- Tagok ------------------------------------------------------------------

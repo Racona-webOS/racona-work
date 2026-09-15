@@ -23,6 +23,7 @@
 		organizationId = null,
 		members,
 		canViewAllWork = false,
+		closed = false,
 		entryCount = $bindable(0)
 	}: {
 		pluginId?: string;
@@ -31,6 +32,8 @@
 		organizationId?: number | null;
 		members: ProjectMemberRow[];
 		canViewAllWork?: boolean;
+		/** Lezárt projekt: nincs felvitel, szerkesztés, törlés. */
+		closed?: boolean;
 		entryCount?: number;
 	} = $props();
 
@@ -233,11 +236,17 @@
 				</button>
 			</div>
 		{/if}
-		<button class="btn-primary" onclick={openCreateWorkEntry}>
-			+ {t('work.newEntry')}
-		</button>
+		{#if !closed}
+			<button class="btn-primary" onclick={openCreateWorkEntry}>
+				+ {t('work.newEntry')}
+			</button>
+		{/if}
 	</div>
 </div>
+
+{#if closed}
+	<div class="closed-notice">🔒 {t('work.closedNotice')}</div>
+{/if}
 
 <!-- Intervallum szűrő -->
 <div class="date-filter-bar">
@@ -302,6 +311,7 @@
 					{/if}
 				</div>
 				<div class="entry-hours">{entry.hours.toFixed(2)} {t('work.columns.hours').toLowerCase()}</div>
+				{#if !closed}
 				<div class="entry-actions">
 					<button
 						class="icon-btn"
@@ -318,6 +328,7 @@
 						✕
 					</button>
 				</div>
+				{/if}
 			</div>
 		{/each}
 	</div>
@@ -396,6 +407,22 @@
 
 <style>
 	@import '../../styles/shared.css';
+
+	/* ---------- Lezárt projekt ---------- */
+	.closed-notice {
+		padding: 0.5rem 0.75rem;
+		border: 1px solid #fecaca;
+		background: #fef2f2;
+		color: #991b1b;
+		border-radius: 0.5rem;
+		font-size: 0.85rem;
+	}
+
+	:global(.dark) .closed-notice {
+		background: rgba(220, 38, 38, 0.1);
+		border-color: rgba(220, 38, 38, 0.3);
+		color: #fca5a5;
+	}
 
 	/* ---------- Intervallum szűrő ---------- */
 	.date-filter-bar {

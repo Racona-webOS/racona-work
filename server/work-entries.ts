@@ -9,11 +9,15 @@
  *   - work.log        → saját bejegyzést rögzíthet/szerkeszthet/törölhet
  *   - work.view.all   → a projekt minden bejegyzését látja és törölheti
  *   - project.manage  → a projekt minden bejegyzését láthatja/törölheti
+ *
+ * Lezárt projektnél (projects.closed_at) a bejegyzések nem rögzíthetők, nem
+ * módosíthatók és nem törölhetők — a core adminnak és dev módban sem.
  */
 
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { hasCapability, requireCapability } from './permissions.js';
+import { ensureProjectOpen } from './projects.js';
 
 export interface WorkEntryCategory {
 	id: number;
@@ -281,14 +285,16 @@ export async function createWorkEntry(
 	validateWorkDate(params.workDate);
 
 	const proj = await context.db.query(
-		`SELECT organization_id FROM app__racona_work.projects WHERE id = $1`,
+		`SELECT organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
 		[params.projectId]
 	);
 	if (proj.rows.length === 0) throw new Error('Projekt nem található');
-	const organizationId = (proj.rows[0] as { organization_id: number }).organization_id;
+	const projRow = proj.rows[0] as { organization_id: number; closed_at: string | null };
+	const organizationId = projRow.organization_id;
 
 	// Minden hívónak legalább work.log kell.
 	await requireCapability(context, organizationId, 'work.log');
+	ensureProjectOpen(projRow.closed_at, 'A projekt le van zárva, nem rögzíthető hozzá feladat');
 
 	// Saját vs. más employee eldöntése
 	let targetEmployeeId = params.employeeId;
@@ -392,7 +398,7 @@ export async function updateWorkEntry(
 	if (!params?.id) throw new Error('Érvénytelen bejegyzés azonosító');
 
 	const existing = await context.db.query(
-		`SELECT we.id, we.project_id, we.employee_id, p.organization_id, e.user_id
+		`SELECT we.id, we.project_id, we.employee_id, p.organization_id, p.closed_at, e.user_id
 		   FROM app__racona_work.work_entries we
 		   JOIN app__racona_work.projects p ON p.id = we.project_id
 		   JOIN app__racona_work.employees e ON e.id = we.employee_id
@@ -405,6 +411,7 @@ export async function updateWorkEntry(
 		project_id: number;
 		employee_id: number;
 		organization_id: number;
+		closed_at: string | null;
 		user_id: number;
 	};
 
@@ -426,6 +433,8 @@ export async function updateWorkEntry(
 			}
 		}
 	}
+
+	ensureProjectOpen(row.closed_at, 'A projekt le van zárva, a feladatai nem módosíthatók');
 
 	if (params.title !== undefined && (!params.title || !params.title.trim())) {
 		throw new Error('A bejegyzés címe nem lehet üres');
@@ -495,7 +504,7 @@ export async function deleteWorkEntry(
 	if (!params?.id) throw new Error('Érvénytelen bejegyzés azonosító');
 
 	const existing = await context.db.query(
-		`SELECT we.id, we.project_id, we.employee_id, p.organization_id, e.user_id
+		`SELECT we.id, we.project_id, we.employee_id, p.organization_id, p.closed_at, e.user_id
 		   FROM app__racona_work.work_entries we
 		   JOIN app__racona_work.projects p ON p.id = we.project_id
 		   JOIN app__racona_work.employees e ON e.id = we.employee_id
@@ -508,6 +517,7 @@ export async function deleteWorkEntry(
 		project_id: number;
 		employee_id: number;
 		organization_id: number;
+		closed_at: string | null;
 		user_id: number;
 	};
 
@@ -527,6 +537,8 @@ export async function deleteWorkEntry(
 			}
 		}
 	}
+
+	ensureProjectOpen(row.closed_at, 'A projekt le van zárva, a feladatai nem törölhetők');
 
 	await context.db.query(`DELETE FROM app__racona_work.work_entries WHERE id = $1`, [params.id]);
 	return { ok: true };

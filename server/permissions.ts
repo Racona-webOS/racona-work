@@ -33,6 +33,7 @@ export const CAPABILITIES = [
 
 	'project.create',
 	'project.manage',
+	'project.close',
 	'project.view.all',
 	'project.view.own',
 
@@ -74,6 +75,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 			'roles.manage',
 			'project.create',
 			'project.manage',
+			'project.close',
 			'project.view.all',
 			'work.log',
 			'work.view.all',
@@ -94,6 +96,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 		capabilities: [
 			'project.create',
 			'project.manage',
+			'project.close',
 			'project.view.all',
 			'work.log',
 			'work.view.all',

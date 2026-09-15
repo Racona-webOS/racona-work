@@ -61,6 +61,7 @@
 	let canManage = $state(false);
 	let canLogWork = $state(false);
 	let canViewAllWork = $state(false);
+	let canClose = $state(false);
 
 	// Csak akkor látható a riport fül, ha van jog hozzá.
 	let canViewReport = $derived(canViewAllWork);
@@ -198,6 +199,42 @@
 		}
 	}
 
+	// Lezárás / visszanyitás
+	let closingBusy = $state(false);
+
+	let closedInfo = $derived(
+		project?.closedAt
+			? t('projects.closedInfo', {
+					name: project.closedByName ?? '—',
+					date: new Date(project.closedAt).toLocaleString()
+				})
+			: ''
+	);
+
+	async function setClosed(close: boolean) {
+		if (!project) return;
+		const prefix = close ? 'projects.detail.close' : 'projects.detail.reopen';
+		const confirmed = await sdk?.ui?.dialog?.({
+			type: 'confirm',
+			title: t(`${prefix}.title`),
+			message: t(`${prefix}.confirm`),
+			confirmLabel: t(`${prefix}.button`)
+		});
+		const ok = confirmed?.action === 'confirm' || (typeof confirmed === 'boolean' && confirmed);
+		if (!ok && confirmed !== undefined) return;
+		closingBusy = true;
+		try {
+			project = (await sdk.remote.call(close ? 'closeProject' : 'reopenProject', {
+				id: project.id
+			})) as ProjectRow;
+			sdk?.ui?.toast?.(t(`${prefix}.success`), 'success');
+		} catch (err: any) {
+			sdk?.ui?.toast?.(err?.message ?? t('error.saveFailed'), 'error');
+		} finally {
+			closingBusy = false;
+		}
+	}
+
 	/** Tagváltozás után a projekt is újratöltődik (memberCount a fejlécben). */
 	async function reloadMembers() {
 		await Promise.all([loadMembers(), loadProject()]);
@@ -205,6 +242,7 @@
 
 	function syncCapabilities(store: OrganizationStore) {
 		canManage = store.can('project.manage');
+		canClose = store.can('project.close');
 		canLogWork = store.can('work.log');
 		canViewAllWork = store.can('work.view.all') || canManage;
 	}
@@ -314,6 +352,9 @@
 					<span class="status status-{project.status}">
 						{t(`projects.status.${project.status}`)}
 					</span>
+					{#if project.closedAt}
+						<span class="status status-closed" title={closedInfo}>🔒 {t('projects.closed')}</span>
+					{/if}
 				</div>
 				{#if canManage}
 					<div class="title-actions">
@@ -374,6 +415,8 @@
 							<span class="tab-badge">{overrides.length}</span>
 						{/if}
 					</button>
+				{/if}
+				{#if canManage || canClose}
 					<button
 						class="tab"
 						class:active={activeTab === 'settings'}
@@ -413,6 +456,7 @@
 						organizationId={currentOrganization?.id ?? null}
 						{members}
 						{canViewAllWork}
+						closed={!!project.closedAt}
 						bind:entryCount={workEntryCount}
 					/>
 				</div>
@@ -424,15 +468,38 @@
 				</div>
 			{/if}
 
-			{#if activeTab === 'settings' && canManage}
+			{#if activeTab === 'settings' && (canManage || canClose)}
 				<div class="tab-content">
-					<div class="danger-zone">
-						<h3>{t('projects.detail.delete')}</h3>
-						<p>{t('projects.detail.deleteConfirm')}</p>
-						<button class="btn-danger" onclick={handleDelete}>
-							{t('projects.detail.delete')}
-						</button>
-					</div>
+					{#if canClose}
+						<div class="closing-zone">
+							{#if project.closedAt}
+								<h3>{t('projects.detail.reopen.title')}</h3>
+								<p>{closedInfo}. {t('projects.detail.reopen.description')}</p>
+								<button class="btn-secondary" onclick={() => setClosed(false)} disabled={closingBusy}>
+									{t('projects.detail.reopen.button')}
+								</button>
+							{:else}
+								<h3>{t('projects.detail.close.title')}</h3>
+								<p>{t('projects.detail.close.description')}</p>
+								<button class="btn-primary" onclick={() => setClosed(true)} disabled={closingBusy}>
+									🔒 {t('projects.detail.close.button')}
+								</button>
+							{/if}
+						</div>
+					{/if}
+					{#if canManage}
+						<div class="danger-zone">
+							<h3>{t('projects.detail.delete')}</h3>
+							<p>
+								{project.closedAt
+									? t('projects.detail.deleteClosed')
+									: t('projects.detail.deleteConfirm')}
+							</p>
+							<button class="btn-danger" onclick={handleDelete} disabled={!!project.closedAt}>
+								{t('projects.detail.delete')}
+							</button>
+						</div>
+					{/if}
 				</div>
 			{/if}
 
@@ -516,6 +583,30 @@
 	.status-completed { background: #dbeafe; color: #1d4ed8; }
 
 	.status-archived { background: #e5e7eb; color: #374151; }
+
+	.status-closed { background: #fee2e2; color: #b91c1c; margin-left: 0.25rem; }
+
+	.closing-zone {
+		border: 1px solid var(--color-border, #e2e8f0);
+		background: var(--color-muted, #f8fafc);
+		padding: 1rem;
+		border-radius: 0.5rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		align-items: flex-start;
+	}
+
+	.closing-zone h3 {
+		margin: 0;
+		font-size: 1rem;
+	}
+
+	.closing-zone p {
+		margin: 0;
+		color: var(--color-muted-foreground, #64748b);
+		font-size: 0.85rem;
+	}
 
 	.tabs {
 		display: flex;
@@ -605,6 +696,13 @@
 	:global(.dark) .status-completed { background: rgba(37, 99, 235, 0.2); color: #bfdbfe; }
 
 	:global(.dark) .status-archived { background: oklch(0.3 0 0); color: oklch(0.75 0 0); }
+
+	:global(.dark) .status-closed { background: rgba(220, 38, 38, 0.2); color: #fca5a5; }
+
+	:global(.dark) .closing-zone {
+		background: oklch(0.18 0 0);
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
+	}
 
 	:global(.dark) .danger-zone {
 		background: rgba(220, 38, 38, 0.1);
