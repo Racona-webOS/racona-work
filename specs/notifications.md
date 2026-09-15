@@ -42,6 +42,9 @@ Ma az emailek fixen mennek: a szabadság-események egy része emailt is küld, 
 | `leave.mandatoryAssigned` | Kötelező szabadság kiírása (évnyitás, ellenőrzés) | az érintett dolgozók | `leave_days_added` | be |
 | `leave.dataRequestCreated` | Új adatbejelentés | `leave.balance.manage` joggal rendelkezők | `leave_data_request_new` | ki |
 | `leave.dataRequestDecided` | Adatbejelentés elbírálása | a dolgozó | `leave_data_request_status` | ki |
+| `leave.monthConfirmationRequested` | Havi szabadság-ellenőrzés kiküldése, újraküldése | az érintett dolgozók | `leave_month_confirmation_request` | be |
+| `leave.monthConfirmationDisputed` | Eltérés a havi összesítőben | a kiküldő és a Szabadságkérelem beállításoknál kijelöltek | `leave_month_confirmation_disputed` | be |
+| `leave.monthConfirmationClosed` | Havi ellenőrzés lezárása elfogadás nélkül | a dolgozó | `leave_month_confirmation_closed` | ki |
 | `trip.settlementSubmitted` | Beküldött kiküldetési rendelvény | `trip.approve` joggal rendelkezők | `trip_settlement_submitted` | ki |
 | `trip.settlementStatus` | Rendelvény jóváhagyása, visszaküldése, kifizetése, visszanyitása | a dolgozó | `trip_settlement_status` | ki |
 | `trip.ordererChanged` | Az elrendelő felülbírálása | a dolgozó | `trip_orderer_changed` | ki |

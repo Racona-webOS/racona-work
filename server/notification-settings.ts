@@ -26,6 +26,10 @@ export const NOTIFICATION_EVENT_DEFAULTS = {
 	'leave.mandatoryAssigned': true,
 	'leave.dataRequestCreated': false,
 	'leave.dataRequestDecided': false,
+	// Havi ellenőrzés (specs/leave-month-confirmation.md, D12): az összesítő emailje a funkció lényege
+	'leave.monthConfirmationRequested': true,
+	'leave.monthConfirmationDisputed': true,
+	'leave.monthConfirmationClosed': false,
 	'trip.settlementSubmitted': false,
 	'trip.settlementStatus': false,
 	'trip.ordererChanged': false

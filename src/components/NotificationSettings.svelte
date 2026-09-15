@@ -51,7 +51,10 @@
 					'leave.calendarChanged',
 					'leave.mandatoryAssigned',
 					'leave.dataRequestCreated',
-					'leave.dataRequestDecided'
+					'leave.dataRequestDecided',
+					'leave.monthConfirmationRequested',
+					'leave.monthConfirmationDisputed',
+					'leave.monthConfirmationClosed'
 				]
 			}
 		],

@@ -136,6 +136,29 @@ export type {
 	MandatoryLeaveResult,
 	OpenLeaveYearResult
 } from './leave-year-opening.js';
+export {
+	getMonthConfirmations,
+	sendMonthConfirmations,
+	resolveMonthConfirmation,
+	getMyMonthConfirmations,
+	respondMonthConfirmation
+} from './leave-month-confirmations.js';
+export type {
+	MonthConfirmation,
+	MonthConfirmationRow,
+	MonthConfirmationOverview,
+	MonthConfirmationSendResult
+} from './leave-month-confirmations.js';
+export type {
+	MonthConfirmationStatus,
+	MonthSnapshot,
+	SnapshotDay,
+	SnapshotSummary,
+	SnapshotPeriod,
+	DisputeItem,
+	DisputeItemKind,
+	SendAction
+} from './leave-month-confirmation-utils.js';
 export { getLeaveUsagePlan, saveLeaveUsagePlan } from './leave-usage-plan.js';
 export type { UsagePlanSource, ResolvedUsagePlan, LeaveUsagePlanView } from './leave-usage-plan.js';
 export type { UsagePlan, PlanError, PlanErrorCode } from './leave-usage-plan-utils.js';

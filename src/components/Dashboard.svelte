@@ -31,6 +31,7 @@
   import MyLeaveData from "./leave-entitlement/MyLeaveData.svelte";
   import DataRequestReview from "./leave-entitlement/DataRequestReview.svelte";
   import CarryOverAlerts from "./leave-entitlement/CarryOverAlerts.svelte";
+  import MyMonthConfirmations from "./leave-month-confirmation/MyMonthConfirmations.svelte";
   import { LEAVE_TYPES, consumesAnnualBalance } from "../../server/leave-types.js";
 
   let { pluginId = "racona-work" }: { pluginId?: string } = $props();
@@ -504,6 +505,14 @@
 
 <!-- Saját keret, adatok és kérelmek: a dolgozói nézet tartalma, és a vezetői nézet alján is megjelenik -->
 {#snippet selfOverview(employee: EmployeeRow)}
+  <!-- Havi szabadság-ellenőrzés: teendő, ezért a keret előtt (specs/leave-month-confirmation.md, K5) -->
+  {#if currentOrganization}
+    <MyMonthConfirmations
+      {pluginId}
+      organizationId={currentOrganization.id}
+      refreshKey={dataRefreshKey}
+    />
+  {/if}
   <div class="balance-card">
     <div class="balance-header">
       <span class="balance-title"

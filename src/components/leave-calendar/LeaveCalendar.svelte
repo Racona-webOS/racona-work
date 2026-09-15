@@ -44,6 +44,8 @@
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import { isWeekend, monthGrid, monthRange } from '../../lib/calendar-grid.js';
 	import LeaveSummaryTable from './LeaveSummaryTable.svelte';
+	import MonthConfirmationPanel from './MonthConfirmationPanel.svelte';
+	import type { MonthConfirmationOverview } from '../../../server/functions.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -237,6 +239,81 @@
 	const summaryFileName = $derived(
 		view === 'year' ? `szabadsagok-${year}` : `szabadsagok-${year}-${String(month + 1).padStart(2, '0')}`
 	);
+
+	// --- Havi ellenőrzés (specs/leave-month-confirmation.md) ----------------
+
+	/** A csapatnézet alatt, a jóváhagyónak (a szerver is ellenőrzi). */
+	const showMonthConfirmation = $derived(canManage && !lockEmployee && view === 'team');
+	let monthConfirmations = $state<MonthConfirmationOverview | null>(null);
+	let monthConfirmationError = $state<string | null>(null);
+	/** Kiküldés vagy kezelés után növelve újratölt. */
+	let monthConfirmationKey = $state(0);
+
+	async function loadMonthConfirmations() {
+		if (!sdk?.remote || !organizationId || !showMonthConfirmation) {
+			monthConfirmations = null;
+			return;
+		}
+		const requested = `${year}-${month}-${filterEmployeeId ?? ''}`;
+		try {
+			const result: MonthConfirmationOverview = await sdk.remote.call('getMonthConfirmations', {
+				organizationId,
+				year,
+				month: month + 1,
+				employeeId: filterEmployeeId ?? undefined
+			});
+			// Gyors hónapléptetésnél csak a legutóbbi kérés eredménye maradjon
+			if (requested !== `${year}-${month}-${filterEmployeeId ?? ''}`) return;
+			monthConfirmations = result;
+			monthConfirmationError = null;
+		} catch (err: any) {
+			monthConfirmations = null;
+			monthConfirmationError = err?.message ?? t('monthConfirmation.panel.loadFailed');
+		}
+	}
+
+	$effect(() => {
+		organizationId;
+		showMonthConfirmation;
+		year;
+		month;
+		filterEmployeeId;
+		refreshKey;
+		monthConfirmationKey;
+		untrack(() => loadMonthConfirmations());
+	});
+
+	const confirmationRows = $derived(new Map((monthConfirmations?.rows ?? []).map((r) => [r.employeeId, r])));
+
+	/** A csapattáblázat névoszlopának állapotjele (K2). */
+	function confirmationMarker(employeeId: number): { cls: string; symbol: string; label: string } | null {
+		const row = confirmationRows.get(employeeId);
+		if (!row) return null;
+		const c = row.confirmation;
+		if (!c) {
+			return row.eligible ? { cls: 'mc-none', symbol: '○', label: t('monthConfirmation.status.notSent') } : null;
+		}
+		const label = t(`monthConfirmation.status.${c.status}`);
+		if (c.stale && c.status !== 'disputed') {
+			return { cls: 'mc-stale', symbol: '↻', label: `${label} · ${t('monthConfirmation.status.stale')}` };
+		}
+		const symbols: Record<string, [string, string]> = {
+			accepted: ['mc-accepted', '✓'],
+			closed: ['mc-closed', '✓'],
+			pending: ['mc-pending', '…'],
+			disputed: ['mc-disputed', '!']
+		};
+		const [cls, symbol] = symbols[c.status] ?? ['mc-none', '○'];
+		return { cls, symbol, label };
+	}
+
+	/** „Megnyitás a naptárban”: havi nézet a dolgozóra szűrve, hogy a HR javíthasson. */
+	function openEmployeeFromConfirmation(id: number) {
+		if (hasChanges && !window.confirm(t('leaveCalendar.discardConfirm'))) return;
+		clearChanges();
+		selectedEmployeeId = id;
+		view = 'month';
+	}
 
 	// --- Szerkesztés ---------------------------------------------------------
 
@@ -1031,7 +1108,15 @@
 			<tbody>
 				{#each teamRows as row (row.id)}
 					<tr>
-						<td class="team-name">{row.name}</td>
+						<td class="team-name">
+							{row.name}
+							{#if showMonthConfirmation}
+								{@const marker = confirmationMarker(row.id)}
+								{#if marker}
+									<span class="mc-marker {marker.cls}" title={marker.label} aria-label={marker.label}>{marker.symbol}</span>
+								{/if}
+							{/if}
+						</td>
 						{#each monthDays as iso (iso)}
 							{@const d = teamMap.get(`${row.id}:${iso}`)}
 							{@const p = pendingTeamMap.get(`${row.id}:${iso}`)}
@@ -1053,6 +1138,21 @@
 			</tbody>
 		</table>
 	</div>
+	{/if}
+
+	{#if showMonthConfirmation}
+		<MonthConfirmationPanel
+			{pluginId}
+			{organizationId}
+			{year}
+			month={month + 1}
+			employeeId={filterEmployeeId}
+			period={summaryPeriod}
+			overview={monthConfirmations}
+			loadError={monthConfirmationError}
+			onChanged={() => monthConfirmationKey++}
+			onOpenEmployee={openEmployeeFromConfirmation}
+		/>
 	{/if}
 
 	{#if showSummary && data}
@@ -1374,6 +1474,52 @@
 	.team-scroll {
 		overflow-x: auto;
 		max-width: 100%;
+	}
+
+	/* Havi ellenőrzés állapotjele a dolgozó neve mellett */
+	.mc-marker {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.05rem;
+		height: 1.05rem;
+		margin-left: 0.3rem;
+		padding: 0 0.2rem;
+		border-radius: 9999px;
+		font-size: 0.65rem;
+		font-weight: 700;
+		line-height: 1;
+		vertical-align: middle;
+		cursor: help;
+	}
+
+	.mc-accepted {
+		background: #dcfce7;
+		color: #166534;
+	}
+
+	.mc-closed {
+		background: #e2e8f0;
+		color: #334155;
+	}
+
+	.mc-pending {
+		background: #fef3c7;
+		color: #92400e;
+	}
+
+	.mc-disputed {
+		background: #fee2e2;
+		color: #991b1b;
+	}
+
+	.mc-stale {
+		background: #dbeafe;
+		color: #1e40af;
+	}
+
+	.mc-none {
+		color: var(--color-muted-foreground, #94a3b8);
 	}
 
 	.team {

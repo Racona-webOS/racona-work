@@ -34,8 +34,8 @@ import { requireOrganizationId } from './trip-access.js';
 
 const SCHEMA = 'app__racona_work';
 
-/** Az értesítendő dolgozók listájának kulcsa (LeaveSettings ezzel menti). */
-function notifiersSettingsKey(organizationId: number): string {
+/** Az értesítendő dolgozók listájának kulcsa (LeaveSettings ezzel menti; a havi ellenőrzés is olvassa). */
+export function notifiersSettingsKey(organizationId: number): string {
 	return `settings:leave_request_notifiers:org_${organizationId}`;
 }
 
