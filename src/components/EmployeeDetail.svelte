@@ -12,6 +12,7 @@
 	import type {} from '@racona/sdk/types';
 	import type { EmployeeDetailView, EmployeeDetail } from '../../server/functions.js';
 	import LeaveBalanceCard from './leave-entitlement/LeaveBalanceCard.svelte';
+	import Checkbox from './ui/Checkbox.svelte';
 	import LeaveProfileCard from './leave-entitlement/LeaveProfileCard.svelte';
 	import OtherAllowances from './leave-entitlement/OtherAllowances.svelte';
 	import DataRequestReview from './leave-entitlement/DataRequestReview.svelte';
@@ -372,11 +373,16 @@
 							<option value="onLeave">{t('employees.status.onLeave')}</option>
 						</select>
 					</label>
-					<label class="checkbox-label">
-						<input type="checkbox" bind:checked={editIsExternal} />
-						{t('employeeDetail.external')}
+					<label class="external-row" class:enabled={editIsExternal}>
+						<Checkbox
+							checked={editIsExternal}
+							onCheckedChange={(checked) => (editIsExternal = checked)}
+						/>
+						<span class="external-text">
+							<span class="external-label">{t('employeeDetail.external')}</span>
+							<span class="external-hint">{t('employeeDetail.external.hint')}</span>
+						</span>
 					</label>
-					<p class="field-hint">{t('employeeDetail.external.hint')}</p>
 					<div class="date-pair">
 						<label class="form-label">
 							{t('employeeDetail.hireDate')}
@@ -573,11 +579,44 @@
 		color: #c4b5fd;
 	}
 
-	.checkbox-label {
+	/* A külsős jelölés sora: mint az Értesítések beállítás sorai */
+	.external-row {
 		display: flex;
-		align-items: center;
-		gap: 0.5rem;
+		/* Az adatlap label szabálya oszlopba tenné */
+		flex-direction: row;
+		align-items: flex-start;
+		gap: 0.75rem;
+		padding: 0.625rem 0.75rem;
+		border-radius: 0.5rem;
+		cursor: pointer;
+		transition: background 0.1s;
+	}
+
+	.external-row:hover,
+	.external-row.enabled {
+		background: var(--color-accent, #f1f5f9);
+	}
+
+	.external-row :global(.wk-checkbox) {
+		margin-top: 0.125rem;
+	}
+
+	.external-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+		min-width: 0;
+	}
+
+	.external-label {
 		font-size: 0.875rem;
+		font-weight: 500;
+	}
+
+	.external-hint {
+		font-size: 0.8rem;
+		font-weight: 400;
+		color: var(--color-muted-foreground, #64748b);
 	}
 
 	.page {
