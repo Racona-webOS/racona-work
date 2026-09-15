@@ -215,12 +215,17 @@
 		<div class="kpi-block-header">
 			<span></span>
 			<button
-				class="btn-secondary btn-sm"
+				class="btn-primary btn-sm btn-export"
 				onclick={exportReportCsv}
 				disabled={exportLoading}
 				title={t('report.export.tooltip') || 'Feladatok exportálása CSV-be'}
 			>
-				{exportLoading ? (t('loading') || '...') : ('⬇ CSV')}
+				{#if exportLoading}
+					{t('loading') || '...'}
+				{:else}
+					<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+					CSV
+				{/if}
 			</button>
 		</div>
 		<div class="kpi-grid">
@@ -602,7 +607,7 @@
 								{#if entry.description}
 									<div class="entry-desc">{entry.description}</div>
 								{/if}
-								<div class="entry-meta">👤 {entry.employeeName}</div>
+								<div class="entry-meta">{entry.employeeName}</div>
 							</div>
 							<div class="entry-hours">{entry.hours.toFixed(2)} {t('work.columns.hours').toLowerCase()}</div>
 						</div>
@@ -615,6 +620,12 @@
 
 <style>
 	@import '../../styles/shared.css';
+
+	.btn-export {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
 
 	/* ---------- Intervallum szűrő ---------- */
 	.date-filter-bar {

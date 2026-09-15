@@ -327,7 +327,7 @@
 						<div class="entry-desc">{entry.description}</div>
 					{/if}
 					{#if workScope === 'all'}
-						<div class="entry-meta">👤 {entry.employeeName}</div>
+						<div class="entry-meta">{entry.employeeName}</div>
 					{/if}
 				</div>
 				<div class="entry-hours">{entry.hours.toFixed(2)} {t('work.columns.hours').toLowerCase()}</div>
