@@ -31,6 +31,8 @@
 	} = $props();
 
 	const sdk = $derived(resolveSdk(pluginId));
+	/** Lezárt projekt: a projekt-szintű szerepek csak olvashatók. */
+	const closed = $derived(!!project.closedAt);
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	let savingUserId = $state<number | null>(null);
@@ -135,8 +137,11 @@
 	<div>
 		<h3>{t('projects.permissions.overridesTitle')}</h3>
 		<p class="perm-hint">{t('projects.permissions.overridesHint')}</p>
+		{#if closed}
+			<p class="perm-hint">{t('projects.permissions.closedHint')}</p>
+		{/if}
 	</div>
-	{#if orgRoles.length > 0 && availableToOverride.length > 0}
+	{#if !closed && orgRoles.length > 0 && availableToOverride.length > 0}
 		<button class="btn-primary" onclick={openOverrideDialog}>
 			+ {t('projects.permissions.addUser')}
 		</button>
@@ -188,12 +193,13 @@
 							<td class="role-col">
 								<Checkbox
 									checked={userHasOverrideRole(row, r.id)}
-									disabled={savingUserId === row.userId}
+									disabled={savingUserId === row.userId || closed}
 									onCheckedChange={() => toggleOverrideRoleForUser(row.userId, r.id)}
 								/>
 							</td>
 						{/each}
 						<td class="action-col">
+							{#if !closed}
 							<button
 								class="remove-btn"
 								title={t('projects.permissions.removeConfirm')}
@@ -201,6 +207,7 @@
 							>
 								✕
 							</button>
+							{/if}
 						</td>
 					</tr>
 				{/each}

@@ -16,6 +16,7 @@
 		membersLoading = false,
 		availableToAdd,
 		canManage = false,
+		closed = false,
 		onChanged
 	}: {
 		pluginId?: string;
@@ -24,6 +25,8 @@
 		membersLoading?: boolean;
 		availableToAdd: EmployeeRow[];
 		canManage?: boolean;
+		/** Lezárt projekt: a tagok nem módosíthatók (a szülő a canManage-et is hamisra állítja). */
+		closed?: boolean;
 		onChanged: () => void | Promise<void>;
 	} = $props();
 
@@ -104,6 +107,10 @@
 		</button>
 	{/if}
 </div>
+
+{#if closed}
+	<p class="closed-hint">{t('projects.members.closedHint')}</p>
+{/if}
 
 {#if membersLoading}
 	<div class="loading-state"><div class="spinner"></div><span>{t('loading')}</span></div>
@@ -195,6 +202,12 @@
 
 <style>
 	@import '../../styles/shared.css';
+
+	.closed-hint {
+		margin: 0;
+		font-size: 0.8rem;
+		color: var(--color-muted-foreground, #64748b);
+	}
 
 	.member-list {
 		list-style: none;

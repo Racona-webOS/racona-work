@@ -683,6 +683,8 @@
 	"dashboard.external.openProjects": "Open my projects",
 	"leaveRequests.external": "As an external worker, leave does not apply to you in this organization.",
 	"work.form.beforeStart": "The date cannot be earlier than the project start date ({date})",
+	"projects.members.closedHint": "This project is closed, its members cannot be changed.",
+	"projects.permissions.closedHint": "This project is closed, its project-level roles cannot be changed.",
 
 	"filter.from": "From",
 	"filter.to": "To",

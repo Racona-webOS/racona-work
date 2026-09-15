@@ -367,9 +367,12 @@
 						<div class="panel-header">
 							<div>
 								<h3>{selectedProject.name}</h3>
+								{#if selectedProject.closedAt}
+									<p class="closed-hint">{t('projects.permissions.closedHint')}</p>
+								{/if}
 								<p class="hint">{t('projects.permissions.overridesHint')}</p>
 							</div>
-							{#if orgRoles.length > 0 && availableToAddUsers.length > 0}
+							{#if !selectedProject.closedAt && orgRoles.length > 0 && availableToAddUsers.length > 0}
 								<button class="btn-primary" onclick={openAddDialog}>
 									+ {t('projects.permissions.addUser')}
 								</button>
@@ -423,12 +426,13 @@
 													<td class="role-col">
 														<Checkbox
 															checked={userHasRole(row, r.id)}
-															disabled={savingUserId === row.userId}
+															disabled={savingUserId === row.userId || !!selectedProject?.closedAt}
 															onCheckedChange={() => toggleRoleForUser(row.userId, r.id)}
 														/>
 													</td>
 												{/each}
 												<td class="action-col">
+													{#if !selectedProject.closedAt}
 													<button
 														class="remove-btn"
 														title={t('projects.permissions.removeConfirm')}
@@ -436,6 +440,7 @@
 													>
 														✕
 													</button>
+													{/if}
 												</td>
 											</tr>
 										{/each}
@@ -515,6 +520,12 @@
 
 <style>
 	@import '../styles/shared.css';
+
+	.closed-hint {
+		margin: 0.25rem 0 0;
+		font-size: 0.8rem;
+		color: var(--color-muted-foreground, #64748b);
+	}
 
 	.page {
 		padding: 1.5rem;

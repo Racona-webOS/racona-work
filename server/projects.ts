@@ -377,7 +377,7 @@ export async function updateProject(
 	if (!params?.id) throw new Error('Érvénytelen projekt azonosító');
 
 	const existing = await context.db.query(
-		`SELECT id, organization_id, start_date, end_date
+		`SELECT id, organization_id, start_date, end_date, closed_at
 		   FROM app__racona_work.projects WHERE id = $1`,
 		[params.id]
 	);
@@ -387,9 +387,11 @@ export async function updateProject(
 		organization_id: number;
 		start_date: string | null;
 		end_date: string | null;
+		closed_at: string | null;
 	};
 
 	await requireCapability(context, current.organization_id, 'project.manage', params.id);
+	ensureProjectOpen(current.closed_at, 'A projekt le van zárva, az adatai nem módosíthatók');
 
 	const newStart =
 		params.startDate === undefined ? current.start_date : params.startDate;
@@ -558,13 +560,14 @@ export async function addProjectMember(
 	}
 
 	const projectRow = await context.db.query(
-		`SELECT id, organization_id FROM app__racona_work.projects WHERE id = $1`,
+		`SELECT id, organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
 		[params.projectId]
 	);
 	if (projectRow.rows.length === 0) throw new Error('Projekt nem található');
-	const project = projectRow.rows[0] as { id: number; organization_id: number };
+	const project = projectRow.rows[0] as { id: number; organization_id: number; closed_at: string | null };
 
 	await requireCapability(context, project.organization_id, 'project.manage', project.id);
+	ensureProjectOpen(project.closed_at, 'A projekt le van zárva, a tagjai nem módosíthatók');
 
 	// Az employee a szervezethez tartozik-e?
 	const empRow = await context.db.query(
@@ -598,13 +601,14 @@ export async function removeProjectMember(
 	}
 
 	const projectRow = await context.db.query(
-		`SELECT id, organization_id FROM app__racona_work.projects WHERE id = $1`,
+		`SELECT id, organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
 		[params.projectId]
 	);
 	if (projectRow.rows.length === 0) throw new Error('Projekt nem található');
-	const project = projectRow.rows[0] as { id: number; organization_id: number };
+	const project = projectRow.rows[0] as { id: number; organization_id: number; closed_at: string | null };
 
 	await requireCapability(context, project.organization_id, 'project.manage', project.id);
+	ensureProjectOpen(project.closed_at, 'A projekt le van zárva, a tagjai nem módosíthatók');
 
 	await context.db.query(
 		`DELETE FROM app__racona_work.project_members
@@ -635,11 +639,11 @@ export async function listProjectRoleOverrides(
 	if (!params?.projectId) throw new Error('Érvénytelen projekt azonosító');
 
 	const projectRow = await context.db.query(
-		`SELECT id, organization_id FROM app__racona_work.projects WHERE id = $1`,
+		`SELECT id, organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
 		[params.projectId]
 	);
 	if (projectRow.rows.length === 0) throw new Error('Projekt nem található');
-	const project = projectRow.rows[0] as { id: number; organization_id: number };
+	const project = projectRow.rows[0] as { id: number; organization_id: number; closed_at: string | null };
 
 	await requireCapability(context, project.organization_id, 'project.manage', project.id);
 
@@ -696,13 +700,14 @@ export async function setProjectUserRoles(
 	}
 
 	const projectRow = await context.db.query(
-		`SELECT id, organization_id FROM app__racona_work.projects WHERE id = $1`,
+		`SELECT id, organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
 		[params.projectId]
 	);
 	if (projectRow.rows.length === 0) throw new Error('Projekt nem található');
-	const project = projectRow.rows[0] as { id: number; organization_id: number };
+	const project = projectRow.rows[0] as { id: number; organization_id: number; closed_at: string | null };
 
 	await requireCapability(context, project.organization_id, 'project.manage', project.id);
+	ensureProjectOpen(project.closed_at, 'A projekt le van zárva, a jogosultságai nem módosíthatók');
 
 	// Duplikátumok kiszűrése
 	const roleIds = [...new Set(params.roleIds.filter((id) => Number.isInteger(id) && id > 0))];

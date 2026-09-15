@@ -682,6 +682,8 @@
 	"dashboard.external.openProjects": "Projektjeim megnyitása",
 	"leaveRequests.external": "Külsős dolgozóként a szabadság nem vonatkozik rád ebben a szervezetben.",
 	"work.form.beforeStart": "A nap nem lehet korábbi a projekt kezdő dátumánál ({date})",
+	"projects.members.closedHint": "A projekt le van zárva, a tagjai nem módosíthatók.",
+	"projects.permissions.closedHint": "A projekt le van zárva, a projekt-szintű szerepei nem módosíthatók.",
 
 	"filter.from": "-tól",
 	"filter.to": "-ig",

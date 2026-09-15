@@ -229,6 +229,8 @@
 			project = (await sdk.remote.call(close ? 'closeProject' : 'reopenProject', {
 				id: project.id
 			})) as ProjectRow;
+			// Lezárt projekt adatai nem szerkeszthetők
+			if (close) editMode = false;
 			sdk?.ui?.toast?.(t(`${prefix}.success`), 'success');
 		} catch (err: any) {
 			sdk?.ui?.toast?.(err?.message ?? t('error.saveFailed'), 'error');
@@ -360,7 +362,7 @@
 				</div>
 				{#if canManage}
 					<div class="title-actions">
-						{#if !editMode && activeTab === 'overview'}
+						{#if !editMode && activeTab === 'overview' && !project.closedAt}
 							<button class="btn-primary" onclick={() => (editMode = true)}>
 								{t('projects.detail.edit')}
 							</button>
@@ -443,7 +445,8 @@
 						{members}
 						{membersLoading}
 						{availableToAdd}
-						{canManage}
+						canManage={canManage && !project.closedAt}
+						closed={!!project.closedAt}
 						onChanged={reloadMembers}
 					/>
 				</div>

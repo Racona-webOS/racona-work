@@ -7,7 +7,15 @@
  */
 
 import { describe, expect, test } from 'bun:test';
-import { closeProject, deleteProject, reopenProject } from '../server/projects.ts';
+import {
+	addProjectMember,
+	closeProject,
+	deleteProject,
+	removeProjectMember,
+	reopenProject,
+	setProjectUserRoles,
+	updateProject
+} from '../server/projects.ts';
 import { createWorkEntry, deleteWorkEntry, updateWorkEntry } from '../server/work-entries.ts';
 import type { RemoteContext } from '../server/context.ts';
 
@@ -111,5 +119,32 @@ describe('lezárás és visszanyitás', () => {
 		const open = fakeContext({ closed: false, own: ['project.close', 'project.view.all'] });
 		await expect(reopenProject({ id: 5 }, open.context)).rejects.toThrow('nincs lezárva');
 		expect([...closed.writes, ...open.writes]).toEqual([]);
+	});
+});
+
+describe('lezárt projekt adatai, tagjai és jogosultságai', () => {
+	test('az adatai nem módosíthatók', async () => {
+		const { context, writes } = fakeContext({ closed: true, own: ['project.manage'] });
+		await expect(updateProject({ id: 5, name: 'Új név' }, context)).rejects.toThrow('le van zárva');
+		expect(writes).toEqual([]);
+	});
+
+	test('tag nem vehető fel és nem távolítható el', async () => {
+		const { context, writes } = fakeContext({ closed: true, own: ['project.manage'] });
+		await expect(addProjectMember({ projectId: 5, employeeId: 2 }, context)).rejects.toThrow('le van zárva');
+		await expect(removeProjectMember({ projectId: 5, employeeId: 2 }, context)).rejects.toThrow('le van zárva');
+		expect(writes).toEqual([]);
+	});
+
+	test('a projekt-szintű szerepek nem módosíthatók', async () => {
+		const { context, writes } = fakeContext({ closed: true, own: ['project.manage'] });
+		await expect(setProjectUserRoles({ projectId: 5, userId: 9, roleIds: [] }, context)).rejects.toThrow('le van zárva');
+		expect(writes).toEqual([]);
+	});
+
+	test('nyitott projektnél a tag eltávolítható', async () => {
+		const { context, writes } = fakeContext({ closed: false, own: ['project.manage'] });
+		await removeProjectMember({ projectId: 5, employeeId: 2 }, context);
+		expect(writes).toEqual(['DELETE']);
 	});
 });
