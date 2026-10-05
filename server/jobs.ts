@@ -7,19 +7,20 @@
  * használt belső függvényeket a functions.ts-ből sem szabad exportálni.
  */
 
-import type { RemoteContext } from './context.js';
+import type {
+	ScheduledJobContext,
+	ScheduledJobHandler,
+	ScheduledJobParams,
+	ScheduledJobResult
+} from '@racona/sdk/server';
 import { parseDay, todayInBudapest } from './dates.js';
 import { runLeaveMonthAutomationForAll } from './leave-month-automation.js';
 
-/** A core által átadott paraméterek (`@racona/sdk/server` ScheduledJobParams). */
-export interface ScheduledJobParams {
-	jobId: string;
-	runId: number;
-	scheduledFor: string;
-	trigger: 'schedule' | 'manual';
-	/** Csak a dev-server: szimulált mai nap (YYYY-MM-DD) */
-	today?: string;
-}
+/** A dev-server kiegészítése: szimulált mai nap (YYYY-MM-DD) */
+type JobParams = ScheduledJobParams & { today?: string };
+
+/** A dev-server kiegészítése: `devMode` (csak ekkor számít a szimulált nap) */
+type JobContext = ScheduledJobContext & { devMode?: boolean };
 
 /**
  * Havi szabadság-ellenőrzés: automatikus kiküldés, emlékeztetők a zárás napjáig,
@@ -28,10 +29,10 @@ export interface ScheduledJobParams {
  * @throws Ha valamelyik szervezet feldolgozása hibás: a futás így „sikertelen”
  *   lesz a core futásnaplójában, ismétlődő hibánál a rendszergazda értesítést kap.
  */
-export async function runLeaveMonthAutomation(
-	params: ScheduledJobParams,
-	context: RemoteContext
-): Promise<{ summary: string; data: Record<string, unknown> }> {
+export const runLeaveMonthAutomation = (async (
+	params: JobParams,
+	context: JobContext
+): Promise<ScheduledJobResult> => {
 	const simulated = context.devMode ? parseDay(params?.today, 'today') : null;
 	const today = simulated ?? todayInBudapest();
 	// Szimulált napon a futás ideje annak reggele (07:00 Budapesten, kb. 05:00 UTC)
@@ -45,4 +46,4 @@ export async function runLeaveMonthAutomation(
 		throw new Error(`${summary} — ${totals.failed.map((f) => `#${f.organizationId}: ${f.error}`).join('; ')}`);
 	}
 	return { summary, data: { today, ...totals } };
-}
+}) satisfies ScheduledJobHandler;
