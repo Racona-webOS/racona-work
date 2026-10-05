@@ -241,10 +241,12 @@
 <style>
 	@import '../../styles/shared.css';
 
+	/* Konténer: a plugin ablak szélessége számít, nem a böngészőé */
 	.automation {
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
+		container-type: inline-size;
 	}
 
 	.block {
@@ -281,11 +283,27 @@
 		color: var(--color-muted-foreground, #64748b);
 	}
 
+	/* A mezők a tartalmukhoz igazodnak: a címke egy sorban marad, a lista a leghosszabb opcióhoz */
 	.fields {
-		display: grid;
-		grid-template-columns: 10rem minmax(0, 16rem);
-		gap: 1rem;
-		align-items: end;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1rem 1.5rem;
+		align-items: flex-end;
+	}
+
+	.fields > label > span {
+		white-space: nowrap;
+	}
+
+	.fields input[type='number'] {
+		width: 100%;
+		min-width: 6rem;
+		box-sizing: border-box;
+	}
+
+	.fields select {
+		width: auto;
+		max-width: 100%;
 	}
 
 	.warning {
@@ -322,9 +340,17 @@
 		color: oklch(0.9 0.08 85);
 	}
 
-	@media (max-width: 640px) {
-		.fields {
-			grid-template-columns: minmax(0, 1fr);
+	@container (max-width: 480px) {
+		.fields > label {
+			flex: 1 1 100%;
+		}
+
+		.fields > label > span {
+			white-space: normal;
+		}
+
+		.fields select {
+			width: 100%;
 		}
 	}
 </style>
