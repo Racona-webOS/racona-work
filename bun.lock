@@ -6,7 +6,7 @@
       "name": "racona-work-plugin",
       "dependencies": {
         "@lucide/svelte": "^1.14.0",
-        "@racona/sdk": "^0.5.1",
+        "@racona/sdk": "^0.6.0",
         "fflate": "0.8.3",
         "svelte": "^5.0.0",
       },
@@ -110,7 +110,7 @@
 
     "@maplibre/vt-pbf": ["@maplibre/vt-pbf@4.3.2", "", { "dependencies": { "@mapbox/point-geometry": "^1.1.0", "@types/geojson": "^7946.0.16", "pbf": "^5.1.0" } }, "sha512-j6p0AdjvAR19Z3XaCysle7A4ZSo08tYOzxD0Y9NQylwPAkwJJeYub5b2eVucdeDh7erhv69DahoLOevDRERRUw=="],
 
-    "@racona/sdk": ["@racona/sdk@0.5.1", "", {}, "sha512-dm9pjizLqM9Xj+zu4im0RJXH8Nd2TRfTUtOQmDu8+RWfhzu9fbwMub72Dph9OqcMU6zhg/Y/qiR1mMl/C9+2eg=="],
+    "@racona/sdk": ["@racona/sdk@0.6.0", "", {}, "sha512-qAzI6qg1dNY0CfshlKff2pDdYfBq7qhUOQAR7C3x48D2FGZvsBYah52dPTWBQDm8DEXBPMIkpM7KDRR7tQ3PUA=="],
 
     "@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.60.2", "", { "os": "android", "cpu": "arm" }, "sha512-dnlp69efPPg6Uaw2dVqzWRfAWRnYVb1XJ8CyyhIbZeaq4CA5/mLeZ1IEt9QqQxmbdvagjLIm2ZL8BxXv5lH4Yw=="],
 
