@@ -1,7 +1,8 @@
 /**
  * Dev szerver a plugin fejlesztéshez.
  * Statikus fájlokat szolgál ki és POST /api/remote/:functionName endpointot biztosít
- * a server/functions.ts függvényeinek lokális adatbázison való futtatásához.
+ * a server/functions.ts függvényeinek lokális adatbázison való futtatásához, valamint
+ * POST /api/jobs/:jobId/run endpointot a server/jobs.ts ütemezett feladataihoz.
  *
  * Indítás előtt:
  *   1. cp .env.example .env
@@ -89,16 +90,21 @@ async function runMigrations(pool: Pool): Promise<void> {
 			devFiles = readdirSync(devMigrationsDir).filter((f) => f.endsWith('.sql')).sort();
 		} catch { /* nincs dev mappa */ }
 
-		for (const file of devFiles) {
-			try {
-				const sql = await readFile(join(devMigrationsDir, file), 'utf-8');
-				await client.query(sql);
-				console.log(`[DevServer] Dev migration futtatva: ${file}`);
-			} catch (err) {
-				console.error(`[DevServer] HIBA: Migráció sikertelen: ${file}`, err);
-				process.exit(1);
+		const runDevSeeds = async (files: string[]) => {
+			for (const file of files) {
+				try {
+					const sql = await readFile(join(devMigrationsDir, file), 'utf-8');
+					await client.query(sql);
+					console.log(`[DevServer] Dev migration futtatva: ${file}`);
+				} catch (err) {
+					console.error(`[DevServer] HIBA: Migráció sikertelen: ${file}`, err);
+					process.exit(1);
+				}
 			}
-		}
+		};
+		// A 000_ seedek (auth.users) a migrációk előtt kellenek, mert azok hivatkoznak
+		// rájuk; a többi seed a plugin tábláiba ír, ezért a migrációk után fut.
+		await runDevSeeds(devFiles.filter((f) => f.startsWith('000_')));
 
 		const migrationsDir = join(ROOT, 'migrations');
 		let prodFiles: string[] = [];
@@ -122,6 +128,7 @@ async function runMigrations(pool: Pool): Promise<void> {
 				process.exit(1);
 			}
 		}
+		await runDevSeeds(devFiles.filter((f) => !f.startsWith('000_')));
 		console.log('[DevServer] Migrációk alkalmazva.');
 	} finally {
 		client.release();
@@ -240,6 +247,74 @@ async function handleRemoteRequest(req: Request, functionName: string, pool: Poo
 	}
 }
 
+/**
+ * Ütemezett feladat kézi futtatása (a core ütemezőjének megfelelője):
+ * POST /api/jobs/:jobId/run?today=YYYY-MM-DD
+ *
+ * A handlert a manifest `scheduledJobs` alapján a server/jobs.ts-ből tölti be,
+ * rendszer-kontextussal (userId: null). A `today` paraméterrel a napi futás egy
+ * tetszőleges napra szimulálható (specs/leave-month-automation.md, 9. fejezet).
+ */
+async function handleJobRequest(jobId: string, url: URL, pool: Pool): Promise<Response> {
+	const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+	const respond = (status: number, body: unknown) => new Response(JSON.stringify(body, null, 2), { status, headers });
+
+	let job: { id: string; handler: string; timeoutSeconds?: number } | undefined;
+	let handler: unknown;
+	try {
+		const manifest = JSON.parse(await readFile(join(ROOT, 'manifest.json'), 'utf-8')) as {
+			scheduledJobs?: { id: string; handler: string; timeoutSeconds?: number }[];
+		};
+		job = manifest.scheduledJobs?.find((j) => j.id === jobId);
+		if (!job) return respond(404, { success: false, error: `Scheduled job '${jobId}' not found in manifest.json` });
+		const jobsModule = (await import('./server/jobs.ts')) as Record<string, unknown>;
+		// Csak a modul saját exportja hívható (mint a core loaderében)
+		handler = Object.prototype.hasOwnProperty.call(jobsModule, job.handler) ? jobsModule[job.handler] : undefined;
+	} catch (err) {
+		console.error(`[DevServer] [job ${jobId}] betöltési hiba:`, err);
+		return respond(500, { success: false, error: err instanceof Error ? err.message : String(err) });
+	}
+	if (typeof handler !== 'function') {
+		return respond(404, { success: false, error: `Handler '${job.handler}' not found in server/jobs.ts` });
+	}
+
+	const logs: string[] = [];
+	const log = (level: string) => (message: string) => {
+		logs.push(`${level.toUpperCase().padEnd(5)} ${message}`);
+		console.log(`[DevServer] [job ${jobId}] ${level}: ${message}`);
+	};
+	// A core a manifest timeoutSeconds-a után abortálja a jelet (a handlert nem állítja le)
+	const timeoutSeconds = job.timeoutSeconds ?? 600;
+	const controller = new AbortController();
+	const timer = setTimeout(() => {
+		log('warn')(`Időtúllépés (${timeoutSeconds} s): a signal abortál.`);
+		controller.abort();
+	}, timeoutSeconds * 1000);
+	const context: RemoteContext = {
+		...buildContext(pool),
+		userId: null,
+		trigger: 'manual',
+		logger: { info: log('info'), warn: log('warn'), error: log('error') },
+		signal: controller.signal
+	};
+	const params = {
+		jobId,
+		runId: 0,
+		scheduledFor: new Date().toISOString(),
+		trigger: 'manual',
+		today: url.searchParams.get('today') ?? undefined
+	};
+	try {
+		const result = await (handler as (p: unknown, c: RemoteContext) => Promise<unknown>)(params, context);
+		return respond(200, { success: true, result, logs });
+	} catch (err) {
+		console.error(`[DevServer] [job ${jobId}] hiba:`, err);
+		return respond(500, { success: false, error: err instanceof Error ? err.message : String(err), logs });
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
 	console.error('[DevServer] HIBA: DATABASE_URL környezeti változó nincs beállítva. Állítsd be a .env fájlban.');
@@ -270,6 +345,10 @@ process.on('SIGTERM', async () => { console.log('[DevServer] Leállítás (SIGTE
 			if (req.method === 'POST' && pathname.startsWith('/api/remote/')) {
 				return handleRemoteRequest(req, pathname.slice('/api/remote/'.length), pool);
 			}
+			const jobMatch = req.method === 'POST' ? pathname.match(/^\/api\/jobs\/([a-z0-9-]+)\/run$/) : null;
+			if (jobMatch) {
+				return handleJobRequest(jobMatch[1], url, pool);
+			}
 			if (req.method === 'OPTIONS') {
 				return new Response(null, { status: 204, headers: corsHeaders });
 			}
@@ -295,5 +374,6 @@ process.on('SIGTERM', async () => { console.log('[DevServer] Leállítás (SIGTE
 
 	console.log(`[DevServer] Plugin dev szerver fut: http://localhost:${PORT}`);
 	console.log(`[DevServer] Remote endpoint: POST http://localhost:${PORT}/api/remote/:functionName`);
+	console.log(`[DevServer] Ütemezett feladat: POST http://localhost:${PORT}/api/jobs/:jobId/run?today=YYYY-MM-DD`);
 	console.log('[DevServer] Futtasd párhuzamosan: bun run dev');
 })();

@@ -23,7 +23,7 @@
  */
 
 import type { RemoteContext } from './context.js';
-import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
+import { isDevMode, isCoreAdmin, isSystemContext, resolveUserId } from './context.js';
 
 /** Képesség-kulcsok whitelist. Új képesség hozzáadása: bővítsd a tömböt és a UI-t. */
 export const CAPABILITIES = [
@@ -224,6 +224,8 @@ export async function hasCapability(
 	capability: Capability,
 	projectId?: number
 ): Promise<boolean> {
+	// Ütemezett futásban nincs felhasználó, akinek képessége lehetne
+	if (isSystemContext(context)) return false;
 	if (isDevMode(context) || isCoreAdmin(context)) return true;
 
 	const userId = await resolveUserId(context);
@@ -429,7 +431,7 @@ export const SELF_DECISION_ERROR =
  * @param employeeId - Akinek az ügyéről a döntés szól.
  */
 export async function ensureNotSelfDecision(context: RemoteContext, employeeId: number): Promise<void> {
-	if (isCoreAdmin(context) || isDevMode(context)) return;
+	if (isCoreAdmin(context) || isDevMode(context) || isSystemContext(context)) return;
 	const r = await context.db.query(`SELECT user_id FROM app__racona_work.employees WHERE id = $1`, [
 		employeeId
 	]);

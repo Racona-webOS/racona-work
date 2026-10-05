@@ -190,7 +190,9 @@
 			<h3>{t('monthConfirmation.my.title', { period: periodOf(conf) })}</h3>
 			<p class="meta">
 				{t('monthConfirmation.my.subtitle')}
-				{t('monthConfirmation.my.sentBy', { name: conf.sentByName ?? 'HR', date: formatDate(conf.sentAt) })}
+				{conf.sendSource === 'automatic'
+					? t('monthConfirmation.sentAt', { date: formatDate(conf.sentAt) })
+					: t('monthConfirmation.my.sentBy', { name: conf.sentByName ?? 'HR', date: formatDate(conf.sentAt) })}
 			</p>
 		</div>
 

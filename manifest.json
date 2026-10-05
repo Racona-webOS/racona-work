@@ -8,7 +8,7 @@
 		"hu": "Céges nyilvántartó alkalmazás (dolgozó kezelése, projektek, szabadságok).",
 		"en": "Company records app (employee management, projects, leave requests)."
 	},
-	"version": "0.8.64",
+	"version": "0.8.66",
 	"author": "Racona Developer <szigeti.developer@gmail.com>",
 	"entry": "dist/index.iife.js",
 	"icon": "icon.webp",
@@ -17,7 +17,22 @@
 	"permissions": [
 		"database",
 		"remote_functions",
-		"notifications"
+		"notifications",
+		"scheduler"
+	],
+	"scheduledJobs": [
+		{
+			"id": "leave-month-automation",
+			"handler": "runLeaveMonthAutomation",
+			"schedule": "0 7 * * *",
+			"timezone": "Europe/Budapest",
+			"description": {
+				"hu": "Havi szabadság-ellenőrzés: automatikus kiküldés és emlékeztetők",
+				"en": "Monthly leave check: automatic sending and reminders"
+			},
+			"timeoutSeconds": 900,
+			"catchUp": "once"
+		}
 	],
 	"multiInstance": false,
 	"defaultSize": {

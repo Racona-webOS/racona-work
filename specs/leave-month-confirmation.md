@@ -18,7 +18,7 @@ A HR a hónap végén bérszámfejtéshez zárja a szabadságokat. Ma nincs nyom
 **Nincs benne**
 
 - A hónap tényleges lezárása (zárolás az év lezárásához hasonlóan). Most csak jelzés, hogy a hónap zárható.
-- Határidő, automatikus emlékeztető, automatikus elfogadás.
+- Határidő, automatikus elfogadás. Az automatikus kiküldés és az emlékeztető: specs/leave-month-automation.md.
 - A manageri irányítópult összesítője az ellenőrzésekről.
 - A dolgozó a naptárban nem javíthat. Az eltérést a HR rögzíti.
 
@@ -156,7 +156,7 @@ Hívható függvények: `server/leave-month-confirmations.ts`.
 
 ### Későbbi ötletek
 
-- Emlékeztető a válaszra várók kiküldése után N nappal, határidő a szervezet beállításaiban.
+- ~~Emlékeztető a válaszra várók kiküldése után N nappal~~ — kész: specs/leave-month-automation.md. Határidő a szervezet beállításaiban.
 - A hónap tényleges lezárása: a lezárt hónapra nem lehet napot rögzíteni (az év lezárásának mintájára).
 - Összesítő a vezetői irányítópulton: nyitott eltérések száma, link a csapatnézetre.
 - Az eltérés tételeiből egy kattintással naptáras javítás (a jelölt napok előkészítve).

@@ -50,7 +50,9 @@
 					'leave.dataRequestDecided',
 					'leave.monthConfirmationRequested',
 					'leave.monthConfirmationDisputed',
-					'leave.monthConfirmationClosed'
+					'leave.monthConfirmationClosed',
+					'leave.monthConfirmationReminder',
+					'leave.monthConfirmationSummary'
 				]
 			}
 		],

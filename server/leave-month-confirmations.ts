@@ -41,6 +41,8 @@ import {
 	notifyMonthConfirmationDisputed,
 	notifyMonthConfirmationRequested
 } from './leave-month-confirmation-notifications.js';
+import { loadMonthAutomationStatus } from './leave-month-automation.js';
+import type { MonthAutomationStatus } from './leave-month-automation.js';
 
 /** Lekérdezés-képes kapcsolat: a pool vagy egy tranzakció kliense. */
 interface Queryable {
@@ -63,7 +65,13 @@ export interface MonthConfirmation {
 	stale: boolean;
 	hrNote: string | null;
 	sentAt: string;
+	/** Null: automatikus kiküldés (nincs küldő) */
 	sentByName: string | null;
+	/** Kézi (a HR gombja) vagy automatikus (az ütemezett feladat) kiküldés */
+	sendSource: 'manual' | 'automatic';
+	/** A dolgozónak küldött emlékeztetők (specs/leave-month-automation.md, D8) */
+	reminderCount: number;
+	lastRemindedAt: string | null;
 	respondedAt: string | null;
 	disputeItems: DisputeItem[];
 	employeeNote: string | null;
@@ -107,6 +115,8 @@ export interface MonthConfirmationOverview {
 	/** D10: minden címzett elfogadta vagy le van zárva, és semmi nem változott. */
 	closable: boolean;
 	rows: MonthConfirmationRow[];
+	/** Az automatizmus állapota a hónapra (specs/leave-month-automation.md, K5) */
+	automation: MonthAutomationStatus;
 }
 
 export interface MonthConfirmationSendResult {
@@ -209,7 +219,7 @@ async function loadMonthData(
 const CONFIRMATION_SELECT = `
 	SELECT c.id, c.employee_id, c.organization_id, c.year, c.month, c.status, c.snapshot, c.fingerprint,
 	       c.hr_note, c.sent_by, c.sent_at, c.responded_at, c.dispute_items, c.employee_note,
-	       c.resolved_at, c.resolution_note,
+	       c.resolved_at, c.resolution_note, c.send_source, c.reminder_count, c.last_reminded_at,
 	       su.full_name AS sent_by_name, ru.full_name AS resolved_by_name, e.user_id AS employee_user_id
 	  FROM ${SCHEMA}.leave_month_confirmations c
 	  JOIN ${SCHEMA}.employees e ON e.id = c.employee_id
@@ -228,6 +238,9 @@ function mapConfirmation(row: any, currentFingerprint: string | null): MonthConf
 		hrNote: row.hr_note ?? null,
 		sentAt: row.sent_at,
 		sentByName: row.sent_by_name ?? null,
+		sendSource: row.send_source === 'automatic' ? 'automatic' : 'manual',
+		reminderCount: row.reminder_count ?? 0,
+		lastRemindedAt: row.last_reminded_at ?? null,
 		respondedAt: row.responded_at ?? null,
 		disputeItems: row.dispute_items ?? [],
 		employeeNote: row.employee_note ?? null,
@@ -261,14 +274,19 @@ async function insertConfirmation(
 		month: number;
 		snapshot: MonthSnapshot;
 		note: string | null;
-		userId: number;
+		/** Null: automatikus kiküldés */
+		userId: number | null;
 		previousId: number | null;
+		source?: 'manual' | 'automatic';
+		/** A kiküldés ideje; alapból most (a dev-server szimulált napjához) */
+		sentAt?: Date;
 	}
 ): Promise<number> {
 	const r = await db.query(
 		`INSERT INTO ${SCHEMA}.leave_month_confirmations
-			(organization_id, employee_id, year, month, status, snapshot, fingerprint, hr_note, sent_by, previous_id)
-		 VALUES ($1, $2, $3, $4, 'pending', $5::jsonb, $6, $7, $8, $9)
+			(organization_id, employee_id, year, month, status, snapshot, fingerprint, hr_note, sent_by, previous_id,
+			 send_source, sent_at)
+		 VALUES ($1, $2, $3, $4, 'pending', $5::jsonb, $6, $7, $8, $9, $10, COALESCE($11::timestamptz, NOW()))
 		 RETURNING id`,
 		[
 			params.organizationId,
@@ -279,7 +297,9 @@ async function insertConfirmation(
 			snapshotFingerprint(params.snapshot.days),
 			params.note,
 			params.userId,
-			params.previousId
+			params.previousId,
+			params.source ?? 'manual',
+			params.sentAt ?? null
 		]
 	);
 	return r.rows[0].id;
@@ -305,7 +325,23 @@ export async function getMonthConfirmations(
 		[await resolveUserId(context), organizationId]
 	);
 	const ownEmployeeId: number | null = own.rows[0]?.id ?? null;
+	return loadMonthOverview(context, organizationId, year, month, employeeId, ownEmployeeId);
+}
 
+/**
+ * A hónap állapota jogosultság-ellenőrzés nélkül: a HR nézete és a zárási
+ * összesítő (server/leave-month-automation.ts) is ezt használja.
+ *
+ * @param ownEmployeeId - A hívó dolgozó azonosítója (`isOwn` jelzéshez), vagy null.
+ */
+export async function loadMonthOverview(
+	context: RemoteContext,
+	organizationId: number,
+	year: number,
+	month: number,
+	employeeId: number | null = null,
+	ownEmployeeId: number | null = null
+): Promise<MonthConfirmationOverview> {
 	const [data, current, closedYear] = await Promise.all([
 		loadMonthData(context.db, context, organizationId, year, month, employeeId),
 		context.db.query(
@@ -353,6 +389,7 @@ export async function getMonthConfirmations(
 	return {
 		year,
 		month,
+		automation: await loadMonthAutomationStatus(context.db, organizationId, year, month, data.workingDays),
 		blocker: monthSendBlocker(year, month, todayInBudapest(), closedYear),
 		pendingEmployeeCount: rows.filter((r) => r.eligible && r.pendingDayCount > 0).length,
 		counts,
@@ -376,10 +413,47 @@ export async function sendMonthConfirmations(
 	const employeeId = parseEmployeeFilter(params.employeeId);
 	const note = trimConfirmationNote(params.note);
 	await requireCapability(context, organizationId, 'leave.approve');
-
-	const blocker = monthSendBlocker(year, month, todayInBudapest(), await loadClosedYear(context.db, organizationId));
-	if (blocker) throw new Error(blockerMessage(blocker));
 	const userId = await resolveUserId(context);
+
+	return performMonthConfirmationSend(context, {
+		organizationId,
+		year,
+		month,
+		employeeId,
+		note,
+		actorUserId: userId,
+		source: 'manual'
+	});
+}
+
+/**
+ * A kiküldés belső része, jogosultság-ellenőrzés nélkül: a gomb
+ * (`sendMonthConfirmations`) és az automatikus kiküldés (server/jobs.ts) is ezt
+ * hívja. NE exportáld a functions.ts-ből, mert akkor bárki meghívhatná.
+ *
+ * @param params.actorUserId - A kiküldő; automatikus kiküldésnél null.
+ */
+export async function performMonthConfirmationSend(
+	context: RemoteContext,
+	params: {
+		organizationId: number;
+		year: number;
+		month: number;
+		employeeId: number | null;
+		note: string | null;
+		actorUserId: number | null;
+		source: 'manual' | 'automatic';
+		/** A mai nap (YYYY-MM-DD); alapból a budapesti mai nap (a dev-server szimulálhatja). */
+		today?: string;
+		/** A kiküldés ideje; alapból most (a dev-server szimulálhatja). */
+		now?: Date;
+	}
+): Promise<MonthConfirmationSendResult> {
+	const { organizationId, year, month, employeeId, note, actorUserId, source } = params;
+	const today = params.today ?? todayInBudapest();
+
+	const blocker = monthSendBlocker(year, month, today, await loadClosedYear(context.db, organizationId));
+	if (blocker) throw new Error(blockerMessage(blocker));
 
 	const notices: Parameters<typeof notifyMonthConfirmationRequested>[1][] = [];
 	const result: MonthConfirmationSendResult = { sent: 0, resent: 0, skipped: 0 };
@@ -430,8 +504,10 @@ export async function sendMonthConfirmations(
 				month,
 				snapshot,
 				note,
-				userId,
-				previousId: existing?.id ?? null
+				userId: actorUserId,
+				previousId: existing?.id ?? null,
+				source,
+				sentAt: params.now
 			});
 			notices.push({ id, employeeId: emp.employeeId, organizationId, year, month, snapshot, note, resent: !!existing });
 			if (existing) result.resent++;
@@ -558,7 +634,7 @@ export async function resolveMonthConfirmation(
 // ---------------------------------------------------------------------------
 
 /** A tétel mostani ujjlenyomata a dolgozó napjaiból. */
-async function currentFingerprint(
+export async function currentFingerprint(
 	db: Queryable,
 	employeeId: number,
 	year: number,

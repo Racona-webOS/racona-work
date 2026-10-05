@@ -145,6 +145,39 @@
 		return formatAppDate(value);
 	}
 
+	/** Kiküldés (kézi vagy automatikus) és az emlékeztetők (specs/leave-month-automation.md, K5). */
+	function sentMeta(conf: MonthConfirmation): string {
+		const parts = [
+			t(conf.sendSource === 'automatic' ? 'monthConfirmation.sentAtAuto' : 'monthConfirmation.sentAt', {
+				date: formatDate(conf.sentAt)
+			})
+		];
+		if (conf.reminderCount > 0) {
+			parts.push(
+				t('monthConfirmation.reminders', { count: conf.reminderCount, date: formatDate(conf.lastRemindedAt) })
+			);
+		}
+		return parts.join(' · ');
+	}
+
+	const automationHint = $derived.by(() => {
+		const a = overview?.automation;
+		if (!a || overview?.blocker) return null;
+		const parts: string[] = [];
+		if (a.autoSendEnabled && !a.autoSent && a.autoSendDay) {
+			parts.push(t('monthConfirmation.automation.autoSend', { date: formatDate(a.autoSendDay) }));
+		} else if (a.autoSent) {
+			parts.push(t('monthConfirmation.automation.autoSent'));
+		}
+		if (a.remindersEnabled && a.closingDay) {
+			parts.push(t('monthConfirmation.automation.reminders', { date: formatDate(a.closingDay) }));
+		}
+		if (a.closingNotifyHr && a.closingDay) {
+			parts.push(t('monthConfirmation.automation.closing', { date: formatDate(a.closingDay) }));
+		}
+		return parts.length > 0 ? parts.join(' ') : null;
+	});
+
 	function formatDay(iso: string): string {
 		return formatAppDate(iso, { month: 'short', day: 'numeric' });
 	}
@@ -223,6 +256,10 @@
 				<span class="closable">✓ {t('monthConfirmation.panel.closable')}</span>
 			{/if}
 		</div>
+
+		{#if automationHint}
+			<p class="hint">{automationHint}</p>
+		{/if}
 
 		{#if overview.blocker}
 			<p class="hint is-warning">{t(`monthConfirmation.panel.blocker.${overview.blocker}`)}</p>
@@ -318,9 +355,7 @@
 						<li class="item compact">
 							<span class="name">{row.employeeName}</span>
 							<span class="meta">
-								{t(`monthConfirmation.status.${row.confirmation!.status}`)} · {t('monthConfirmation.sentAt', {
-									date: formatDate(row.confirmation!.sentAt)
-								})}
+								{t(`monthConfirmation.status.${row.confirmation!.status}`)} · {sentMeta(row.confirmation!)}
 							</span>
 							<button class="link-btn" onclick={() => onOpenEmployee(row.employeeId)}>
 								{t('monthConfirmation.actions.openCalendar')}
@@ -338,7 +373,7 @@
 					{#each waiting as row (row.employeeId)}
 						<li class="item compact">
 							<span class="name">{row.employeeName}</span>
-							<span class="meta">{t('monthConfirmation.sentAt', { date: formatDate(row.confirmation!.sentAt) })}</span>
+							<span class="meta">{sentMeta(row.confirmation!)}</span>
 							{#if !row.isOwn || isCoreAdminViewer()}
 								<button class="link-btn" onclick={() => startAction(row.confirmation!.id, 'close')} disabled={resolving}>
 									{t('monthConfirmation.actions.close')}

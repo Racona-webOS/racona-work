@@ -5,6 +5,8 @@
  *   - kiküldés, újraküldés → a dolgozó kapja az összesítőt
  *   - eltérés → a kiküldő és a Szabadság beállításoknál kijelöltek
  *   - lezárás elfogadás nélkül → a dolgozó
+ *   - emlékeztető → a válaszra váró dolgozó (specs/leave-month-automation.md, K3)
+ *   - zárási összesítő → a kijelölt szabadságkezelők (specs/leave-month-automation.md, K4)
  *
  * Minden küldés best-effort: a hibát naplózzuk, a művelet nem gördül vissza.
  * A műveletet végző felhasználó nem kap értesítést a saját lépéséről (a HR a
@@ -28,7 +30,8 @@ import type { Recipient } from './notification-email.js';
 import { notifiersSettingsKey } from './leave-notifications.js';
 import { isLeaveType, LEAVE_TYPE_LABELS } from './leave-types.js';
 import { formatMonthLabel, summarizeSnapshot } from './leave-month-confirmation-utils.js';
-import type { DisputeItem, MonthSnapshot, SnapshotPeriod } from './leave-month-confirmation-utils.js';
+import type { DisputeItem, MonthSnapshot, SnapshotPeriod, SnapshotSummary } from './leave-month-confirmation-utils.js';
+import type { MonthConfirmationOverview } from './leave-month-confirmations.js';
 import { SCHEMA } from './trip-access.js';
 
 type Locale = keyof LocalizedText;
@@ -109,6 +112,37 @@ function byTypeText(byType: { leaveType: string; days: number }[], locale: Local
 	return byType.map((t) => `${typeLabel(t.leaveType, locale)} ${t.days}`).join(', ');
 }
 
+/** „Válaszolási határidő: 2026. október 28.” — üres, ha nincs határidő. */
+function deadlineText(deadline: string | null, locale: Locale, prefix: string): string {
+	if (!deadline) return '';
+	const date = new Intl.DateTimeFormat(locale === 'hu' ? 'hu-HU' : 'en-GB', {
+		year: 'numeric',
+		month: 'long',
+		day: 'numeric',
+		timeZone: 'UTC'
+	}).format(new Date(`${deadline}T00:00:00Z`));
+	// A magyar dátum már ponttal végződik („2026. november 26.”)
+	return locale === 'hu' ? `${prefix}Válaszolási határidő: ${date}` : `${prefix}Please answer by: ${date}.`;
+}
+
+/** Magyar névelő egy számjeggyel írt sorszám elé (1–20): „az 1.”, „az 5.”, egyébként „a”. */
+function huArticle(n: number): 'a' | 'az' {
+	return n === 1 || n === 5 ? 'az' : 'a';
+}
+
+/** A havi összesítő sorai az emailhez: szakaszok és összesen, vagy hogy nincs szabadság. */
+function summaryLines(summary: SnapshotSummary, locale: Locale): string[] {
+	if (summary.dayCount === 0) {
+		return [locale === 'hu' ? 'Erre a hónapra nincs rögzített szabadságod.' : 'No leave is recorded for you this month.'];
+	}
+	return [
+		...summary.periods.map((p) => periodLine(p, locale)),
+		locale === 'hu'
+			? `Összesen ${daysText(summary.dayCount, locale)}: ${byTypeText(summary.byType, locale)}`
+			: `Total ${daysText(summary.dayCount, locale)}: ${byTypeText(summary.byType, locale)}`
+	];
+}
+
 /** Egy eltérés-tétel olvasható formában. */
 function disputeLine(item: DisputeItem, snapshot: MonthSnapshot, locale: Locale): string {
 	const day = formatDay(item.day, locale);
@@ -182,15 +216,7 @@ export async function notifyMonthConfirmationRequested(
 			recipients: [employee],
 			buildData: (recipient) => {
 				const locale = recipient.locale;
-				const lines =
-					summary.dayCount === 0
-						? [locale === 'hu' ? 'Erre a hónapra nincs rögzített szabadságod.' : 'No leave is recorded for you this month.']
-						: [
-								...summary.periods.map((p) => periodLine(p, locale)),
-								locale === 'hu'
-									? `Összesen ${daysText(summary.dayCount, locale)}: ${byTypeText(summary.byType, locale)}`
-									: `Total ${daysText(summary.dayCount, locale)}: ${byTypeText(summary.byType, locale)}`
-							];
+				const lines = summaryLines(summary, locale);
 				const pendingLabel = locale === 'hu' ? 'Függő kérelmek (még nincsenek benne)' : 'Pending requests (not included yet)';
 				const pendingValue = summary.pendingPeriods.map((p) => periodLine(p, locale)).join('; ');
 				const noteLabel = locale === 'hu' ? 'A HR megjegyzése' : 'Note from HR';
@@ -366,4 +392,211 @@ export async function notifyMonthConfirmationClosed(
 	} catch (err) {
 		console.error('[Work] Havi ellenőrzés lezárás értesítés sikertelen:', err);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Emlékeztető (specs/leave-month-automation.md, K3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Emlékeztető a válaszra váró dolgozónak, rendszeren belül és emailben.
+ *
+ * @param notice.reminderNumber - Hányadik emlékeztető (1-től).
+ * @param notice.deadline - A válaszolási határidő (a zárás előtti utolsó munkanap), vagy null.
+ */
+export async function notifyMonthConfirmationReminder(
+	context: RemoteContext,
+	notice: ConfirmationRef & { snapshot: MonthSnapshot; reminderNumber: number; deadline: string | null }
+): Promise<void> {
+	try {
+		const employee = await loadEmployee(context, notice.employeeId);
+		if (!employee) return;
+
+		const summary = summarizeSnapshot(notice.snapshot);
+		const label: LocalizedText = {
+			hu: formatMonthLabel(notice.year, notice.month, 'hu'),
+			en: formatMonthLabel(notice.year, notice.month, 'en')
+		};
+
+		await sendInApp(context, {
+			userIds: [employee.userId],
+			title: { hu: 'Emlékeztető: havi szabadság-ellenőrzés', en: 'Reminder: monthly leave check' },
+			message: {
+				hu: `${label.hu}: még nem válaszoltál a havi szabadság-összesítőre.${deadlineText(notice.deadline, 'hu', ' ')} Az irányítópulton elfogadhatod, vagy jelezheted, ha valami nem stimmel.`,
+				en: `${label.en}: you have not answered the monthly leave summary yet.${deadlineText(notice.deadline, 'en', ' ')} Accept it on the dashboard, or report if something is wrong.`
+			},
+			type: 'warning',
+			data: { monthConfirmationId: notice.id, organizationId: notice.organizationId }
+		});
+
+		const organizationName = await loadOrganizationName(context, notice.organizationId);
+		await sendEmails(context, {
+			organizationId: notice.organizationId,
+			event: 'leave.monthConfirmationReminder',
+			template: 'leave_month_confirmation_reminder',
+			recipients: [employee],
+			buildData: (recipient) => {
+				const locale = recipient.locale;
+				const lines = summaryLines(summary, locale);
+				const reminderNotice = [
+					locale === 'hu'
+						? `Ez ${huArticle(notice.reminderNumber)} ${notice.reminderNumber}. emlékeztető.`
+						: `This is reminder no. ${notice.reminderNumber}.`,
+					deadlineText(notice.deadline, locale, '')
+				]
+					.filter(Boolean)
+					.join(' ');
+				return {
+					recipientName: recipient.name,
+					recipientNameHtml: escapeHtml(recipient.name),
+					organizationName,
+					organizationNameHtml: escapeHtml(organizationName),
+					periodLabel: label[locale],
+					itemsHtml: itemsHtml(lines),
+					itemsText: itemsText(lines),
+					reminderNoticeHtml: escapeHtml(reminderNotice),
+					reminderNoticeText: reminderNotice
+				};
+			}
+		});
+	} catch (err) {
+		console.error('[Work] Havi ellenőrzés emlékeztető sikertelen:', err);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Zárási összesítő (specs/leave-month-automation.md, K4)
+// ---------------------------------------------------------------------------
+
+/**
+ * A hónap zárásának napján (az emlékeztetők leállásakor) összesítő a
+ * Szabadság beállításoknál kijelölt értesítendőknek: ki fogadta el, ki nem
+ * válaszolt, ki jelzett eltérést, kinek változtak a napjai, ki nem kapta meg.
+ *
+ * @returns Ment-e ki értesítés (ha nincs kijelölt értesítendő, nem).
+ */
+export async function notifyMonthConfirmationClosingSummary(
+	context: RemoteContext,
+	notice: { organizationId: number; year: number; month: number; overview: MonthConfirmationOverview }
+): Promise<boolean> {
+	try {
+		const settings = await context.db.query(`SELECT value FROM ${SCHEMA}.kv_store WHERE key = $1`, [
+			notifiersSettingsKey(notice.organizationId)
+		]);
+		const stored = settings.rows[0]?.value;
+		const notifierEmployeeIds = Array.isArray(stored)
+			? stored.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+			: [];
+
+		const recipientResult = await context.db.query(
+			`SELECT DISTINCT u.id AS user_id, u.full_name, u.email, ${RECIPIENT_LOCALE_SQL}
+			   FROM ${SCHEMA}.employees e
+			   JOIN auth.users u ON u.id = e.user_id
+			  WHERE e.id = ANY($1::int[]) AND e.organization_id = $2 AND e.status = 'active' AND e.is_external = FALSE`,
+			[notifierEmployeeIds, notice.organizationId]
+		);
+		const recipients: Recipient[] = recipientResult.rows.map(toRecipient);
+		if (recipients.length === 0) {
+			console.warn('[Work] Havi ellenőrzés: a zárási összesítő nem ment ki, mert nincs kijelölt értesítendő.');
+			return false;
+		}
+
+		const groups = closingGroups(notice.overview);
+		const label: LocalizedText = {
+			hu: formatMonthLabel(notice.year, notice.month, 'hu'),
+			en: formatMonthLabel(notice.year, notice.month, 'en')
+		};
+		const brief = (locale: Locale) =>
+			locale === 'hu'
+				? `${label.hu}: elfogadta ${groups.accepted}, nem válaszolt ${groups.pending.length}, eltérést jelzett ${groups.disputed.length}.` +
+					(notice.overview.closable ? ' A hónap zárható.' : '')
+				: `${label.en}: accepted ${groups.accepted}, not answered ${groups.pending.length}, discrepancy ${groups.disputed.length}.` +
+					(notice.overview.closable ? ' The month can be closed.' : '');
+
+		await sendInApp(context, {
+			userIds: recipients.map((r) => r.userId),
+			title: { hu: 'Havi szabadság-ellenőrzés: zárás', en: 'Monthly leave check: closing' },
+			message: { hu: brief('hu'), en: brief('en') },
+			type: groups.pending.length + groups.disputed.length + groups.stale.length > 0 ? 'warning' : 'success',
+			data: { organizationId: notice.organizationId, year: notice.year, month: notice.month }
+		});
+
+		const organizationName = await loadOrganizationName(context, notice.organizationId);
+		await sendEmails(context, {
+			organizationId: notice.organizationId,
+			event: 'leave.monthConfirmationSummary',
+			template: 'leave_month_confirmation_summary',
+			recipients,
+			buildData: (recipient) => {
+				const lines = closingLines(groups, notice.overview.closable, recipient.locale);
+				return {
+					recipientName: recipient.name,
+					recipientNameHtml: escapeHtml(recipient.name),
+					organizationName,
+					organizationNameHtml: escapeHtml(organizationName),
+					periodLabel: label[recipient.locale],
+					itemsHtml: itemsHtml(lines),
+					itemsText: itemsText(lines)
+				};
+			}
+		});
+		return true;
+	} catch (err) {
+		console.error('[Work] Havi ellenőrzés zárási összesítő sikertelen:', err);
+		return false;
+	}
+}
+
+interface ClosingGroups {
+	accepted: number;
+	closed: number;
+	pending: string[];
+	disputed: string[];
+	stale: string[];
+	notSent: string[];
+}
+
+/** A hónap dolgozói állapot szerint (a változott tételek külön, mert újra kell küldeni). */
+function closingGroups(overview: MonthConfirmationOverview): ClosingGroups {
+	const groups: ClosingGroups = { accepted: 0, closed: 0, pending: [], disputed: [], stale: [], notSent: [] };
+	for (const row of overview.rows) {
+		const c = row.confirmation;
+		if (!c) {
+			if (row.eligible) groups.notSent.push(row.employeeName);
+		} else if (c.status === 'disputed') {
+			groups.disputed.push(row.employeeName);
+		} else if (c.stale) {
+			groups.stale.push(row.employeeName);
+		} else if (c.status === 'pending') {
+			groups.pending.push(row.employeeName);
+		} else if (c.status === 'accepted') {
+			groups.accepted++;
+		} else if (c.status === 'closed') {
+			groups.closed++;
+		}
+	}
+	return groups;
+}
+
+function closingLines(groups: ClosingGroups, closable: boolean, locale: Locale): string[] {
+	const hu = locale === 'hu';
+	const named = (labelHu: string, labelEn: string, names: string[]) =>
+		names.length > 0 ? [`${hu ? labelHu : labelEn} (${names.length}): ${names.join(', ')}`] : [];
+	return [
+		hu ? `Elfogadta: ${groups.accepted} dolgozó` : `Accepted: ${groups.accepted} employee(s)`,
+		...(groups.closed > 0
+			? [hu ? `HR lezárta elfogadás nélkül: ${groups.closed}` : `Closed by HR without acceptance: ${groups.closed}`]
+			: []),
+		...named('Nem válaszolt', 'Not answered', groups.pending),
+		...named('Eltérést jelzett', 'Reported a discrepancy', groups.disputed),
+		...named('Változott a kiküldés óta, újra kell küldeni', 'Changed since sending, needs resending', groups.stale),
+		...named('Nem kapta meg', 'Not sent', groups.notSent),
+		closable
+			? hu
+				? 'Minden dolgozó elfogadta vagy le van zárva: a hónap zárható.'
+				: 'Everyone accepted or is closed: the month can be closed.'
+			: hu
+				? 'A hónap még nem zárható: a fenti tételeket a csapatnézetben kezelheted.'
+				: 'The month cannot be closed yet: handle the items above in the team view.'
+	];
 }

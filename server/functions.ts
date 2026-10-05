@@ -148,6 +148,18 @@ export type {
 	MonthConfirmationOverview,
 	MonthConfirmationSendResult
 } from './leave-month-confirmations.js';
+// Havi ellenőrzés automatizálása (specs/leave-month-automation.md). A napi futás
+// belső függvényei (processOrganization, performMonthConfirmationSend) szándékosan
+// nincsenek itt: rendszerjogon futnak, csak a server/jobs.ts hívhatja őket.
+export { getLeaveMonthAutomation, saveLeaveMonthAutomation } from './leave-month-automation.js';
+export type { LeaveMonthAutomationInfo, MonthAutomationStatus } from './leave-month-automation.js';
+export type {
+	AutomationDayKind,
+	AutoSendSettings,
+	ReminderSettings,
+	LeaveMonthAutomationSettings,
+	LastAutoSend
+} from './leave-month-automation-utils.js';
 export type {
 	MonthConfirmationStatus,
 	MonthSnapshot,

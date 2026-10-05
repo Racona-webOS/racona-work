@@ -43,8 +43,11 @@ export interface PluginNotificationService {
 
 export interface RemoteContext {
 	pluginId: string;
-	/** A hívó user azonosítója. A core stringként küldi (pl. "12"). */
-	userId: string | number;
+	/**
+	 * A hívó user azonosítója. A core stringként küldi (pl. "12").
+	 * Ütemezett futásban (server/jobs.ts) null: nincs hívó felhasználó.
+	 */
+	userId: string | number | null;
 	db: {
 		query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }>;
 		connect: () => Promise<{
@@ -61,6 +64,21 @@ export interface RemoteContext {
 	 * lazábbak, és nem numerikus userId esetén az első auth.users rekordot használjuk.
 	 */
 	devMode?: boolean;
+	/** Ütemezett futásban: mi indította (a core ütemezője vagy kézi „Futtatás most”). */
+	trigger?: 'schedule' | 'manual';
+	/** Ütemezett futásban: a core futásnaplójába ír. */
+	logger?: { info(message: string): void; warn(message: string): void; error(message: string): void };
+	/** Ütemezett futásban: időtúllépéskor abortál. */
+	signal?: AbortSignal;
+}
+
+/**
+ * Ütemezett futás (rendszer-kontextus): nincs hívó felhasználó. Itt minden
+ * jogosultsághoz kötött művelet elutasít; a feladatok a belső, jogosultság-
+ * ellenőrzés nélküli függvényeket hívják (specs/leave-month-automation.md, D12).
+ */
+export function isSystemContext(context: RemoteContext): boolean {
+	return context.userId === null;
 }
 
 /**
@@ -83,6 +101,7 @@ export function isCoreAdmin(context: RemoteContext): boolean {
  * Éles környezetben nem numerikus userId hibát dob.
  */
 export async function resolveUserId(context: RemoteContext): Promise<number> {
+	if (isSystemContext(context)) throw new Error('Ütemezett futásban nincs felhasználó.');
 	if (typeof context.userId === 'number') return context.userId;
 	if (typeof context.userId === 'string' && /^\d+$/.test(context.userId)) {
 		return Number(context.userId);

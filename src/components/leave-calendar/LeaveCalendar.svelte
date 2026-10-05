@@ -307,6 +307,14 @@
 			disputed: ['mc-disputed', '!']
 		};
 		const [cls, symbol] = symbols[c.status] ?? ['mc-none', '○'];
+		// Válaszra váró tételnél az emlékeztetők is (specs/leave-month-automation.md, K5)
+		if (c.status === 'pending' && c.reminderCount > 0) {
+			const reminders = t('monthConfirmation.reminders', {
+				count: c.reminderCount,
+				date: formatDate(c.lastRemindedAt)
+			});
+			return { cls, symbol, label: `${label} · ${reminders}` };
+		}
 		return { cls, symbol, label };
 	}
 

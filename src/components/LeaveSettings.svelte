@@ -17,6 +17,7 @@
 	import AccessDenied from './AccessDenied.svelte';
 	import Checkbox from './ui/Checkbox.svelte';
 	import UsagePlanEditor from './leave-balance/UsagePlanEditor.svelte';
+	import LeaveMonthAutomationSettings from './leave-settings/LeaveMonthAutomationSettings.svelte';
 	import { resolveSdk, translate } from '../utils/sdk.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
@@ -246,6 +247,17 @@
 					</button>
 				</div>
 			</div>
+
+			<!-- Havi ellenőrzés automatizálása (specs/leave-month-automation.md, K1) -->
+			{#if currentOrganization && orgStore?.can('leave.approve')}
+				<div class="settings-section">
+					<div class="section-header">
+						<h3>{t('settings.leaveMonthAutomation.title')}</h3>
+						<p class="section-description">{t('settings.leaveMonthAutomation.description')}</p>
+					</div>
+					<LeaveMonthAutomationSettings {pluginId} organizationId={currentOrganization.id} />
+				</div>
+			{/if}
 
 			<!-- Céges szabadság-többlet -->
 			<div class="settings-section">

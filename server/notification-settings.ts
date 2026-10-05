@@ -30,6 +30,9 @@ export const NOTIFICATION_EVENT_DEFAULTS = {
 	'leave.monthConfirmationRequested': true,
 	'leave.monthConfirmationDisputed': true,
 	'leave.monthConfirmationClosed': false,
+	// Havi ellenőrzés automatizálása (specs/leave-month-automation.md): csak bekapcsolt automatizmusnál megy bármi
+	'leave.monthConfirmationReminder': true,
+	'leave.monthConfirmationSummary': true,
 	'trip.settlementSubmitted': false,
 	'trip.settlementStatus': false,
 	'trip.ordererChanged': false
