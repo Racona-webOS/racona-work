@@ -28,24 +28,17 @@
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
 	import { isWeekend, monthGrid } from '../lib/calendar-grid.js';
+	import { resolveSdk, translate } from '../utils/sdk.js';
+	import { formatShortDay } from '../utils/format.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
-	const sdk = $derived((window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS);
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	let orgStore = $state<OrganizationStore | null>(null);
 	let currentOrganization = $state<import('../../server/functions.js').Organization | null>(null);
 	let hasAccess = $state(false);
-
-	function t(key: string, vars?: Record<string, string | number>): string {
-		let result: string = sdk?.i18n?.t(key) ?? key;
-		if (vars) {
-			for (const [k, v] of Object.entries(vars)) {
-				result = result.replace(`{${k}}`, String(v));
-			}
-		}
-		return result;
-	}
 
 	// --- Állapot -------------------------------------------------------------
 
@@ -175,7 +168,7 @@
 
 	/** Rövid dátum: „dec. 28.”; az év a címben van. */
 	function shortDay(iso: string): string {
-		return new Date(`${iso}T00:00:00Z`).toLocaleDateString('hu-HU', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+		return formatShortDay(iso);
 	}
 
 	function formatRange(from: string, to: string): string {
@@ -472,9 +465,9 @@
 
 			<div class="toolbar">
 				<div class="year-nav">
-					<button class="btn-secondary" onclick={() => (year -= 1)} aria-label="előző év">‹</button>
+					<button class="btn-secondary" onclick={() => (year -= 1)} aria-label={t('workCalendar.previousYear')}>‹</button>
 					<span class="year-label">{year}</span>
-					<button class="btn-secondary" onclick={() => (year += 1)} aria-label="következő év">›</button>
+					<button class="btn-secondary" onclick={() => (year += 1)} aria-label={t('workCalendar.nextYear')}>›</button>
 				</div>
 				<div class="toolbar-actions">
 					{#if yearClosed}

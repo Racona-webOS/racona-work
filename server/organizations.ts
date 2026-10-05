@@ -9,10 +9,9 @@
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { requireCapability, seedDefaultRoles } from './permissions.js';
-import { assignDefaultEmployeeRole } from './employees.js';
-import type { EmployeeRow } from './employees.js';
 import type { PaginatedResult } from './types.js';
 import { geocodeAddress } from './geo.js';
+import { loadOrganizationName } from './notification-email.js';
 import { normalizeTaxNumber } from './trip-calc.js';
 
 export interface Organization {
@@ -479,59 +478,6 @@ export async function getOrganizationMembers(
 }
 
 /**
- * Dolgozó hozzáadása szervezethez.
- * Követelmény: 4.9
- */
-export async function addEmployeeToOrganization(
-	params: { organizationId: number; employeeId: number; role?: string },
-	context: RemoteContext
-): Promise<OrganizationMember & { userId: number }> {
-	// Paraméter validáció
-	if (!params.organizationId || params.organizationId <= 0) {
-		throw new Error('Érvénytelen szervezet azonosító');
-	}
-
-	await requireCapability(context, params.organizationId, 'members.manage');
-
-	// Először lekérdezzük a dolgozó user_id-ját az értesítéshez
-	const employeeResult = await context.db.query(
-		`SELECT user_id FROM app__racona_work.employees WHERE id = $1`,
-		[params.employeeId]
-	);
-
-	if (employeeResult.rows.length === 0) {
-		throw new Error(`Nem található dolgozó a megadott azonosítóval: ${params.employeeId}`);
-	}
-
-	const userId = employeeResult.rows[0].user_id;
-
-	// ÚJ: Új employee rekord létrehozása az adott szervezetben
-	// (egy user több szervezetben is lehet dolgozó)
-	const result = await context.db.query(
-		`INSERT INTO app__racona_work.employees (user_id, organization_id, position, hire_date, status, created_at, updated_at)
-		 SELECT user_id, $1, position, hire_date, status, NOW(), NOW()
-		 FROM app__racona_work.employees
-		 WHERE id = $2
-		 RETURNING id, organization_id, id AS employee_id, created_at AS joined_at`,
-		[params.organizationId, params.employeeId]
-	);
-
-	const row = result.rows[0];
-
-	// Új tag → automatikus 'employee' szerep, hogy legyen alap capability-je.
-	await assignDefaultEmployeeRole(context, params.organizationId, userId);
-
-	return {
-		id: row.id,
-		organizationId: row.organization_id,
-		employeeId: row.employee_id,
-		role: 'member',
-		joinedAt: row.joined_at,
-		userId
-	};
-}
-
-/**
  * Dolgozó eltávolítása szervezetből.
  * Követelmény: 4.10
  */
@@ -596,78 +542,36 @@ export async function removeEmployeeFromOrganization(
 		[params.organizationId, params.employeeId]
 	);
 
+	await notifyRemovedEmployee(context, params.organizationId, Number(userId));
+
 	return { userId };
 }
 
 /**
- * Azok a dolgozók, akik még nem tagjai az adott szervezetnek.
- * Követelmény: 4.12
+ * Rendszerértesítés az eltávolított dolgozónak (best-effort, mint a többi
+ * értesítés). Szerveren küldjük, mert a kliens csak saját magának küldhet
+ * értesítést külön core jog nélkül, és csak itt adható meg kétnyelvű szöveg.
  */
-export async function getAvailableEmployeesForOrganization(
-	params: { organizationId: number; search?: string },
-	context: RemoteContext
-): Promise<EmployeeRow[]> {
-	// Paraméter validáció
-	if (!params.organizationId || params.organizationId <= 0) {
-		throw new Error('Érvénytelen szervezet azonosító');
+async function notifyRemovedEmployee(
+	context: RemoteContext,
+	organizationId: number,
+	userId: number
+): Promise<void> {
+	if (!context.notifications) return;
+	try {
+		if (userId === (await resolveUserId(context))) return;
+		const name = await loadOrganizationName(context, organizationId);
+		const result = await context.notifications.send({
+			userId,
+			title: { hu: 'Szervezetből eltávolítottak', en: 'Removed from organization' },
+			message: {
+				hu: `Eltávolítottak a(z) „${name}” szervezetből.`,
+				en: `You have been removed from the organization "${name}".`
+			},
+			type: 'warning'
+		});
+		if (!result.success) console.error('[Work] Eltávolítás értesítés sikertelen:', result.error);
+	} catch (err) {
+		console.error('[Work] Eltávolítás értesítés sikertelen:', err);
 	}
-
-	await requireCapability(context, params.organizationId, 'members.manage');
-
-	// A szervezeti tagságot maga az employees.organization_id hordozza, és egy user
-	// szervezetenként csak egyszer szerepelhet (UNIQUE(user_id, organization_id)),
-	// ezért user_id alapján zárjuk ki azokat, akiknek már van rekordja a szervezetben.
-	const conditions: string[] = [
-		`NOT EXISTS (
-			SELECT 1
-			FROM app__racona_work.employees m
-			WHERE m.organization_id = $1 AND m.user_id = e.user_id
-		)`
-	];
-	const queryParams: unknown[] = [params.organizationId];
-	let paramIndex = 2;
-
-	if (params.search) {
-		conditions.push(`(u.full_name ILIKE $${paramIndex} OR u.email ILIKE $${paramIndex})`);
-		queryParams.push(`%${params.search}%`);
-		paramIndex++;
-	}
-
-	const whereClause = `WHERE ${conditions.join(' AND ')}`;
-
-	const result = await context.db.query(
-		`SELECT * FROM (
-			SELECT DISTINCT ON (e.user_id)
-				e.id,
-				e.user_id,
-				e.position,
-				e.hire_date,
-				e.status,
-				e.created_at,
-				e.updated_at,
-				u.full_name AS user_name,
-				u.email AS user_email,
-				u.image AS user_image
-			FROM app__racona_work.employees e
-			JOIN auth.users u ON e.user_id = u.id
-			${whereClause}
-			ORDER BY e.user_id, e.id
-		 ) AS available
-		 ORDER BY user_name ASC
-		 LIMIT 50`,
-		queryParams
-	);
-
-	return result.rows.map((row: any) => ({
-		id: row.id,
-		userId: row.user_id,
-		position: row.position ?? null,
-		hireDate: row.hire_date ?? null,
-		status: row.status,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
-		userName: row.user_name,
-		userEmail: row.user_email,
-		userImage: row.user_image ?? null
-	}));
 }

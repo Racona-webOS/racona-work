@@ -18,6 +18,7 @@
 	import EntitlementBreakdown from './EntitlementBreakdown.svelte';
 	import CarryOverDeadlineField from './CarryOverDeadlineField.svelte';
 	import { balanceTotal } from '../../../server/leave-entitlement.js';
+	import { formatDate, formatDateTime } from '../../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -105,8 +106,7 @@
 
 	/** YYYY-MM-DD → helyi dátum, időzóna-csúszás nélkül. */
 	function formatDay(day: string): string {
-		const [y, m, d] = day.split('-').map(Number);
-		return new Date(y, m - 1, d).toLocaleDateString();
+		return formatDate(day);
 	}
 
 	function signed(n: number): string {
@@ -564,7 +564,7 @@
 									</span>
 								</div>
 								<span class="history-meta">
-									{new Date(entry.createdAt).toLocaleString()}{entry.actorName ? ` · ${entry.actorName}` : ''}
+									{formatDateTime(entry.createdAt)}{entry.actorName ? ` · ${entry.actorName}` : ''}
 								</span>
 								{#each historyChanges(entry.before, entry.after) as change, i (i)}
 									<span class="history-change">{change}</span>

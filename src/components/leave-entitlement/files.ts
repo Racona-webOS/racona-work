@@ -5,7 +5,9 @@
  * dolgozó ne várjon egy biztosan elutasított feltöltésre.
  */
 
-export const FILE_ACCEPT = '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
+import { base64ToBytes, openBlobInNewTab } from '../../utils/download.js';
+
+export const FILE_ACCEPT ='.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
 export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 export const MAX_FILES_PER_REQUEST = 5;
 
@@ -70,21 +72,6 @@ export async function openFile(sdk: any, fileId: number): Promise<void> {
 		'getLeaveDataRequestFile',
 		{ fileId }
 	);
-	const binary = atob(file.data);
-	const bytes = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-	const url = URL.createObjectURL(new Blob([bytes], { type: file.mimeType }));
-
-	// A 'noopener' jelzővel a window.open mindig null-t adna, ezért utólag bontjuk a kapcsolatot
-	const opened = window.open(url, '_blank');
-	if (opened) {
-		opened.opener = null;
-	} else {
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = file.fileName;
-		link.click();
-	}
-	// A megnyitott lapnak idő kell a betöltéshez, utána felszabadítjuk
-	setTimeout(() => URL.revokeObjectURL(url), 60_000);
+	const bytes = base64ToBytes(file.data);
+	openBlobInNewTab(new Blob([bytes as BlobPart], { type: file.mimeType }), file.fileName);
 }

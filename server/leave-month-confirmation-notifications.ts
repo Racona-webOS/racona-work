@@ -15,7 +15,7 @@
 import type { LocalizedText, RemoteContext } from './context.js';
 import { resolveUserId } from './context.js';
 import {
-	EMAIL_LOCALE,
+	RECIPIENT_LOCALE_SQL,
 	escapeHtml,
 	itemsHtml,
 	itemsText,
@@ -71,7 +71,7 @@ async function actorUserId(context: RemoteContext): Promise<number | null> {
 
 async function loadEmployee(context: RemoteContext, employeeId: number): Promise<Recipient | null> {
 	const result = await context.db.query(
-		`SELECT u.id AS user_id, u.full_name, u.email
+		`SELECT u.id AS user_id, u.full_name, u.email, ${RECIPIENT_LOCALE_SQL}
 		   FROM ${SCHEMA}.employees e
 		   JOIN auth.users u ON u.id = e.user_id
 		  WHERE e.id = $1`,
@@ -173,24 +173,6 @@ export async function notifyMonthConfirmationRequested(
 			data: { monthConfirmationId: notice.id, organizationId: notice.organizationId }
 		});
 
-		const locale = EMAIL_LOCALE;
-		const lines =
-			summary.dayCount === 0
-				? [locale === 'hu' ? 'Erre a hónapra nincs rögzített szabadságod.' : 'No leave is recorded for you this month.']
-				: [
-						...summary.periods.map((p) => periodLine(p, locale)),
-						locale === 'hu'
-							? `Összesen ${daysText(summary.dayCount, locale)}: ${byTypeText(summary.byType, locale)}`
-							: `Total ${daysText(summary.dayCount, locale)}: ${byTypeText(summary.byType, locale)}`
-					];
-		const pendingLabel = locale === 'hu' ? 'Függő kérelmek (még nincsenek benne)' : 'Pending requests (not included yet)';
-		const pendingValue = summary.pendingPeriods.map((p) => periodLine(p, locale)).join('; ');
-		const noteLabel = locale === 'hu' ? 'A HR megjegyzése' : 'Note from HR';
-		const updateNotice = notice.resent
-			? locale === 'hu'
-				? 'Ez a korábbi összesítő frissített változata, a régit nem kell figyelembe venned.'
-				: 'This is an updated version of the earlier summary; you can ignore the previous one.'
-			: '';
 		const organizationName = await loadOrganizationName(context, notice.organizationId);
 
 		await sendEmails(context, {
@@ -198,22 +180,42 @@ export async function notifyMonthConfirmationRequested(
 			event: 'leave.monthConfirmationRequested',
 			template: 'leave_month_confirmation_request',
 			recipients: [employee],
-			buildData: (recipient) => ({
-				recipientName: recipient.name,
-				recipientNameHtml: escapeHtml(recipient.name),
-				organizationName,
-				organizationNameHtml: escapeHtml(organizationName),
-				periodLabel: label[locale],
-				dayCount: summary.dayCount,
-				itemsHtml: itemsHtml(lines),
-				itemsText: itemsText(lines),
-				pendingHtml: pendingValue ? noteBlockHtml(pendingLabel, pendingValue) : '',
-				pendingText: pendingValue ? `\n${pendingLabel}: ${pendingValue}\n` : '',
-				noteHtml: notice.note ? noteBlockHtml(noteLabel, notice.note) : '',
-				noteText: notice.note ? `\n${noteLabel}: ${notice.note}\n` : '',
-				updateNoticeHtml: escapeHtml(updateNotice),
-				updateNoticeText: updateNotice
-			})
+			buildData: (recipient) => {
+				const locale = recipient.locale;
+				const lines =
+					summary.dayCount === 0
+						? [locale === 'hu' ? 'Erre a hónapra nincs rögzített szabadságod.' : 'No leave is recorded for you this month.']
+						: [
+								...summary.periods.map((p) => periodLine(p, locale)),
+								locale === 'hu'
+									? `Összesen ${daysText(summary.dayCount, locale)}: ${byTypeText(summary.byType, locale)}`
+									: `Total ${daysText(summary.dayCount, locale)}: ${byTypeText(summary.byType, locale)}`
+							];
+				const pendingLabel = locale === 'hu' ? 'Függő kérelmek (még nincsenek benne)' : 'Pending requests (not included yet)';
+				const pendingValue = summary.pendingPeriods.map((p) => periodLine(p, locale)).join('; ');
+				const noteLabel = locale === 'hu' ? 'A HR megjegyzése' : 'Note from HR';
+				const updateNotice = notice.resent
+					? locale === 'hu'
+						? 'Ez a korábbi összesítő frissített változata, a régit nem kell figyelembe venned.'
+						: 'This is an updated version of the earlier summary; you can ignore the previous one.'
+					: '';
+				return {
+					recipientName: recipient.name,
+					recipientNameHtml: escapeHtml(recipient.name),
+					organizationName,
+					organizationNameHtml: escapeHtml(organizationName),
+					periodLabel: label[locale],
+					dayCount: summary.dayCount,
+					itemsHtml: itemsHtml(lines),
+					itemsText: itemsText(lines),
+					pendingHtml: pendingValue ? noteBlockHtml(pendingLabel, pendingValue) : '',
+					pendingText: pendingValue ? `\n${pendingLabel}: ${pendingValue}\n` : '',
+					noteHtml: notice.note ? noteBlockHtml(noteLabel, notice.note) : '',
+					noteText: notice.note ? `\n${noteLabel}: ${notice.note}\n` : '',
+					updateNoticeHtml: escapeHtml(updateNotice),
+					updateNoticeText: updateNotice
+				};
+			}
 		});
 	} catch (err) {
 		console.error('[Work] Havi szabadság-összesítő értesítés sikertelen:', err);
@@ -247,7 +249,7 @@ export async function notifyMonthConfirmationDisputed(
 			: [];
 
 		const recipientResult = await context.db.query(
-			`SELECT DISTINCT u.id AS user_id, u.full_name, u.email
+			`SELECT DISTINCT u.id AS user_id, u.full_name, u.email, ${RECIPIENT_LOCALE_SQL}
 			   FROM auth.users u
 			  WHERE u.id = $1
 			     OR u.id IN (SELECT e.user_id FROM ${SCHEMA}.employees e
@@ -285,30 +287,32 @@ export async function notifyMonthConfirmationDisputed(
 			}
 		});
 
-		const locale = EMAIL_LOCALE;
-		const emailLines = notice.items.length
-			? lines(locale)
-			: [locale === 'hu' ? 'Tételt nem jelölt meg, lásd a megjegyzést.' : 'No items marked, see the note.'];
-		const noteLabel = locale === 'hu' ? 'A dolgozó megjegyzése' : "Employee's note";
 		const organizationName = await loadOrganizationName(context, notice.organizationId);
 		await sendEmails(context, {
 			organizationId: notice.organizationId,
 			event: 'leave.monthConfirmationDisputed',
 			template: 'leave_month_confirmation_disputed',
 			recipients,
-			buildData: (recipient) => ({
-				recipientName: recipient.name,
-				recipientNameHtml: escapeHtml(recipient.name),
-				employeeName: name,
-				employeeNameHtml: escapeHtml(name),
-				organizationName,
-				organizationNameHtml: escapeHtml(organizationName),
-				periodLabel: label[locale],
-				itemsHtml: itemsHtml(emailLines),
-				itemsText: itemsText(emailLines),
-				noteHtml: notice.note ? noteBlockHtml(noteLabel, notice.note) : '',
-				noteText: notice.note ? `\n${noteLabel}: ${notice.note}\n` : ''
-			})
+			buildData: (recipient) => {
+				const locale = recipient.locale;
+				const emailLines = notice.items.length
+					? lines(locale)
+					: [locale === 'hu' ? 'Tételt nem jelölt meg, lásd a megjegyzést.' : 'No items marked, see the note.'];
+				const noteLabel = locale === 'hu' ? 'A dolgozó megjegyzése' : "Employee's note";
+				return {
+					recipientName: recipient.name,
+					recipientNameHtml: escapeHtml(recipient.name),
+					employeeName: name,
+					employeeNameHtml: escapeHtml(name),
+					organizationName,
+					organizationNameHtml: escapeHtml(organizationName),
+					periodLabel: label[locale],
+					itemsHtml: itemsHtml(emailLines),
+					itemsText: itemsText(emailLines),
+					noteHtml: notice.note ? noteBlockHtml(noteLabel, notice.note) : '',
+					noteText: notice.note ? `\n${noteLabel}: ${notice.note}\n` : ''
+				};
+			}
 		});
 	} catch (err) {
 		console.error('[Work] Havi összesítő eltérés értesítés sikertelen:', err);
@@ -340,23 +344,24 @@ export async function notifyMonthConfirmationClosed(
 			data: { monthConfirmationId: notice.id, organizationId: notice.organizationId }
 		});
 
-		const locale = EMAIL_LOCALE;
-		const noteLabel = locale === 'hu' ? 'Indoklás' : 'Reason';
 		const organizationName = await loadOrganizationName(context, notice.organizationId);
 		await sendEmails(context, {
 			organizationId: notice.organizationId,
 			event: 'leave.monthConfirmationClosed',
 			template: 'leave_month_confirmation_closed',
 			recipients: [employee],
-			buildData: (recipient) => ({
-				recipientName: recipient.name,
-				recipientNameHtml: escapeHtml(recipient.name),
-				organizationName,
-				organizationNameHtml: escapeHtml(organizationName),
-				periodLabel: label[locale],
-				noteHtml: noteBlockHtml(noteLabel, notice.note),
-				noteText: `${noteLabel}: ${notice.note}`
-			})
+			buildData: (recipient) => {
+				const noteLabel = recipient.locale === 'hu' ? 'Indoklás' : 'Reason';
+				return {
+					recipientName: recipient.name,
+					recipientNameHtml: escapeHtml(recipient.name),
+					organizationName,
+					organizationNameHtml: escapeHtml(organizationName),
+					periodLabel: label[recipient.locale],
+					noteHtml: noteBlockHtml(noteLabel, notice.note),
+					noteText: `${noteLabel}: ${notice.note}`
+				};
+			}
 		});
 	} catch (err) {
 		console.error('[Work] Havi ellenőrzés lezárás értesítés sikertelen:', err);

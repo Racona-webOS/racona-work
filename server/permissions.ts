@@ -375,6 +375,69 @@ async function requireRoleWithinOwnCapabilities(
 	}
 }
 
+/**
+ * Projektszintű szerepkiosztás felső korlátja (mint a szervezeti szerepeknél):
+ * csak olyan szerepet lehet adni vagy elvenni, amelynek minden képességével a hívó
+ * rendelkezik a szervezetben vagy ezen a projekten. Így a project.manage joggal
+ * senki nem adhat magának vagy másnak bővebb jogot, mint ami neki van.
+ * A core admin és a dev mód kivétel.
+ */
+export async function requireProjectRolesWithinOwnCapabilities(
+	context: RemoteContext,
+	organizationId: number,
+	projectId: number,
+	roleIds: number[]
+): Promise<void> {
+	if (roleIds.length === 0 || isCoreAdmin(context) || isDevMode(context)) return;
+
+	const own = await loadOwnCapabilities(context, organizationId);
+	const projectCaps = await context.db.query(
+		`SELECT DISTINCT rc.capability
+		   FROM app__racona_work.wp_project_member_roles pmr
+		   JOIN app__racona_work.wp_role_capabilities rc ON rc.role_id = pmr.role_id
+		  WHERE pmr.project_id = $1 AND pmr.user_id = $2`,
+		[projectId, await resolveUserId(context)]
+	);
+	const external = await isExternalMember(context, organizationId, await resolveUserId(context));
+	for (const row of projectCaps.rows as { capability: string }[]) {
+		if (!external || EXTERNAL_CAPABILITIES.has(row.capability)) own.add(row.capability);
+	}
+
+	const beyond = new Set<string>();
+	for (const roleId of roleIds) {
+		for (const cap of capabilitiesBeyond(own, [], await loadRoleCapabilities(context, roleId))) {
+			beyond.add(cap);
+		}
+	}
+	if (beyond.size > 0) {
+		throw new Error(
+			`Csak olyan szerepet adhatsz vagy vehetsz el, amelynek minden képességével te is rendelkezel (hiányzik: ${[...beyond].sort().join(', ')}).`
+		);
+	}
+}
+
+export const SELF_DECISION_ERROR =
+	'A saját ügyedet nem bírálhatod el. Kérd meg egy másik jóváhagyót vagy a rendszergazdát.';
+
+/**
+ * Saját ügyben nincs döntés: a jóváhagyó a saját szabadságát, kiküldetési
+ * elszámolását, adatbejelentését és havi összesítőjét nem bírálhatja el, és a
+ * naptárban sem rögzíthet magának közvetlenül szabadságot. Ha a szervezetben
+ * nincs más, aki elbírálhatná, a core admin (rendszergazda) intézi; neki és a
+ * dev módnak nincs korlát.
+ *
+ * @param employeeId - Akinek az ügyéről a döntés szól.
+ */
+export async function ensureNotSelfDecision(context: RemoteContext, employeeId: number): Promise<void> {
+	if (isCoreAdmin(context) || isDevMode(context)) return;
+	const r = await context.db.query(`SELECT user_id FROM app__racona_work.employees WHERE id = $1`, [
+		employeeId
+	]);
+	if (r.rows[0] && Number(r.rows[0].user_id) === (await resolveUserId(context))) {
+		throw new Error(SELF_DECISION_ERROR);
+	}
+}
+
 // --- Rendszer szerepek seedelése (új szervezethez) --------------------------
 
 /**
@@ -615,7 +678,7 @@ export async function updateRole(
 
 	// Szerep lekérése + org azonosítása
 	const roleResult = await context.db.query(
-		`SELECT id, organization_id, is_system
+		`SELECT id, organization_id, is_system, name, description
 		   FROM app__racona_work.wp_roles WHERE id = $1`,
 		[params.id]
 	);
@@ -624,11 +687,32 @@ export async function updateRole(
 		id: number;
 		organization_id: number;
 		is_system: boolean;
+		name: string;
+		description: string | null;
 	};
 
 	if (!isCoreAdmin(context) && !isDevMode(context)) {
 		await requireCapability(context, role.organization_id, 'roles.manage');
 	}
+
+	const name = params.name === undefined ? undefined : params.name.trim();
+	const description =
+		params.description === undefined
+			? undefined
+			: params.description === null
+				? null
+				: String(params.description).trim() || null;
+
+	// A rendszerszerep neve és leírása a felületen a kulcsa alapján, fordítva
+	// jelenik meg, ezért nem írható át (a képességei igen).
+	if (
+		role.is_system &&
+		((name !== undefined && name !== role.name) ||
+			(description !== undefined && description !== role.description))
+	) {
+		throw new Error('A rendszer szerep neve és leírása nem módosítható');
+	}
+	if (name !== undefined && !name) throw new Error('A szerep neve kötelező');
 
 	const caps = params.capabilities === undefined ? undefined : validateCapabilities(params.capabilities);
 	if (caps) {
@@ -644,22 +728,15 @@ export async function updateRole(
 	try {
 		await client.query('BEGIN');
 
-		if (params.name !== undefined || params.description !== undefined) {
+		if (!role.is_system && (name !== undefined || description !== undefined)) {
+			// A meg nem adott mező marad (korábban a leírás törlődött, ha csak nevet küldtek)
 			await client.query(
 				`UPDATE app__racona_work.wp_roles
 				    SET name = COALESCE($2, name),
-				        description = $3,
+				        description = CASE WHEN $4::boolean THEN $3::text ELSE description END,
 				        updated_at = NOW()
 				  WHERE id = $1`,
-				[
-					role.id,
-					params.name?.trim() ?? null,
-					params.description === undefined
-						? null
-						: params.description === null
-							? null
-							: String(params.description).trim() || null
-				]
+				[role.id, name ?? null, description ?? null, description !== undefined]
 			);
 		}
 

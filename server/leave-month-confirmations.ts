@@ -12,7 +12,7 @@
 
 import type { RemoteContext } from './context.js';
 import { resolveUserId } from './context.js';
-import { requireCapability } from './permissions.js';
+import { ensureNotSelfDecision, requireCapability } from './permissions.js';
 import { SCHEMA, requireId, requireOrganizationId } from './trip-access.js';
 import { todayInBudapest } from './dates.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
@@ -83,6 +83,8 @@ export interface MonthConfirmationRow {
 	confirmation: MonthConfirmation | null;
 	/** Mit tenne vele a kiküldés gomb (D6). */
 	action: SendAction;
+	/** A hívó saját összesítője: ezt nem zárhatja le (csak a rendszergazda). */
+	isOwn: boolean;
 }
 
 export interface MonthConfirmationOverview {
@@ -298,6 +300,11 @@ export async function getMonthConfirmations(
 	const { year, month } = parseYearMonth(params.year, params.month);
 	const employeeId = parseEmployeeFilter(params.employeeId);
 	await requireCapability(context, organizationId, 'leave.approve');
+	const own = await context.db.query(
+		`SELECT id FROM ${SCHEMA}.employees WHERE user_id = $1 AND organization_id = $2`,
+		[await resolveUserId(context), organizationId]
+	);
+	const ownEmployeeId: number | null = own.rows[0]?.id ?? null;
 
 	const [data, current, closedYear] = await Promise.all([
 		loadMonthData(context.db, context, organizationId, year, month, employeeId),
@@ -325,7 +332,8 @@ export async function getMonthConfirmations(
 			dayCount: emp.days.length,
 			pendingDayCount: new Set(emp.pending.map((d) => d.day).filter((d) => !approvedDays.has(d))).size,
 			confirmation,
-			action: emp.eligible ? planSendAction(row ?? null, fingerprint) : 'none'
+			action: emp.eligible ? planSendAction(row ?? null, fingerprint) : 'none',
+			isOwn: emp.employeeId === ownEmployeeId
 		});
 	}
 
@@ -467,6 +475,8 @@ export async function resolveMonthConfirmation(
 	const userId = await resolveUserId(context);
 
 	if (params.action === 'close') {
+		// A saját havi összesítőjét a jóváhagyó nem zárhatja le elfogadás nélkül
+		await ensureNotSelfDecision(context, employeeId);
 		if (!note) throw new Error('Írd meg az indoklást: a dolgozó ezt kapja meg.');
 		const closed = await context.db.query(
 			`UPDATE ${SCHEMA}.leave_month_confirmations

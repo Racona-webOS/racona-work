@@ -13,7 +13,11 @@
 
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
-import { hasCapability, requireCapability } from './permissions.js';
+import {
+	hasCapability,
+	requireCapability,
+	requireProjectRolesWithinOwnCapabilities
+} from './permissions.js';
 
 // --- Típusok ----------------------------------------------------------------
 
@@ -722,7 +726,31 @@ export async function setProjectUserRoles(
 		if (check.rows.length !== roleIds.length) {
 			throw new Error('Egy vagy több szerep nem érvényes ebben a szervezetben');
 		}
+
+		// Projektszerep csak a szervezet dolgozójának adható: más szervezet felhasználója
+		// ettől a projekt adataihoz férne hozzá. (Elvenni bárkitől lehet.)
+		const memberCheck = await context.db.query(
+			`SELECT 1 FROM app__racona_work.employees
+			  WHERE organization_id = $1 AND user_id = $2 LIMIT 1`,
+			[project.organization_id, params.userId]
+		);
+		if (memberCheck.rows.length === 0) {
+			throw new Error('A felhasználó nem tagja a szervezetnek');
+		}
 	}
+
+	// Felső korlát: csak a hívó saját képességein belüli szerepet lehet adni vagy elvenni
+	const current = await context.db.query(
+		`SELECT role_id FROM app__racona_work.wp_project_member_roles
+		  WHERE project_id = $1 AND user_id = $2`,
+		[project.id, params.userId]
+	);
+	const currentIds = new Set<number>(current.rows.map((r: { role_id: number }) => Number(r.role_id)));
+	const changed = [
+		...roleIds.filter((id) => !currentIds.has(id)),
+		...[...currentIds].filter((id) => !roleIds.includes(id))
+	];
+	await requireProjectRolesWithinOwnCapabilities(context, project.organization_id, project.id, changed);
 
 	// Üres lista esetén csak törlünk, egyébként az user felől tranzakcióban csere.
 	const client = await context.db.connect();

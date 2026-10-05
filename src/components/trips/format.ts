@@ -4,46 +4,67 @@
 
 import type { SettlementWarning, SettlementStatus } from '../../../server/functions.js';
 import { PRICE_TYPE_LABELS } from '../../../server/trip-calc.js';
+import { appLocale, formatDate, formatNumber } from '../../utils/format.js';
+import type { AppLocale } from '../../utils/format.js';
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
-const huf0 = new Intl.NumberFormat('hu-HU', { maximumFractionDigits: 0 });
-const huf2 = new Intl.NumberFormat('hu-HU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const dec1 = new Intl.NumberFormat('hu-HU', { maximumFractionDigits: 1 });
+// A számok és dátumok a felület nyelvén jelennek meg; a hivatalos nyomtatvány
+// (settlement-print.ts, settlement-xlsx.ts) magyar formátumot kér (`hu-HU`, `official*`).
 
-export function formatHuf(value: number | null | undefined, decimals = false): string {
+export function formatHuf(
+	value: number | null | undefined,
+	decimals = false,
+	locale: AppLocale = appLocale()
+): string {
 	if (value === null || value === undefined) return '—';
-	return `${(decimals ? huf2 : huf0).format(value)} Ft`;
+	const digits = decimals ? 2 : 0;
+	return `${formatNumber(value, { minimumFractionDigits: digits, maximumFractionDigits: digits }, locale)} Ft`;
 }
 
 export function formatKm(value: number | null | undefined): string {
 	if (value === null || value === undefined) return '—';
-	return `${dec1.format(value)} km`;
+	return `${formatDecimal(value)} km`;
 }
 
 export function formatDecimal(value: number | null | undefined): string {
-	return value === null || value === undefined ? '—' : dec1.format(value);
+	return value === null || value === undefined ? '—' : formatNumber(value, { maximumFractionDigits: 1 });
 }
 
-/** `YYYY-MM-DDTHH:mm` vagy `YYYY-MM-DD HH:mm` → `2025.08.12. 08:00` */
-export function formatDateTime(value: string | null | undefined): string {
+/** `YYYY-MM-DD` → a felület nyelvén („2025. 08. 12.” / „12/08/2025”). */
+export function formatDay(value: string | null | undefined, locale: AppLocale = appLocale()): string {
+	return formatDate(value, undefined, locale);
+}
+
+/**
+ * `YYYY-MM-DDTHH:mm` (budapesti falióra-idő) → a nap a felület nyelvén, az
+ * időpont változatlanul. Nem alakítjuk át `Date`-té, hogy ne csússzon időzónával.
+ */
+export function formatDateTime(value: string | null | undefined, locale: AppLocale = appLocale()): string {
 	if (!value) return '—';
 	const [date, time] = value.split(/[T ]/);
-	return `${date.replace(/-/g, '.')}. ${time ?? ''}`.trim();
-}
-
-/** `YYYY-MM-DD` → `2025.08.12.` */
-export function formatDay(value: string | null | undefined): string {
-	return value ? `${value.replace(/-/g, '.')}.` : '—';
+	return `${formatDay(date, locale)} ${time ?? ''}`.trim();
 }
 
 /** Csak az időpont, ha a kezdés és a vég ugyanarra a napra esik. */
-export function formatTimeRange(start: string, end: string): string {
+export function formatTimeRange(start: string, end: string, locale: AppLocale = appLocale()): string {
 	const [startDay, startTime] = start.split(/[T ]/);
 	const [endDay, endTime] = end.split(/[T ]/);
 	return startDay === endDay
-		? `${formatDay(startDay)} ${startTime}–${endTime}`
-		: `${formatDateTime(start)} – ${formatDateTime(end)}`;
+		? `${formatDay(startDay, locale)} ${startTime}–${endTime}`
+		: `${formatDateTime(start, locale)} – ${formatDateTime(end, locale)}`;
+}
+
+/** A hivatalos nyomtatvány napja: `YYYY-MM-DD` → `2025.08.12.` (mindig magyar). */
+export function officialDay(value: string | null | undefined): string {
+	return value ? `${value.replace(/-/g, '.')}.` : '—';
+}
+
+/** A hivatalos nyomtatvány időpontja: `YYYY-MM-DDTHH:mm` → `2025.08.12. 08:00` (mindig magyar). */
+export function officialDateTime(value: string | null | undefined): string {
+	if (!value) return '—';
+	const [date, time] = value.split(/[T ]/);
+	return `${officialDay(date)} ${time ?? ''}`.trim();
 }
 
 const MONTHS_HU = [

@@ -13,6 +13,7 @@ import { recalculateEmployeeBalances } from './leave-profile.js';
 import { geocodeAddress } from './geo.js';
 import { validateTaxId } from './trip-calc.js';
 import { isEmailEnabled } from './notification-settings.js';
+import { DEFAULT_EMAIL_LOCALE, escapeHtml } from './notification-email.js';
 import type { RecalculatedBalance } from './leave-profile.js';
 import type { PaginatedResult } from './types.js';
 
@@ -32,8 +33,11 @@ export interface EmployeeRow extends Employee {
 	userName: string;
 	userEmail: string;
 	userImage: string | null;
-	/** A Jogosultságoknál kiosztott szervezeti szerepek nevei (csak a getEmployees tölti). */
-	roles?: string[];
+	/**
+	 * A Jogosultságoknál kiosztott szervezeti szerepek (csak a getEmployees tölti).
+	 * A kulcs és az isSystem a rendszerszerepek fordított nevéhez kell (src/utils/roles.ts).
+	 */
+	roles?: Array<{ key: string; name: string; isSystem: boolean }>;
 }
 
 export interface EmployeeDetail {
@@ -166,8 +170,6 @@ export async function createEmployeeFromUser(
 	params: { userId: number; organizationId: number; position?: string },
 	context: RemoteContext
 ): Promise<Employee> {
-	console.log('[createEmployeeFromUser] Params:', params);
-
 	// Paraméter validáció
 	if (!params.organizationId || params.organizationId <= 0) {
 		throw new Error('Érvénytelen szervezet azonosító');
@@ -212,8 +214,6 @@ export async function createEmployeeWithUser(
 	},
 	context: RemoteContext
 ): Promise<Employee> {
-	console.log('[createEmployeeWithUser] Params:', params);
-
 	// Paraméter validáció
 	if (!params.organizationId || params.organizationId <= 0) {
 		throw new Error('Érvénytelen szervezet azonosító');
@@ -308,7 +308,7 @@ export async function createEmployeeWithUser(
 		// ezért a feltételes blokkokat itt formázzuk előre. Ha nincs érték,
 		// üres string megy át, és a placeholder eltűnik a kimenetből.
 		const positionHtml = params.position
-			? `<p style="margin: 0 0 4px; font-size: 14px; color: #18181b;"><strong>Beosztás:</strong> ${params.position}</p>`
+			? `<p style="margin: 0 0 4px; font-size: 14px; color: #18181b;"><strong>Beosztás:</strong> ${escapeHtml(params.position)}</p>`
 			: '';
 		const positionText = params.position ? `  Beosztás: ${params.position}\n` : '';
 
@@ -316,14 +316,20 @@ export async function createEmployeeWithUser(
 			to: params.email,
 			template: 'employee_welcome',
 			data: {
+				// A HTML változat a *Html mezőket kapja (a core sablonmotorja nem escapel)
 				name: params.name,
+				nameHtml: escapeHtml(params.name),
 				email: params.email,
+				emailHtml: escapeHtml(params.email),
 				organizationName,
+				organizationNameHtml: escapeHtml(organizationName),
 				pluginName,
+				pluginNameHtml: escapeHtml(pluginName),
 				positionHtml,
 				positionText
 			},
-			locale: 'hu'
+			// Az épp most létrehozott felhasználónak még nincs nyelvi beállítása
+			locale: DEFAULT_EMAIL_LOCALE
 		});
 	} catch (emailErr) {
 		console.error('[Work] Üdvözlő email küldése sikertelen:', emailErr);
@@ -420,7 +426,16 @@ export async function getEmployees(
 				  JOIN app__racona_work.wp_roles r ON r.id = mr.role_id
 				 WHERE mr.organization_id = e.organization_id AND mr.user_id = e.user_id
 				 ORDER BY r.is_system DESC, r.name ASC
-			) AS role_names
+			) AS role_names,
+			COALESCE((
+				SELECT json_agg(
+						json_build_object('key', r.key, 'name', r.name, 'isSystem', r.is_system)
+						ORDER BY r.is_system DESC, r.name ASC
+					)
+				  FROM app__racona_work.wp_member_roles mr
+				  JOIN app__racona_work.wp_roles r ON r.id = mr.role_id
+				 WHERE mr.organization_id = e.organization_id AND mr.user_id = e.user_id
+			), '[]'::json) AS role_list
 		 FROM app__racona_work.employees e
 		 JOIN auth.users u ON e.user_id = u.id
 		 ${whereClause}
@@ -441,7 +456,7 @@ export async function getEmployees(
 		userEmail: row.user_email,
 		userImage: row.user_image ?? null,
 		isExternal: row.is_external === true,
-		roles: row.role_names ?? []
+		roles: row.role_list ?? []
 	}));
 
 	return {

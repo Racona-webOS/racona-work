@@ -33,6 +33,13 @@
 	const sdk = $derived(resolveSdk(pluginId));
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
+	/** A tag szerepének felirata; ismeretlen (régi, szabad szöveges) szerepnél maga a szerep. */
+	function roleLabel(role: string): string {
+		const key = `projects.members.roleOptions.${role}`;
+		const label = t(key);
+		return label === key ? role : label;
+	}
+
 	type ProjectMemberRole =
 		| 'member'
 		| 'member_developer'
@@ -135,7 +142,7 @@
 					</span>
 				</div>
 				<span class="role-badge">
-					{t(`projects.members.roleOptions.${m.role}`) || m.role}
+					{roleLabel(m.role)}
 				</span>
 				{#if canManage}
 					<button

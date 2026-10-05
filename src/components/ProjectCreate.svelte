@@ -18,16 +18,12 @@
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { Organization, ProjectRow } from '../../server/functions.js';
 	import AccessDenied from './AccessDenied.svelte';
+	import { resolveSdk, translate } from '../utils/sdk.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
-	const sdk = $derived(
-		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
-	);
-
-	function t(key: string): string {
-		return sdk?.i18n?.t(key) ?? key;
-	}
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	let orgStore = $state<OrganizationStore | null>(null);
 	let currentOrganization = $state<Organization | null>(null);

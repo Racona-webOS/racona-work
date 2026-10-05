@@ -16,18 +16,13 @@ export function resolveSdk(pluginId: string): any {
 /**
  * Fordítás az SDK i18n-jével. Ha nincs kulcs, magát a kulcsot adja vissza,
  * hogy a felület ne üres szöveggel jelenjen meg.
- * A `vars` értékei a `{név}` helyőrzőkbe kerülnek.
+ * A `vars` értékei a `{név}` helyőrzők minden előfordulásába bekerülnek
+ * (ezt az SDK `i18n.t` végzi, a core és a dev mock is).
  */
 export function translate(
 	sdk: any,
 	key: string,
 	vars?: Record<string, string | number>
 ): string {
-	let str = sdk?.i18n?.t(key) ?? key;
-	if (vars) {
-		for (const [k, v] of Object.entries(vars)) {
-			str = str.replace(`{${k}}`, String(v));
-		}
-	}
-	return str;
+	return sdk?.i18n?.t(key, vars) ?? key;
 }

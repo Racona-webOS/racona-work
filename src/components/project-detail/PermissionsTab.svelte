@@ -11,6 +11,7 @@
 	import type { RoleRow, OverrideRow } from './types.js';
 	import Checkbox from '../ui/Checkbox.svelte';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
+	import { roleDescription, roleName, sortRoles } from '../../utils/roles.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -34,6 +35,8 @@
 	/** Lezárt projekt: a projekt-szintű szerepek csak olvashatók. */
 	const closed = $derived(!!project.closedAt);
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
+	/** Oszlopsorrend: rendszerszerepek elöl, a felület nyelvén ábécérendben. */
+	const sortedRoles = $derived(sortRoles(t, orgRoles));
 
 	let savingUserId = $state<number | null>(null);
 	let showAddOverride = $state(false);
@@ -159,10 +162,10 @@
 		<table class="matrix">
 			<thead>
 				<tr>
-					<th class="user-col">User</th>
-					{#each orgRoles as r (r.id)}
-						<th class="role-col" title={r.description ?? ''}>
-							{r.name}
+					<th class="user-col">{t('projects.permissions.userColumn')}</th>
+					{#each sortedRoles as r (r.id)}
+						<th class="role-col" title={roleDescription(t, r) ?? ''}>
+							{roleName(t, r)}
 							{#if r.isSystem}
 								<span class="mini-badge">{t('permissions.roles.systemBadge')}</span>
 							{/if}
@@ -189,7 +192,7 @@
 								</div>
 							</div>
 						</td>
-						{#each orgRoles as r (r.id)}
+						{#each sortedRoles as r (r.id)}
 							<td class="role-col">
 								<Checkbox
 									checked={userHasOverrideRole(row, r.id)}
@@ -241,20 +244,20 @@
 						<p class="empty-state">{t('projects.permissions.noOrgRoles')}</p>
 					{:else}
 						<div class="role-options">
-							{#each orgRoles as r (r.id)}
+							{#each sortedRoles as r (r.id)}
 								<label class="role-option">
 									<Checkbox
 										checked={overrideRoleIds.has(r.id)}
 										onCheckedChange={() => toggleOverrideAddRole(r.id)}
 									/>
 									<span class="role-option-name">
-										{r.name}
+										{roleName(t, r)}
 										{#if r.isSystem}
 											<span class="mini-badge">{t('permissions.roles.systemBadge')}</span>
 										{/if}
 									</span>
-									{#if r.description}
-										<span class="role-option-desc">{r.description}</span>
+									{#if roleDescription(t, r)}
+										<span class="role-option-desc">{roleDescription(t, r)}</span>
 									{/if}
 								</label>
 							{/each}

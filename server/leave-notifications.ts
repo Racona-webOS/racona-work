@@ -18,7 +18,7 @@ import type { RemoteContext, LocalizedText } from './context.js';
 import { resolveUserId } from './context.js';
 import { isLeaveType, LEAVE_TYPE_LABELS } from './leave-types.js';
 import {
-	EMAIL_LOCALE,
+	RECIPIENT_LOCALE_SQL,
 	escapeHtml,
 	itemsHtml,
 	itemsText,
@@ -179,7 +179,7 @@ export async function notifyLeaveRequestsCreated(
 		// Csak az adott szervezet aktív dolgozói — egy másik szervezetből
 		// bekerült vagy azóta kilépett dolgozó nem kap értesítést.
 		const recipientResult = await context.db.query(
-			`SELECT DISTINCT u.id AS user_id, u.full_name, u.email
+			`SELECT DISTINCT u.id AS user_id, u.full_name, u.email, ${RECIPIENT_LOCALE_SQL}
 			   FROM ${SCHEMA}.employees e
 			   JOIN auth.users u ON u.id = e.user_id
 			  WHERE e.id = ANY($1::int[])
@@ -219,7 +219,7 @@ export async function notifyLeaveRequestsCreated(
 		});
 
 		const reason = request.reason?.trim() || '';
-		const reasonLabel = EMAIL_LOCALE === 'hu' ? 'Indoklás' : 'Reason';
+		const reasonLabel: LocalizedText = { hu: 'Indoklás', en: 'Reason' };
 		await sendEmails(context, {
 			organizationId: request.organizationId,
 			event: 'leave.requestCreated',
@@ -232,11 +232,11 @@ export async function notifyLeaveRequestsCreated(
 				employeeNameHtml: escapeHtml(employeeName),
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
-				leaveTypeLabel: leaveType[EMAIL_LOCALE],
-				period: period[EMAIL_LOCALE],
+				leaveTypeLabel: leaveType[recipient.locale],
+				period: period[recipient.locale],
 				days,
-				reasonHtml: reason ? noteBlockHtml(reasonLabel, reason) : '',
-				reasonText: reason ? `${reasonLabel}: ${reason}\n` : ''
+				reasonHtml: reason ? noteBlockHtml(reasonLabel[recipient.locale], reason) : '',
+				reasonText: reason ? `${reasonLabel[recipient.locale]}: ${reason}\n` : ''
 			})
 		});
 	} catch (err) {
@@ -286,11 +286,11 @@ export async function notifyLeaveRequestDecision(
 				recipientNameHtml: escapeHtml(recipient.name),
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
-				statusLabel: texts.label[EMAIL_LOCALE],
-				statusSentence: texts.sentence[EMAIL_LOCALE],
+				statusLabel: texts.label[recipient.locale],
+				statusSentence: texts.sentence[recipient.locale],
 				statusColor: texts.color,
-				leaveTypeLabel: leaveType[EMAIL_LOCALE],
-				period: period[EMAIL_LOCALE],
+				leaveTypeLabel: leaveType[recipient.locale],
+				period: period[recipient.locale],
 				days: request.days
 			})
 		});
@@ -339,7 +339,7 @@ async function resolveActorUserId(context: RemoteContext): Promise<number | null
 
 async function loadEmployee(context: RemoteContext, employeeId: number): Promise<Recipient | null> {
 	const result = await context.db.query(
-		`SELECT u.id AS user_id, u.full_name, u.email
+		`SELECT u.id AS user_id, u.full_name, u.email, ${RECIPIENT_LOCALE_SQL}
 		   FROM ${SCHEMA}.employees e
 		   JOIN auth.users u ON u.id = e.user_id
 		  WHERE e.id = $1`,
@@ -407,7 +407,7 @@ export async function notifyLeaveRequestWithdrawn(
 
 		const actorUserId = await resolveActorUserId(context);
 		const recipientResult = await context.db.query(
-			`SELECT DISTINCT u.id AS user_id, u.full_name, u.email
+			`SELECT DISTINCT u.id AS user_id, u.full_name, u.email, ${RECIPIENT_LOCALE_SQL}
 			   FROM ${SCHEMA}.employees e
 			   JOIN auth.users u ON u.id = e.user_id
 			  WHERE e.id = ANY($1::int[])
@@ -450,8 +450,8 @@ export async function notifyLeaveRequestWithdrawn(
 				employeeNameHtml: escapeHtml(employeeName),
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
-				leaveTypeLabel: leaveType[EMAIL_LOCALE],
-				period: period[EMAIL_LOCALE],
+				leaveTypeLabel: leaveType[recipient.locale],
+				period: period[recipient.locale],
 				days: request.days
 			})
 		});
@@ -504,8 +504,8 @@ export async function notifyLeaveDeleted(
 				recipientNameHtml: escapeHtml(recipient.name),
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
-				itemsHtml: itemsHtml(lines[EMAIL_LOCALE]),
-				itemsText: itemsText(lines[EMAIL_LOCALE])
+				itemsHtml: itemsHtml(lines[recipient.locale]),
+				itemsText: itemsText(lines[recipient.locale])
 			})
 		});
 	} catch (err) {
@@ -590,8 +590,8 @@ export async function notifyLeaveDaysRemoved(
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
 				dayCount: count,
-				itemsHtml: itemsHtml(lines.map((l) => l[EMAIL_LOCALE])),
-				itemsText: itemsText(lines.map((l) => l[EMAIL_LOCALE]))
+				itemsHtml: itemsHtml(lines.map((l) => l[recipient.locale])),
+				itemsText: itemsText(lines.map((l) => l[recipient.locale]))
 			})
 		});
 	} catch (err) {
@@ -646,10 +646,10 @@ export async function notifyLeaveDaysAdded(
 				recipientNameHtml: escapeHtml(recipient.name),
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
-				leaveTypeLabel: leaveType[EMAIL_LOCALE],
+				leaveTypeLabel: leaveType[recipient.locale],
 				dayCount: count,
-				itemsHtml: itemsHtml(lines.map((l) => l[EMAIL_LOCALE])),
-				itemsText: itemsText(lines.map((l) => l[EMAIL_LOCALE]))
+				itemsHtml: itemsHtml(lines.map((l) => l[recipient.locale])),
+				itemsText: itemsText(lines.map((l) => l[recipient.locale]))
 			})
 		});
 	} catch (err) {
@@ -719,8 +719,8 @@ export async function notifyLeaveDataRequestCreated(
 				employeeNameHtml: escapeHtml(name),
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
-				summary: request.summary[EMAIL_LOCALE],
-				summaryHtml: escapeHtml(request.summary[EMAIL_LOCALE])
+				summary: request.summary[recipient.locale],
+				summaryHtml: escapeHtml(request.summary[recipient.locale])
 			})
 		});
 	} catch (err) {
@@ -755,7 +755,7 @@ export async function notifyLeaveDataRequestDecision(
 		});
 
 		const texts = DECISION_TEXTS[decision];
-		const noteLabel = EMAIL_LOCALE === 'hu' ? 'Megjegyzés' : 'Note';
+		const noteLabel: LocalizedText = { hu: 'Megjegyzés', en: 'Note' };
 		const organizationName = await loadOrganizationName(context, request.organizationId);
 		await sendEmails(context, {
 			organizationId: request.organizationId,
@@ -767,13 +767,13 @@ export async function notifyLeaveDataRequestDecision(
 				recipientNameHtml: escapeHtml(recipient.name),
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
-				statusLabel: texts.label[EMAIL_LOCALE],
-				statusSentence: texts.sentence[EMAIL_LOCALE],
+				statusLabel: texts.label[recipient.locale],
+				statusSentence: texts.sentence[recipient.locale],
 				statusColor: texts.color,
-				summary: request.summary[EMAIL_LOCALE],
-				summaryHtml: escapeHtml(request.summary[EMAIL_LOCALE]),
-				noteHtml: note ? noteBlockHtml(noteLabel, note) : '',
-				noteText: note ? `\n  ${noteLabel}: ${note}` : ''
+				summary: request.summary[recipient.locale],
+				summaryHtml: escapeHtml(request.summary[recipient.locale]),
+				noteHtml: note ? noteBlockHtml(noteLabel[recipient.locale], note) : '',
+				noteText: note ? `\n  ${noteLabel[recipient.locale]}: ${note}` : ''
 			})
 		});
 	} catch (err) {

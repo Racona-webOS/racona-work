@@ -8,8 +8,9 @@
 	import { LEAVE_TYPES } from '../../../server/leave-types.js';
 	import { summarizeLeave, visibleLeaveTypes } from '../../lib/leave-summary.js';
 	import type { LeaveSummaryCounts } from '../../lib/leave-summary.js';
-	import { buildXlsx, downloadBytes } from '../../lib/xlsx-writer.js';
+	import { buildXlsx } from '../../lib/xlsx-writer.js';
 	import type { XlsxCell } from '../../lib/xlsx-writer.js';
+	import { downloadBytes } from '../../utils/download.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 
 	let {

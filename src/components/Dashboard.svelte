@@ -33,26 +33,17 @@
   import CarryOverAlerts from "./leave-entitlement/CarryOverAlerts.svelte";
   import MyMonthConfirmations from "./leave-month-confirmation/MyMonthConfirmations.svelte";
   import { LEAVE_TYPES, consumesAnnualBalance } from "../../server/leave-types.js";
+  import { resolveSdk, translate } from "../utils/sdk.js";
+  import { formatDate as formatAppDate } from "../utils/format.js";
 
   let { pluginId = "racona-work" }: { pluginId?: string } = $props();
 
-  const sdk = $derived(
-    (window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS,
-  );
+  const sdk = $derived(resolveSdk(pluginId));
+  const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
   // Ugyanaz a primary gomb + ⋮ menü, mint a táblázatok műveleti oszlopában.
   // Régebbi core-on (és standalone dev módban) nincs kiajánlva: ott csak a státusz látszik.
   const RowActions = $derived(sdk?.components?.DataTableRowActions ?? null);
-
-  function t(key: string, vars?: Record<string, string | number>): string {
-    let str = sdk?.i18n?.t(key) ?? key;
-    if (vars) {
-      for (const [k, v] of Object.entries(vars)) {
-        str = str.replace(`{${k}}`, String(v));
-      }
-    }
-    return str;
-  }
 
   // --- Store ---
   let orgStore = $state<OrganizationStore | null>(null);
@@ -179,7 +170,7 @@
       lower.includes("fetch") ||
       lower.includes("connection")
     ) {
-      return "Hálózati hiba. Kérlek, ellenőrizd az internetkapcsolatot.";
+      return t("error.network");
     }
     if (
       lower.includes("unauthorized") ||
@@ -187,7 +178,7 @@
       lower.includes("permission") ||
       lower.includes("jogosult")
     ) {
-      return "Nincs jogosultságod ehhez az adathoz.";
+      return t("error.forbidden");
     }
     return errorMessage;
   }
@@ -227,6 +218,11 @@
   }
 
   // --- Elbírálás ----------------------------------------------------------
+  /** Saját kérelemről csak a rendszergazda dönthet (a szerver is elutasítaná). */
+  function canDecideOn(req: LeaveRequestRow): boolean {
+    return !myEmployee || req.employeeId !== myEmployee.id || orgStore?.isAdmin === true;
+  }
+
   function requestActions(req: LeaveRequestRow) {
     return [
       {
@@ -333,8 +329,7 @@
 
   // --- Segédfüggvények ----------------------------------------------------
   function formatDate(dateStr: string | null): string {
-    if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString();
+    return formatAppDate(dateStr);
   }
 
   function leaveTypeLabel(type: string): string {
@@ -409,7 +404,7 @@
           <p class="error-message">{statsError}</p>
           <button class="btn-retry" onclick={reload}>
             <span class="retry-icon">🔄</span>
-            Újrapróbálás
+            {t("error.retry")}
           </button>
         </div>
       {:else if stats}
@@ -458,8 +453,8 @@
                   <div class="request-dates">
                     {formatDate(req.startDate)} – {formatDate(req.endDate)}
                   </div>
-                  <div class="request-days">{req.days} nap</div>
-                  {#if RowActions && canApprove && req.status === "pending"}
+                  <div class="request-days">{t("dashboard.requestDays", { days: req.days })}</div>
+                  {#if RowActions && canApprove && req.status === "pending" && canDecideOn(req)}
                     <div class="request-actions">
                       <RowActions actions={requestActions(req)} row={req} />
                     </div>
@@ -499,7 +494,7 @@
           <p class="error-message">{selfError}</p>
           <button class="btn-retry" onclick={reload}>
             <span class="retry-icon">🔄</span>
-            Újrapróbálás
+            {t("error.retry")}
           </button>
         </div>
       {:else if !myEmployee}
@@ -644,7 +639,7 @@
             <div class="request-dates">
               {formatDate(req.startDate)} – {formatDate(req.endDate)}
             </div>
-            <div class="request-days">{req.days} nap</div>
+            <div class="request-days">{t("dashboard.requestDays", { days: req.days })}</div>
             <span class="badge {statusClass(req.status)}"
               >{statusLabel(req.status)}</span
             >

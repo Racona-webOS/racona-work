@@ -24,16 +24,13 @@
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
 	import { errorMessage, formatDecimal } from './trips/format.js';
+	import { resolveSdk, translate } from '../utils/sdk.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
-	const sdk = $derived((window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS);
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
-	function t(key: string, vars?: Record<string, string | number>): string {
-		let str = sdk?.i18n?.t(key) ?? key;
-		if (vars) for (const [k, v] of Object.entries(vars)) str = str.replace(`{${k}}`, String(v));
-		return str;
-	}
 	const locale = $derived(sdk?.i18n?.locale === 'en' ? 'en' : 'hu');
 
 	let orgStore = $state<OrganizationStore | null>(null);

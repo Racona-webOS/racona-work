@@ -11,24 +11,41 @@ import { SCHEMA } from './trip-access.js';
 import { isEmailEnabled } from './notification-settings.js';
 import type { NotificationEvent } from './notification-settings.js';
 
-/** Az email nyelve. A felhasználóknak nincs tárolt nyelvi beállítása, ezért fix. */
-export const EMAIL_LOCALE: keyof LocalizedText = 'hu';
+export type EmailLocale = keyof LocalizedText;
+
+/** Az email nyelve, ha a címzett nem állított be nyelvet (vagy nem támogatottat). */
+export const DEFAULT_EMAIL_LOCALE: EmailLocale = 'hu';
+
+/**
+ * A címzett nyelve a SELECT-ben: a core a felhasználó által választott nyelvet
+ * az auth.users.user_settings JSON `locale` mezőjébe menti. `u` = auth.users.
+ */
+export const RECIPIENT_LOCALE_SQL = `u.user_settings->>'locale' AS locale`;
+
+/** A tárolt nyelvi beállításból az email nyelve (pl. „en-US” → en). */
+export function emailLocale(value: string | null | undefined): EmailLocale {
+	return value?.toLowerCase().startsWith('en') ? 'en' : DEFAULT_EMAIL_LOCALE;
+}
 
 export interface Recipient {
 	userId: number;
 	name: string;
 	email: string | null;
+	/** Ezen a nyelven kapja az emailt. */
+	locale: EmailLocale;
 }
 
 export function toRecipient(row: {
 	user_id: number;
 	full_name: string | null;
 	email: string | null;
+	locale?: string | null;
 }): Recipient {
 	return {
 		userId: Number(row.user_id),
 		name: row.full_name?.trim() || row.email || '—',
-		email: row.email ?? null
+		email: row.email ?? null,
+		locale: emailLocale(row.locale)
 	};
 }
 
@@ -39,7 +56,8 @@ export async function loadRecipientsByUserIds(
 ): Promise<Recipient[]> {
 	if (userIds.length === 0) return [];
 	const r = await context.db.query(
-		`SELECT id AS user_id, full_name, email FROM auth.users WHERE id = ANY($1::int[])`,
+		`SELECT u.id AS user_id, u.full_name, u.email, ${RECIPIENT_LOCALE_SQL}
+		   FROM auth.users u WHERE u.id = ANY($1::int[])`,
 		[userIds]
 	);
 	return r.rows.map(toRecipient);
@@ -83,7 +101,7 @@ export async function sendEmails(
 				to: recipient.email,
 				template: params.template,
 				data: params.buildData(recipient),
-				locale: EMAIL_LOCALE
+				locale: recipient.locale
 			})
 		)
 	);

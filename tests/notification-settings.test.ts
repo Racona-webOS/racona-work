@@ -13,7 +13,7 @@ import {
 	NOTIFICATION_EVENT_DEFAULTS,
 	normalizeNotificationSettings
 } from '../server/notification-settings.ts';
-import { sendEmails } from '../server/notification-email.ts';
+import { emailLocale, sendEmails, toRecipient } from '../server/notification-email.ts';
 import type { RemoteContext } from '../server/context.ts';
 
 describe('normalizeNotificationSettings', () => {
@@ -43,7 +43,7 @@ describe('normalizeNotificationSettings', () => {
 
 /** Ál-kontextus: a kv_store lekérdezés a megadott beállítást adja, az emaileket gyűjti. */
 function fakeContext(stored: unknown) {
-	const sent: { to: string | string[]; template: string }[] = [];
+	const sent: { to: string | string[]; template: string; locale?: string; data?: Record<string, unknown> }[] = [];
 	const context = {
 		pluginId: 'racona-work',
 		userId: 1,
@@ -55,7 +55,7 @@ function fakeContext(stored: unknown) {
 			}
 		},
 		email: {
-			send: async (params: { to: string | string[]; template: string }) => {
+			send: async (params: { to: string | string[]; template: string; locale?: string }) => {
 				sent.push(params);
 				return { success: true };
 			}
@@ -65,8 +65,8 @@ function fakeContext(stored: unknown) {
 }
 
 const recipients = [
-	{ userId: 2, name: 'Kiss Anna', email: 'anna@example.com' },
-	{ userId: 3, name: 'Nagy Béla', email: null }
+	{ userId: 2, name: 'Kiss Anna', email: 'anna@example.com', locale: 'hu' as const },
+	{ userId: 3, name: 'Nagy Béla', email: null, locale: 'hu' as const }
 ];
 
 describe('sendEmails', () => {
@@ -108,6 +108,47 @@ describe('sendEmails', () => {
 		}
 		expect(off.sent).toHaveLength(0);
 		expect(on.sent).toHaveLength(1);
+	});
+
+	test('mindenki a saját nyelvén kapja az emailt', async () => {
+		const { context, sent } = fakeContext(null);
+		const label = { hu: 'Szabadság', en: 'Annual leave' };
+		await sendEmails(context, {
+			organizationId: 1,
+			event: 'leave.requestCreated',
+			template: 'leave_request_new',
+			recipients: [
+				{ userId: 2, name: 'Kiss Anna', email: 'anna@example.com', locale: 'hu' },
+				{ userId: 4, name: 'John Smith', email: 'john@example.com', locale: 'en' }
+			],
+			buildData: (recipient) => ({ leaveTypeLabel: label[recipient.locale] })
+		});
+		expect(sent).toEqual([
+			expect.objectContaining({ to: 'anna@example.com', locale: 'hu', data: { leaveTypeLabel: 'Szabadság' } }),
+			expect.objectContaining({ to: 'john@example.com', locale: 'en', data: { leaveTypeLabel: 'Annual leave' } })
+		]);
+	});
+});
+
+describe('a címzett nyelve', () => {
+	test('a core user_settings.locale értékéből jön, magyar az alapértelmezés', () => {
+		expect(emailLocale('en')).toBe('en');
+		expect(emailLocale('en-US')).toBe('en');
+		expect(emailLocale('EN')).toBe('en');
+		expect(emailLocale('hu')).toBe('hu');
+		expect(emailLocale('de')).toBe('hu');
+		expect(emailLocale(null)).toBe('hu');
+		expect(emailLocale(undefined)).toBe('hu');
+	});
+
+	test('a lekérdezett sorból a címzett nyelve is kiolvasható', () => {
+		expect(toRecipient({ user_id: 5, full_name: 'John Smith', email: 'john@example.com', locale: 'en' })).toEqual({
+			userId: 5,
+			name: 'John Smith',
+			email: 'john@example.com',
+			locale: 'en'
+		});
+		expect(toRecipient({ user_id: 6, full_name: null, email: 'x@example.com' }).locale).toBe('hu');
 	});
 });
 

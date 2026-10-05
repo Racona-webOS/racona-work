@@ -9,7 +9,13 @@
 
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
-import { requireCapability, requireSelfOrCapability, ensureNotExternalEmployee, EXTERNAL_EMPLOYEE_ERROR } from './permissions.js';
+import {
+	ensureNotExternalEmployee,
+	ensureNotSelfDecision,
+	hasCapability,
+	requireCapability,
+	requireSelfOrCapability
+} from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
 import {
 	notifyLeaveDeleted,
@@ -19,7 +25,6 @@ import {
 } from './leave-notifications.js';
 import { validateChildLeave } from './leave-allowances.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
-import { logBalanceChange } from './leave-history.js';
 import { CHILD_LEAVE_TYPES, HR_ONLY_LEAVE_TYPES, consumesAnnualBalance, isLeaveType } from './leave-types.js';
 import { assertDaysOpen } from './leave-closing.js';
 import type { CarryOverUsage, EntitlementInput, EntitlementResult } from './leave-entitlement.js';
@@ -199,6 +204,24 @@ export async function getLeaveRequests(
 	}
 
 	await requireCapability(context, params.organizationId, 'leave.request');
+
+	// Más dolgozó kérelme (típusa, indoklása, pl. betegszabadság) csak a jóváhagyóknak
+	// és a HR-nek látható; mindenki más csak a sajátját kapja, akármit kér a kliens.
+	const seesAll =
+		(await hasCapability(context, params.organizationId, 'leave.approve')) ||
+		(await hasCapability(context, params.organizationId, 'leave.balance.manage'));
+	if (!seesAll) {
+		const ownEmployeeId = await findEmployeeIdOfUser(
+			context.db,
+			await resolveUserId(context),
+			params.organizationId
+		);
+		if (ownEmployeeId === null) throw new Error('Nem vagy dolgozó ebben a szervezetben');
+		if (params.employeeId !== undefined && params.employeeId !== ownEmployeeId) {
+			throw new Error('Csak a saját szabadságkérelmeidet láthatod');
+		}
+		params = { ...params, employeeId: ownEmployeeId };
+	}
 
 	const page = params.page ?? 1;
 	const pageSize = params.pageSize ?? 20;
@@ -464,6 +487,7 @@ export async function approveLeaveRequest(
 	const req = requestResult.rows[0];
 
 	await requireCapability(context, req.organization_id, 'leave.approve');
+	await ensureNotSelfDecision(context, req.employee_id);
 
 	if (req.status !== 'pending') {
 		throw new Error(`A kérelem már el lett bírálva (jelenlegi státusz: ${req.status}).`);
@@ -613,6 +637,7 @@ export async function rejectLeaveRequest(
 	const req = requestResult.rows[0];
 
 	await requireCapability(context, req.organization_id, 'leave.approve');
+	await ensureNotSelfDecision(context, req.employee_id);
 
 	if (req.status !== 'pending') {
 		throw new Error(`A kérelem már el lett bírálva (jelenlegi státusz: ${req.status}).`);
@@ -760,6 +785,7 @@ export async function deleteLeaveRequest(
 	const req = requestResult.rows[0];
 
 	await requireCapability(context, req.organization_id, 'leave.approve');
+	await ensureNotSelfDecision(context, req.employee_id);
 
 	// Lezárt év jóváhagyott szabadsága nem törölhető; a meg nem nyitott évé igen
 	if (req.status === 'approved') {
@@ -820,64 +846,4 @@ export async function getLeaveBalances(
 	);
 
 	return enrichCarryOver(context, result.rows.map(mapBalanceRow));
-}
-
-/**
- * Éves szabadságkeret kézi beállítása (UPSERT).
- *
- * A keretet kézi módba teszi: a számított értéket, a korrekciót és az áthozatalt törli, így a
- * rögzített összeg nem íródik felül automatikusan. A számított keretekhez a
- * leave-profile.ts függvényei tartoznak.
- * Követelmény: 8.11
- */
-export async function setLeaveBalance(
-	params: { employeeId: number; organizationId: number; year: number; totalDays: number },
-	context: RemoteContext
-): Promise<LeaveBalance> {
-	if (!params.organizationId || params.organizationId <= 0) {
-		throw new Error('Érvénytelen szervezet azonosító');
-	}
-
-	await requireCapability(context, params.organizationId, 'leave.balance.manage');
-	const userId = await resolveUserId(context);
-
-	const employee = await context.db.query(
-		`SELECT is_external FROM app__racona_work.employees WHERE id = $1 AND organization_id = $2`,
-		[params.employeeId, params.organizationId]
-	);
-	if (employee.rows.length === 0) throw new Error('A dolgozó nem található ebben a szervezetben');
-	if (employee.rows[0].is_external === true) throw new Error(EXTERNAL_EMPLOYEE_ERROR);
-
-	const existing = await context.db.query(
-		`SELECT ${BALANCE_COLUMNS} FROM app__racona_work.leave_balances WHERE employee_id = $1 AND year = $2`,
-		[params.employeeId, params.year]
-	);
-
-	const result = await context.db.query(
-		`INSERT INTO app__racona_work.leave_balances
-			(employee_id, organization_id, year, total_days, used_days, updated_by, updated_at)
-		 VALUES ($1, $2, $3, $4, 0, $5, NOW())
-		 ON CONFLICT (employee_id, year)
-		 DO UPDATE SET total_days = EXCLUDED.total_days,
-		               calculated_days = NULL,
-		               adjustment_days = 0,
-		               adjustment_note = NULL,
-		               carried_over_days = 0,
-		               carry_over_deadline = NULL,
-		               calculation = NULL,
-		               calculated_at = NULL,
-		               updated_by = EXCLUDED.updated_by,
-		               updated_at = NOW()
-		 RETURNING ${BALANCE_COLUMNS}`,
-		[params.employeeId, params.organizationId, params.year, params.totalDays, userId]
-	);
-
-	const balance = mapBalanceRow(result.rows[0]);
-	await logBalanceChange(context.db, {
-		action: 'manual_set',
-		before: existing.rows.length > 0 ? mapBalanceRow(existing.rows[0]) : null,
-		after: balance,
-		actorUserId: userId
-	});
-	return balance;
 }

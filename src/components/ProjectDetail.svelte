@@ -48,6 +48,7 @@
 	import PermissionsTab from './project-detail/PermissionsTab.svelte';
 	import type { RoleRow, OverrideRow } from './project-detail/types.js';
 	import { resolveSdk, translate } from '../utils/sdk.js';
+	import { formatDateTime } from '../utils/format.js';
 
 	let { pluginId = 'racona-work', projectId }: { pluginId?: string; projectId: number } =
 		$props();
@@ -208,7 +209,7 @@
 		project?.closedAt
 			? t('projects.closedInfo', {
 					name: project.closedByName ?? '—',
-					date: new Date(project.closedAt).toLocaleString()
+					date: formatDateTime(project.closedAt)
 				})
 			: ''
 	);

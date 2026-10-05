@@ -16,7 +16,6 @@ import { resolveUserId } from './context.js';
 import { SCHEMA, loadEmployeeRef } from './trip-access.js';
 import { periodLabel } from './trip-calc.js';
 import {
-	EMAIL_LOCALE,
 	escapeHtml,
 	itemsHtml,
 	itemsText,
@@ -143,12 +142,13 @@ export async function notifySettlementSubmitted(
 		});
 
 		const organizationName = await loadOrganizationName(context, notice.organizationId);
-		const warning =
+		const warning: LocalizedText | null =
 			warningCount === 0
-				? ''
-				: EMAIL_LOCALE === 'hu'
-					? `Figyelem: ${warningCount} hiányzó adat van a rendelvényen.`
-					: `Note: the settlement has ${warningCount} missing item(s).`;
+				? null
+				: {
+						hu: `Figyelem: ${warningCount} hiányzó adat van a rendelvényen.`,
+						en: `Note: the settlement has ${warningCount} missing item(s).`
+					};
 		await sendEmails(context, {
 			organizationId: notice.organizationId,
 			event: 'trip.settlementSubmitted',
@@ -161,13 +161,13 @@ export async function notifySettlementSubmitted(
 				employeeNameHtml: escapeHtml(employee.name),
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
-				period: monthOf(notice)[EMAIL_LOCALE],
+				period: monthOf(notice)[recipient.locale],
 				plateNumber: notice.plateNumber,
 				plateNumberHtml: escapeHtml(notice.plateNumber),
 				warningHtml: warning
-					? `<p style="margin: 8px 0 0; font-size: 14px; color: #b45309;"><strong>${warning}</strong></p>`
+					? `<p style="margin: 8px 0 0; font-size: 14px; color: #b45309;"><strong>${warning[recipient.locale]}</strong></p>`
 					: '',
-				warningText: warning ? `\n  ${warning}` : ''
+				warningText: warning ? `\n  ${warning[recipient.locale]}` : ''
 			})
 		});
 	} catch (err) {
@@ -196,14 +196,16 @@ export async function notifySettlementEvent(
 		});
 
 		const texts = EVENT_TEXTS[event];
-		const hu = EMAIL_LOCALE === 'hu';
 		const note = extra.note?.trim();
-		const lines = [
-			`${hu ? 'Időszak' : 'Period'}: ${monthOf(notice)[EMAIL_LOCALE]}`,
-			`${hu ? 'Rendszám' : 'Plate number'}: ${notice.plateNumber}`,
-			extra.documentNumber ? `${hu ? 'Bizonylatszám' : 'Document number'}: ${extra.documentNumber}` : '',
-			note ? `${hu ? 'Megjegyzés' : 'Note'}: ${note}` : ''
-		].filter(Boolean);
+		const lines = (locale: 'hu' | 'en') => {
+			const hu = locale === 'hu';
+			return [
+				`${hu ? 'Időszak' : 'Period'}: ${monthOf(notice)[locale]}`,
+				`${hu ? 'Rendszám' : 'Plate number'}: ${notice.plateNumber}`,
+				extra.documentNumber ? `${hu ? 'Bizonylatszám' : 'Document number'}: ${extra.documentNumber}` : '',
+				note ? `${hu ? 'Megjegyzés' : 'Note'}: ${note}` : ''
+			].filter(Boolean);
+		};
 		const organizationName = await loadOrganizationName(context, notice.organizationId);
 		await sendEmails(context, {
 			organizationId: notice.organizationId,
@@ -215,12 +217,12 @@ export async function notifySettlementEvent(
 				recipientNameHtml: escapeHtml(recipient.name),
 				organizationName,
 				organizationNameHtml: escapeHtml(organizationName),
-				statusLabel: texts.label[EMAIL_LOCALE],
-				statusSentence: texts.sentence[EMAIL_LOCALE],
+				statusLabel: texts.label[recipient.locale],
+				statusSentence: texts.sentence[recipient.locale],
 				statusColor: texts.color,
-				period: monthOf(notice)[EMAIL_LOCALE],
-				itemsHtml: itemsHtml(lines),
-				itemsText: itemsText(lines)
+				period: monthOf(notice)[recipient.locale],
+				itemsHtml: itemsHtml(lines(recipient.locale)),
+				itemsText: itemsText(lines(recipient.locale))
 			})
 		});
 	} catch (err) {

@@ -46,6 +46,8 @@
 	import LeaveSummaryTable from './LeaveSummaryTable.svelte';
 	import MonthConfirmationPanel from './MonthConfirmationPanel.svelte';
 	import type { MonthConfirmationOverview } from '../../../server/functions.js';
+	import { formatDate } from '../../utils/format.js';
+	import { isCoreAdminViewer } from '../../stores/organizationStore.svelte.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -74,10 +76,11 @@
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	// --- Kérelmező mód ---------------------------------------------------------
-	// A nem jóváhagyó dolgozó az „Új szabadság” gombbal vált át: a saját naptára
-	// rögzített szűrővel, éves nézetben, jelöléssel és beküldéssel.
+	// Az „Új szabadság” gombbal vált át a dolgozó: a saját naptára rögzített
+	// szűrővel, éves nézetben, jelöléssel és beküldéssel. A jóváhagyó is így kér
+	// magának szabadságot, mert a sajátját nem rögzítheti közvetlenül.
 	let requestMode = $state(false);
-	const canEnterRequestMode = $derived(!canManage && !!ownEmployeeId);
+	const canEnterRequestMode = $derived(!!ownEmployeeId);
 	const lockEmployee = $derived(requestMode);
 	const employeeId = $derived(requestMode ? ownEmployeeId : null);
 
@@ -317,8 +320,16 @@
 
 	// --- Szerkesztés ---------------------------------------------------------
 
-	/** Csak a jóváhagyó szerkeszthet, és csak kiválasztott dolgozóval. */
-	const editable = $derived(canManage && !lockEmployee && !!filterEmployeeId && data?.canManage === true);
+	/**
+	 * Csak a jóváhagyó szerkeszthet, csak kiválasztott dolgozóval, és a saját naptárát
+	 * csak a rendszergazda (mint a szerveren, ensureNotSelfDecision).
+	 */
+	const ownSelected = $derived(
+		!!ownEmployeeId && filterEmployeeId === ownEmployeeId && !isCoreAdminViewer()
+	);
+	const editable = $derived(
+		canManage && !lockEmployee && !!filterEmployeeId && !ownSelected && data?.canManage === true
+	);
 
 	/** Kérelmező mód: a dolgozó a naptárból kérelmet ad be (K15). */
 	const canRequest = $derived(lockEmployee && !!employeeId && !editable);
@@ -422,7 +433,7 @@
 	}
 
 	function formatDay(iso: string): string {
-		return new Date(`${iso}T00:00:00Z`).toLocaleDateString('hu-HU', { timeZone: 'UTC' });
+		return formatDate(iso);
 	}
 
 	async function withdrawPending(iso: string) {
@@ -496,8 +507,7 @@
 	const detailsPending = $derived(detailsDay ? (pendingMap.get(detailsDay) ?? []) : []);
 
 	function formatDayLong(iso: string): string {
-		return new Date(`${iso}T00:00:00Z`).toLocaleDateString('hu-HU', {
-			timeZone: 'UTC',
+		return formatDate(iso, {
 			year: 'numeric',
 			month: 'long',
 			day: 'numeric',
@@ -845,7 +855,7 @@
 
 		<div class="toolbar-group">
 			<!-- Dolgozót csak a jóváhagyó választ; a dolgozó mindenkit lát, vagy kérelmező módban a sajátját -->
-			{#if canManage}
+			{#if canManage && !requestMode}
 				<label class="filter">
 					<span>{t('leaveCalendar.filter.label')}</span>
 					<select
@@ -892,6 +902,10 @@
 			{/if}
 		</div>
 	</div>
+
+	{#if canManage && !lockEmployee && ownSelected}
+		<p class="own-leave-hint">{t('leaveCalendar.ownLeaveHint')}</p>
+	{/if}
 
 	{#if (editable || canRequest) && needsChild}
 		<div class="child-row">
@@ -1913,6 +1927,12 @@
 		cursor: text;
 		background-image: none;
 		padding-right: 0.75rem;
+	}
+
+	.own-leave-hint {
+		margin: 0 0 0.75rem;
+		font-size: 0.8rem;
+		color: var(--color-muted-foreground, #64748b);
 	}
 
 	.child-row {

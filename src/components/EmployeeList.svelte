@@ -19,32 +19,22 @@
 	import { getOrganizationStore, createOrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
+	import { resolveSdk, translate } from '../utils/sdk.js';
+	import { formatDate } from '../utils/format.js';
+	import { roleName } from '../utils/roles.js';
+	import { escapeHtml, safeImageUrl } from '../utils/html.js';
 
 	let { pluginId = 'racona-work' }: {
 		pluginId?: string;
 	} = $props();
 
-	const sdk = $derived(
-		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
-	);
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	// Organization store - inicializálás
 	let orgStore = $state<OrganizationStore | null>(null);
 	let currentOrganization = $state<import('../../server/functions.js').Organization | null>(null);
 	let hasAccess = $state(false);
-
-	function t(key: string): string {
-		return sdk?.i18n?.t(key) ?? key;
-	}
-
-	// A raw snippetekbe kerülő, felhasználó által megadott szöveg (pl. egyedi szerepnév)
-	function escapeHtml(s: string): string {
-		return s
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;');
-	}
 
 	// --- SDK DataTable komponensek ---
 	const DataTable = $derived(sdk?.components?.DataTable);
@@ -66,7 +56,7 @@
 	let debounceTimer: ReturnType<typeof setTimeout>;
 
 	// --- Modal állapot ---
-	type ModalMode = 'none' | 'choose' | 'link' | 'create' | 'addMember';
+	type ModalMode = 'none' | 'choose' | 'link' | 'create';
 	let modalMode = $state<ModalMode>('none');
 	let unlinkedUsers = $state<UnlinkedUser[]>([]);
 	let unlinkedLoading = $state(false);
@@ -76,12 +66,6 @@
 	let newPosition = $state('');
 	let formLoading = $state(false);
 	let formError = $state<string | null>(null);
-
-	// --- Tag hozzáadás modal állapot ---
-	let availableEmployees = $state<EmployeeRow[]>([]);
-	let availableEmployeesLoading = $state(false);
-	let selectedEmployeeId = $state<number | null>(null);
-	let memberSearchInput = $state('');
 
 	// --- Tag eltávolítás állapot ---
 	let employeeToRemove = $state<EmployeeRow | null>(null);
@@ -128,14 +112,14 @@
 		if (errorMessage.toLowerCase().includes('network') ||
 		    errorMessage.toLowerCase().includes('fetch') ||
 		    errorMessage.toLowerCase().includes('connection')) {
-			return 'Hálózati hiba. Kérlek, ellenőrizd az internetkapcsolatot.';
+			return t('error.network');
 		}
 
 		// Jogosultsági hiba
 		if (errorMessage.toLowerCase().includes('unauthorized') ||
 		    errorMessage.toLowerCase().includes('forbidden') ||
 		    errorMessage.toLowerCase().includes('permission')) {
-			return 'Nincs jogosultságod ehhez az adathoz. Kérj hozzáférést egy rendszergazdától.';
+			return t('error.forbidden');
 		}
 
 		// Használjuk az eredeti üzenetet, ha értelmes
@@ -207,7 +191,7 @@
 				primary: true
 			},
 			{
-				label: 'Tag eltávolítása',
+				label: t('employees.remove.title'),
 				onClick: (row: EmployeeRow) => handleRemoveMemberClick(row),
 				variant: 'destructive'
 			}
@@ -221,13 +205,14 @@
 				meta: { title: '' },
 				header: () => null,
 				cell: ({ row }: any) => {
-					const img = row.original.userImage;
+					// A név és a kép a core profilban szabadon átírható: minden érték escapelve
+					const img = safeImageUrl(row.original.userImage);
 					const name = row.original.userName ?? '';
 					const initials = name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
 					const snippet = createRawSnippet(() => ({
 						render: () => img
-							? `<img src="${img}" alt="${name}" class="avatar-img" />`
-							: `<div class="avatar-placeholder">${initials}</div>`
+							? `<img src="${escapeHtml(img)}" alt="${escapeHtml(name)}" class="avatar-img" />`
+							: `<div class="avatar-placeholder">${escapeHtml(initials)}</div>`
 					}));
 					return renderSnippet(snippet, {});
 				}
@@ -244,9 +229,9 @@
 				cell: ({ row }: any) => {
 					const name = row.original.userName ?? '—';
 					const external = row.original.isExternal
-						? ` <span style="margin-left:0.375rem;font-size:0.7rem;font-weight:600;padding:0.05rem 0.45rem;border-radius:999px;background:#ede9fe;color:#6d28d9">${t('employees.external.badge')}</span>`
+						? ` <span style="margin-left:0.375rem;font-size:0.7rem;font-weight:600;padding:0.05rem 0.45rem;border-radius:999px;background:#ede9fe;color:#6d28d9">${escapeHtml(t('employees.external.badge'))}</span>`
 						: '';
-					const snippet = createRawSnippet(() => ({ render: () => `<span><span class="font-medium">${name}</span>${external}</span>` }));
+					const snippet = createRawSnippet(() => ({ render: () => `<span><span class="font-medium">${escapeHtml(name)}</span>${external}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -261,7 +246,7 @@
 				}),
 				cell: ({ row }: any) => {
 					const email = row.original.userEmail ?? '—';
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm text-muted-foreground">${email}</span>` }));
+					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm text-muted-foreground">${escapeHtml(email)}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -289,7 +274,7 @@
 					const label = labelMap[status] ?? status;
 					const cls = colorMap[status] ?? 'badge-inactive';
 					const snippet = createRawSnippet(() => ({
-						render: () => `<span class="badge ${cls}">${label}</span>`
+						render: () => `<span class="badge ${cls}">${escapeHtml(label)}</span>`
 					}));
 					return renderSnippet(snippet, {});
 				}
@@ -304,10 +289,10 @@
 					onSort: handleSort
 				}),
 				cell: ({ row }: any) => {
-					const roles: string[] = row.original.roles ?? [];
+					const roles: NonNullable<EmployeeRow['roles']> = row.original.roles ?? [];
 					const html = roles.length
 						? `<span class="role-badges">${roles
-								.map((r) => `<span class="badge badge-member">${escapeHtml(r)}</span>`)
+								.map((r) => `<span class="badge badge-member">${escapeHtml(roleName(t, r))}</span>`)
 								.join('')}</span>`
 						: `<span class="text-sm text-muted-foreground">—</span>`;
 					const snippet = createRawSnippet(() => ({ render: () => html }));
@@ -324,8 +309,8 @@
 					onSort: handleSort
 				}),
 				cell: ({ row }: any) => {
-					const val = row.original.hireDate ? new Date(row.original.hireDate).toLocaleDateString() : '—';
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm text-muted-foreground">${val}</span>` }));
+					const val = formatDate(row.original.hireDate);
+					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm text-muted-foreground">${escapeHtml(val)}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -347,7 +332,7 @@
 
 		// Ellenőrizzük, hogy van-e kiválasztott szervezet
 		if (!currentOrganization) {
-			formError = 'Nincs kiválasztott szervezet. Kérlek, válassz egy szervezetet a folytatáshoz.';
+			formError = t('error.noOrganization');
 			unlinkedLoading = false;
 			return;
 		}
@@ -372,33 +357,6 @@
 		formError = null;
 	}
 
-	// --- Tag hozzáadás modal ---
-	async function openAddMemberModal() {
-		modalMode = 'addMember';
-		availableEmployeesLoading = true;
-		selectedEmployeeId = null;
-		memberSearchInput = '';
-		formError = null;
-
-		// Ellenőrizzük, hogy van-e kiválasztott szervezet
-		if (!currentOrganization) {
-			formError = 'Nincs kiválasztott szervezet. Kérlek, válassz egy szervezetet a folytatáshoz.';
-			availableEmployeesLoading = false;
-			return;
-		}
-
-		try {
-			availableEmployees = await sdk?.remote?.call('getAvailableEmployeesForOrganization', {
-				organizationId: currentOrganization.id
-			}) ?? [];
-		} catch (err: any) {
-			formError = err?.message ?? 'Hiba történt a dolgozók betöltése során';
-			availableEmployees = [];
-		} finally {
-			availableEmployeesLoading = false;
-		}
-	}
-
 	function closeModal() {
 		modalMode = 'none';
 		formError = null;
@@ -409,7 +367,7 @@
 
 		// Ellenőrizzük, hogy van-e kiválasztott szervezet
 		if (!currentOrganization) {
-			formError = 'Nincs kiválasztott szervezet. Kérlek, válassz egy szervezetet a folytatáshoz.';
+			formError = t('error.noOrganization');
 			return;
 		}
 
@@ -440,7 +398,7 @@
 
 		// Ellenőrizzük, hogy van-e kiválasztott szervezet
 		if (!currentOrganization) {
-			formError = 'Nincs kiválasztott szervezet. Kérlek, válassz egy szervezetet a folytatáshoz.';
+			formError = t('error.noOrganization');
 			return;
 		}
 
@@ -468,51 +426,16 @@
 		}
 	}
 
-	// --- Tag hozzáadás ---
-	async function submitAddMember() {
-		if (!selectedEmployeeId) {
-			formError = 'Kérlek, válassz egy dolgozót';
-			return;
-		}
-
-		if (!currentOrganization) {
-			formError = 'Nincs kiválasztott szervezet';
-			return;
-		}
-
-		formLoading = true;
-		formError = null;
-		try {
-			const result = await sdk?.remote?.call('addEmployeeToOrganization', {
-				organizationId: currentOrganization.id,
-				employeeId: selectedEmployeeId
-			});
-
-			// Értesítés küldése a hozzáadott dolgozónak
-			if (result?.userId) {
-				await sdk?.notifications?.send({
-					userId: String(result.userId),
-					title: 'Szervezethez adtak',
-					message: `Hozzáadtak a(z) "${currentOrganization.name}" szervezethez`,
-					type: 'info'
-				});
-			}
-
-			sdk?.ui?.toast('Tag sikeresen hozzáadva ✓', 'success');
-			closeModal();
-			loadData();
-		} catch (err: any) {
-			formError = err?.message ?? 'Hiba történt a tag hozzáadása során';
-		} finally {
-			formLoading = false;
-		}
-	}
-
 	// --- Tag eltávolítás ---
 	function handleRemoveMemberClick(employee: EmployeeRow) {
 		employeeToRemove = employee;
 		showRemoveConfirmation = true;
 	}
+
+	/** A megerősítő mondat a félkövér név előtt és után ({name} helyén vágva). */
+	const removeConfirmParts = $derived(
+		t('employees.remove.confirm', { organization: currentOrganization?.name ?? '' }).split('{name}')
+	);
 
 	function cancelRemoveMember() {
 		employeeToRemove = null;
@@ -524,26 +447,17 @@
 
 		formLoading = true;
 		try {
-			const result = await sdk?.remote?.call('removeEmployeeFromOrganization', {
+			await sdk?.remote?.call('removeEmployeeFromOrganization', {
 				organizationId: currentOrganization.id,
 				employeeId: employeeToRemove.id
 			});
 
-			// Értesítés küldése az eltávolított dolgozónak
-			if (result?.userId) {
-				await sdk?.notifications?.send({
-					userId: String(result.userId),
-					title: 'Szervezetből eltávolítottak',
-					message: `Eltávolítottak a(z) "${currentOrganization.name}" szervezetből`,
-					type: 'warning'
-				});
-			}
-
-			sdk?.ui?.toast('Tag sikeresen eltávolítva ✓', 'success');
+			// Az eltávolított dolgozót a szerver értesíti (removeEmployeeFromOrganization)
+			sdk?.ui?.toast(t('employees.remove.success'), 'success');
 			cancelRemoveMember();
 			loadData();
 		} catch (err: any) {
-			sdk?.ui?.toast(err?.message ?? 'Hiba történt a tag eltávolítása során', 'error');
+			sdk?.ui?.toast(err?.message ?? t('employees.remove.failed'), 'error');
 		} finally {
 			formLoading = false;
 		}
@@ -660,7 +574,7 @@
 			{#if unlinkedLoading}
 				<div class="loading-state"><div class="spinner"></div></div>
 			{:else if unlinkedUsers.length === 0}
-				<p class="empty-state">Nincs összekapcsolható felhasználó.</p>
+				<p class="empty-state">{t('employees.noUnlinkedUsers')}</p>
 			{:else}
 				<div class="user-list">
 					{#each unlinkedUsers as user (user.id)}
@@ -675,7 +589,7 @@
 			<div class="form-row">
 				<label class="form-label">
 					{t('employeeDetail.position')}
-					<input class="form-input" type="text" bind:value={newPosition} placeholder="pl. Fejlesztő" />
+					<input class="form-input" type="text" bind:value={newPosition} placeholder={t('employees.form.positionPlaceholder')} />
 				</label>
 			</div>
 			{#if formError}
@@ -698,16 +612,16 @@
 			<h3>{t('employees.createNewUser')}</h3>
 			<div class="form-fields">
 				<label class="form-label">
-					Név *
-					<input class="form-input" type="text" bind:value={newName} placeholder="Teljes név" />
+					{t('employees.columns.name')} *
+					<input class="form-input" type="text" bind:value={newName} placeholder={t('employees.form.namePlaceholder')} />
 				</label>
 				<label class="form-label">
-					Email *
-					<input class="form-input" type="email" bind:value={newEmail} placeholder="email@ceg.hu" />
+					{t('employees.columns.email')} *
+					<input class="form-input" type="email" bind:value={newEmail} placeholder={t('employees.form.emailPlaceholder')} />
 				</label>
 				<label class="form-label">
 					{t('employeeDetail.position')}
-					<input class="form-input" type="text" bind:value={newPosition} placeholder="pl. Fejlesztő" />
+					<input class="form-input" type="text" bind:value={newPosition} placeholder={t('employees.form.positionPlaceholder')} />
 				</label>
 			</div>
 			{#if formError}
@@ -723,86 +637,24 @@
 	</div>
 {/if}
 
-<!-- Modal: Tag hozzáadása -->
-{#if modalMode === 'addMember'}
-	<div class="modal-overlay" role="dialog" aria-modal="true">
-		<div class="modal">
-			<h3>Tag hozzáadása a szervezethez</h3>
-			<p class="modal-description">Válassz egy dolgozót, akit hozzá szeretnél adni a(z) "{currentOrganization?.name}" szervezethez.</p>
-
-			{#if availableEmployeesLoading}
-				<div class="loading-state"><div class="spinner"></div><span>Betöltés...</span></div>
-			{:else if formError}
-				<p class="form-error">{formError}</p>
-			{:else if availableEmployees.length === 0}
-				<p class="empty-state">Nincs hozzáadható dolgozó. Minden dolgozó már tagja ennek a szervezetnek.</p>
-			{:else}
-				<div class="member-search">
-					<input
-						class="form-input"
-						type="text"
-						bind:value={memberSearchInput}
-						placeholder="Keresés név vagy email alapján..."
-					/>
-				</div>
-				<div class="employee-list">
-					{#each availableEmployees.filter(emp =>
-						!memberSearchInput ||
-						emp.userName.toLowerCase().includes(memberSearchInput.toLowerCase()) ||
-						emp.userEmail.toLowerCase().includes(memberSearchInput.toLowerCase())
-					) as employee (employee.id)}
-						<label class="employee-item">
-							<input type="radio" name="available-employee" value={employee.id} bind:group={selectedEmployeeId} />
-							<div class="employee-info">
-								{#if employee.userImage}
-									<img src={employee.userImage} alt={employee.userName} class="employee-avatar" />
-								{:else}
-									<div class="employee-avatar-placeholder">
-										{employee.userName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-									</div>
-								{/if}
-								<div class="employee-details">
-									<span class="employee-name">{employee.userName}</span>
-									<span class="employee-email">{employee.userEmail}</span>
-									{#if employee.position}
-										<span class="employee-meta">{employee.position}</span>
-									{/if}
-								</div>
-							</div>
-						</label>
-					{/each}
-				</div>
-			{/if}
-
-			<div class="modal-footer">
-				<button class="btn-secondary" onclick={closeModal}>{t('form.cancel')}</button>
-				<button class="btn-primary" onclick={submitAddMember} disabled={!selectedEmployeeId || formLoading}>
-					{formLoading ? t('loading') : 'Hozzáadás'}
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
 <!-- Modal: Tag eltávolítás megerősítése -->
 {#if showRemoveConfirmation && employeeToRemove}
 	<div class="modal-overlay" role="dialog" aria-modal="true">
 		<div class="modal modal-confirm">
 			<div class="confirm-icon">⚠️</div>
-			<h3>Tag eltávolítása</h3>
+			<h3>{t('employees.remove.title')}</h3>
 			<p class="modal-description">
-				Biztosan el szeretnéd távolítani <strong>{employeeToRemove.userName}</strong> dolgozót
-				a(z) "{currentOrganization?.name}" szervezetből?
+				{removeConfirmParts[0]}<strong>{employeeToRemove.userName}</strong>{removeConfirmParts[1] ?? ''}
 			</p>
 			<p class="modal-description warning-text">
-				A dolgozó értesítést fog kapni az eltávolításról.
+				{t('employees.remove.notice')}
 			</p>
 			<div class="modal-footer">
 				<button class="btn-secondary" onclick={cancelRemoveMember} disabled={formLoading}>
 					{t('form.cancel')}
 				</button>
 				<button class="btn-danger" onclick={confirmRemoveMember} disabled={formLoading}>
-					{formLoading ? t('loading') : 'Eltávolítás'}
+					{formLoading ? t('loading') : t('employees.remove.confirmLabel')}
 				</button>
 			</div>
 		</div>
@@ -939,8 +791,7 @@
 
 	/* Label override-ok: a shared.css globálisan flex-direction:column-t állít be
 	   minden label-re, ezeket a modal-specifikus label-eknél felül kell írni. */
-	.user-item,
-	.employee-item {
+	.user-item {
 		flex-direction: row;
 	}
 
@@ -1016,88 +867,6 @@
 		line-height: 1.5;
 	}
 
-	.member-search {
-		margin-bottom: 0.75rem;
-	}
-
-	.employee-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		max-height: 300px;
-		overflow-y: auto;
-		border: 1px solid var(--color-border, #e2e8f0);
-		border-radius: 0.375rem;
-		padding: 0.5rem;
-	}
-
-	.employee-item {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.75rem;
-		padding: 0.75rem;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		transition: background 0.15s;
-	}
-
-	.employee-item:hover {
-		background: var(--color-accent, #f1f5f9);
-	}
-
-	.employee-info {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.75rem;
-		flex: 1;
-	}
-
-	.employee-avatar {
-		width: 2.5rem;
-		height: 2.5rem;
-		border-radius: 50%;
-		object-fit: cover;
-		flex-shrink: 0;
-	}
-
-	.employee-avatar-placeholder {
-		width: 2.5rem;
-		height: 2.5rem;
-		border-radius: 50%;
-		background: var(--color-primary-subtle, #e0e7ff);
-		color: var(--color-primary, #3730a3);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.75rem;
-		font-weight: 700;
-		flex-shrink: 0;
-	}
-
-	.employee-details {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-		flex: 1;
-		min-width: 0;
-	}
-
-	.employee-name {
-		font-weight: 600;
-		font-size: 0.875rem;
-		color: var(--color-foreground, #0f172a);
-	}
-
-	.employee-email {
-		font-size: 0.8rem;
-		color: var(--color-muted-foreground, #64748b);
-	}
-
-	.employee-meta {
-		font-size: 0.75rem;
-		color: var(--color-muted-foreground, #94a3b8);
-	}
-
 	/* Confirmation modal */
 	.modal-confirm {
 		text-align: center;
@@ -1164,29 +933,5 @@
 
 	:global(.dark) .modal-description {
 		color: var(--color-muted-foreground, oklch(0.708 0 0));
-	}
-
-	:global(.dark) .employee-list {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-	}
-
-	:global(.dark) .employee-item:hover {
-		background: var(--color-accent, oklch(0.269 0 0));
-	}
-
-	:global(.dark) .employee-name {
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .employee-email {
-		color: var(--color-muted-foreground, oklch(0.708 0 0));
-	}
-
-	:global(.dark) .employee-meta {
-		color: var(--color-muted-foreground, oklch(0.708 0 0));
-	}
-
-	:global(.dark) .employee-avatar-placeholder {
-		background: var(--color-primary-subtle, oklch(0.269 0 0));
 	}
 </style>

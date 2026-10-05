@@ -13,7 +13,6 @@
 	import type {} from '@racona/sdk/types';
 	import type {
 		LeaveRequestRow,
-		LeaveBalance,
 		EmployeeRow,
 		PaginatedResult
 	} from '../../server/functions.js';
@@ -22,6 +21,9 @@
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import AccessDenied from './AccessDenied.svelte';
 	import LeaveCalendar from './leave-calendar/LeaveCalendar.svelte';
+	import { resolveSdk, translate } from '../utils/sdk.js';
+	import { formatDate as formatAppDate, formatDateTime as formatAppDateTime } from '../utils/format.js';
+	import { escapeHtml } from '../utils/html.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -32,9 +34,8 @@
 		employeeId?: number | null;
 	} = $props();
 
-	const sdk = $derived(
-		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
-	);
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	// Organization store - inicializálás
 	let orgStore = $state<OrganizationStore | null>(null);
@@ -45,7 +46,6 @@
 	let canApprove = $state(false);
 	/** Külsős dolgozó: rá a szabadság nem vonatkozik. */
 	let isExternal = $state(false);
-	let canManageBalance = $state(false);
 	let isManagerView = $derived(canApprove);
 
 	// --- Saját dolgozói rekord (self-service) ---
@@ -53,16 +53,6 @@
 
 	// --- Nézet: 'mine' vagy 'all'. Ha nem vagyunk manager, mindig 'mine'. ---
 	let viewMode = $state<'mine' | 'all'>('all');
-
-	function t(key: string, vars?: Record<string, string | number>): string {
-		let result = sdk?.i18n?.t(key) ?? key;
-		if (vars) {
-			for (const [k, v] of Object.entries(vars)) {
-				result = result.replace(`{${k}}`, String(v));
-			}
-		}
-		return result;
-	}
 
 	// --- SDK komponensek ---
 	const DataTable = $derived(sdk?.components?.DataTable);
@@ -103,15 +93,6 @@
 	let paginationInfo = $state({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
 	let tableState = $state({ page: 1, pageSize: 20, sortBy: 'createdAt', sortOrder: 'desc' as 'asc' | 'desc' });
 	let columns = $state<any[]>([]);
-
-	// --- Szabadságkeret modal ---
-	let showBalanceModal = $state(false);
-	let balanceEmployeeId = $state<number | null>(null);
-	let balances = $state<LeaveBalance[]>([]);
-	let balancesLoading = $state(false);
-	let balanceYear = $state(new Date().getFullYear());
-	let balanceTotalDays = $state(25);
-	let balanceSaving = $state(false);
 
 	// --- Adatok betöltése ---
 	async function loadData() {
@@ -176,7 +157,6 @@
 				hasAccess = store.hasAccess;
 				isExternal = store.isExternal;
 				canApprove = store.can('leave.approve');
-				canManageBalance = store.can('leave.balance.manage');
 				viewMode = canApprove ? 'all' : 'mine';
 				// Új szervezet → új saját employee
 				if (currentOrganization && sdk?.remote) {
@@ -246,14 +226,18 @@
 		const isPast = endDate < today;
 
 		const confirmMsg = isPast
-			? `Ez a szabadság már lejárt (${formatDate(row.endDate)}). Biztosan visszamenőlegesen törli?`
-			: `Biztosan törli ${row.employeeName} szabadságát? (${formatDate(row.startDate)} – ${formatDate(row.endDate)})`;
+			? t('leaveRequests.delete.confirmPast', { to: formatDate(row.endDate) })
+			: t('leaveRequests.delete.confirm', {
+					name: row.employeeName,
+					from: formatDate(row.startDate),
+					to: formatDate(row.endDate)
+				});
 
 		const confirmed = await sdk?.ui?.dialog({
-			title: 'Szabadság törlése',
+			title: t('leaveRequests.delete.title'),
 			message: confirmMsg,
 			type: 'confirm',
-			confirmLabel: 'Törlés',
+			confirmLabel: t('leaveRequests.delete.action'),
 			confirmVariant: 'destructive'
 		});
 
@@ -263,57 +247,21 @@
 			// Az érintett dolgozó értesítését a szerver küldi
 			await sdk?.remote?.call('deleteLeaveRequest', { id: row.id });
 			calendarRefresh += 1;
-			sdk?.ui?.toast('Szabadság törölve', 'success');
+			sdk?.ui?.toast(t('leaveRequests.delete.success'), 'success');
 			loadData();
 		} catch (err: any) {
 			sdk?.ui?.toast(err?.message?.replace(/^[A-Z_]+:\s*/, '') ?? t('error.saveFailed'), 'error');
 		}
 	}
 
-	// --- Szabadságkeret ---
-	async function openBalanceModal(employeeId: number) {
-		showBalanceModal = true;
-		balanceEmployeeId = employeeId;
-		balancesLoading = true;
-		balanceYear = new Date().getFullYear();
-		balanceTotalDays = 25;
-		try {
-			balances = await sdk?.remote?.call('getLeaveBalances', { employeeId }) ?? [];
-		} catch {
-			balances = [];
-		} finally {
-			balancesLoading = false;
-		}
-	}
-
-	async function saveBalance() {
-		if (!balanceEmployeeId) return;
-		balanceSaving = true;
-		try {
-			await sdk?.remote?.call('setLeaveBalance', {
-				employeeId: balanceEmployeeId,
-				year: balanceYear,
-				totalDays: balanceTotalDays
-			});
-			sdk?.ui?.toast(t('form.save') + ' ✓', 'success');
-			balances = await sdk?.remote?.call('getLeaveBalances', { employeeId: balanceEmployeeId }) ?? [];
-		} catch (err: any) {
-			sdk?.ui?.toast(err?.message ?? t('error.saveFailed'), 'error');
-		} finally {
-			balanceSaving = false;
-		}
-	}
-
 	// --- Segédfüggvények ---
 	function formatDate(dateStr: string | null): string {
-		if (!dateStr) return '—';
-		return new Date(dateStr).toLocaleDateString('hu-HU');
+		return formatAppDate(dateStr);
 	}
 
 	/** A rögzítés időpontja: dátum és perc, mert egy napon több kérelem is jöhet. */
 	function formatDateTime(value: string | null): string {
-		if (!value) return '—';
-		return new Date(value).toLocaleString('hu-HU', { dateStyle: 'short', timeStyle: 'short' });
+		return formatAppDateTime(value, { dateStyle: 'short', timeStyle: 'short' });
 	}
 
 	function leaveTypeLabel(type: string): string {
@@ -351,8 +299,10 @@
 
 		const actionsColumn = createActionsColumn((row: LeaveRequestRow) => {
 			// A dolgozó a saját függő kérelmét visszavonhatja; a jóváhagyó is, ha a sajátja
-			const isOwnPending = row.status === 'pending' && !!myEmployee && row.employeeId === myEmployee.id;
-			if (!canApprove) {
+			const isOwn = !!myEmployee && row.employeeId === myEmployee.id;
+			const isOwnPending = row.status === 'pending' && isOwn;
+			// Saját ügyben csak a rendszergazda dönthet (a szerver is elutasítaná)
+			if (!canApprove || (isOwn && !orgStore?.isAdmin)) {
 				return isOwnPending
 					? [{ label: t('leaveRequests.withdraw'), onClick: () => withdrawRequest(row), variant: 'destructive' as const }]
 					: [];
@@ -378,7 +328,7 @@
 			if (row.status === 'approved') {
 				return [
 					{
-						label: 'Törlés',
+						label: t('leaveRequests.delete.action'),
 						onClick: () => deleteRequest(row),
 						variant: 'destructive' as const
 					}
@@ -400,7 +350,7 @@
 				}),
 				cell: ({ row }: any) => {
 					const name = row.original.employeeName ?? '—';
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="font-medium">${name}</span>` }));
+					const snippet = createRawSnippet(() => ({ render: () => `<span class="font-medium">${escapeHtml(name)}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -415,7 +365,7 @@
 				}),
 				cell: ({ row }: any) => {
 					const label = leaveTypeLabel(row.original.leaveType);
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm">${label}</span>` }));
+					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm">${escapeHtml(label)}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -430,7 +380,7 @@
 				}),
 				cell: ({ row }: any) => {
 					const val = formatDate(row.original.startDate);
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm text-muted-foreground">${val}</span>` }));
+					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm text-muted-foreground">${escapeHtml(val)}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -445,7 +395,7 @@
 				}),
 				cell: ({ row }: any) => {
 					const val = formatDate(row.original.endDate);
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm text-muted-foreground">${val}</span>` }));
+					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm text-muted-foreground">${escapeHtml(val)}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -460,7 +410,7 @@
 				}),
 				cell: ({ row }: any) => {
 					const val = row.original.days;
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm font-medium">${val}</span>` }));
+					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm font-medium">${escapeHtml(val)}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -483,11 +433,11 @@
 						if (effective === requested) {
 							html = `<span class="text-sm">${effective}</span>`;
 						} else if (effective < requested) {
-							html = `<span class="badge badge-reduced" title="${t('leaveRequests.effectiveDays.reduced', { removed: requested - effective })}">${effective}</span>`;
+							html = `<span class="badge badge-reduced" title="${escapeHtml(t('leaveRequests.effectiveDays.reduced', { removed: requested - effective }))}">${effective}</span>`;
 						} else {
 							// Több nap, mint a kért: a napok a jóváhagyás utáni munkanaptárral
 							// készültek (pl. a visszatöltő migráció), a kért szám a beadáskori
-							html = `<span class="badge badge-reduced" title="${t('leaveRequests.effectiveDays.increased', { extra: effective - requested, requested })}">${effective}</span>`;
+							html = `<span class="badge badge-reduced" title="${escapeHtml(t('leaveRequests.effectiveDays.increased', { extra: effective - requested, requested }))}">${effective}</span>`;
 						}
 					}
 					const snippet = createRawSnippet(() => ({ render: () => html }));
@@ -508,7 +458,7 @@
 					const label = statusLabel(status);
 					const cls = statusClass(status);
 					const snippet = createRawSnippet(() => ({
-						render: () => `<span class="badge ${cls}">${label}</span>`
+						render: () => `<span class="badge ${cls}">${escapeHtml(label)}</span>`
 					}));
 					return renderSnippet(snippet, {});
 				}
@@ -524,7 +474,7 @@
 				}),
 				cell: ({ row }: any) => {
 					const val = formatDateTime(row.original.createdAt);
-					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm">${val}</span>` }));
+					const snippet = createRawSnippet(() => ({ render: () => `<span class="text-sm">${escapeHtml(val)}</span>` }));
 					return renderSnippet(snippet, {});
 				}
 			},
@@ -552,7 +502,6 @@
 
 			isExternal = orgStore.isExternal;
 			canApprove = orgStore.can('leave.approve');
-			canManageBalance = orgStore.can('leave.balance.manage');
 			// Alap nézet: manager esetén 'all', dolgozó esetén 'mine'.
 			viewMode = canApprove ? 'all' : 'mine';
 
@@ -672,63 +621,6 @@
 </section>
 </div>
 
-<!-- Szabadságkeret modal -->
-{#if showBalanceModal}
-	<div class="modal-overlay" role="dialog" aria-modal="true">
-		<div class="modal modal-wide">
-			<h3>{t('leaveRequests.balance.title')}</h3>
-
-			{#if balancesLoading}
-				<div class="loading-state"><div class="spinner"></div></div>
-			{:else}
-				<!-- Meglévő keretek -->
-				{#if balances.length > 0}
-					<div class="balance-table">
-						<div class="balance-header">
-							<span>Év</span>
-							<span>{t('leaveRequests.balance.total')}</span>
-							<span>{t('leaveRequests.balance.used')}</span>
-							<span>{t('leaveRequests.balance.remaining')}</span>
-						</div>
-						{#each balances as bal (bal.id)}
-							<div class="balance-row">
-								<span class="font-medium">{bal.year}</span>
-								<span>{bal.totalDays}</span>
-								<span>{bal.usedDays}</span>
-								<span class="font-medium {bal.remainingDays < 5 ? 'text-warning' : 'text-success'}">{bal.remainingDays}</span>
-							</div>
-						{/each}
-					</div>
-				{:else}
-					<p class="empty-state">{t('noData')}</p>
-				{/if}
-
-				<!-- Új keret beállítása -->
-				<div class="balance-form">
-					<h4>Keret beállítása</h4>
-					<div class="form-row">
-						<label class="form-label">
-							Év
-							<input class="form-input" type="number" bind:value={balanceYear} min="2020" max="2099" />
-						</label>
-						<label class="form-label">
-							{t('leaveRequests.balance.total')}
-							<input class="form-input" type="number" bind:value={balanceTotalDays} min="0" max="365" />
-						</label>
-					</div>
-					<button class="btn-primary" onclick={saveBalance} disabled={balanceSaving}>
-						{balanceSaving ? t('loading') : t('form.save')}
-					</button>
-				</div>
-			{/if}
-
-			<div class="modal-footer">
-				<button class="btn-secondary" onclick={() => (showBalanceModal = false)}>{t('form.cancel')}</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
 <style>
 	@import '../styles/shared.css';
 
@@ -820,167 +712,7 @@
 	:global(.badge-rejected) { background: #fee2e2; color: #991b1b; }
 	:global(.badge-withdrawn) { background: #e4e4e7; color: #3f3f46; }
 
-	/* Modal */
-	.modal-overlay {
-		position: fixed;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.4);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 100;
-	}
-
-	.modal {
-		background: var(--color-background, #fff);
-		border-radius: 0.75rem;
-		padding: 1.5rem;
-		width: 100%;
-		max-width: 480px;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-		box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-		max-height: 90vh;
-		overflow-y: auto;
-	}
-
-	.modal-wide { max-width: 560px; }
-
-	.modal h3 {
-		font-size: 1.1rem;
-		font-weight: 700;
-		margin: 0;
-	}
-
-	.modal-footer {
-		display: flex;
-		justify-content: flex-end;
-		gap: 0.5rem;
-		padding-top: 0.5rem;
-		border-top: 1px solid var(--color-border, #e2e8f0);
-	}
-
-	/* Űrlap */
-	.form-row {
-		display: flex;
-		gap: 0.75rem;
-	}
-
-	.form-row .form-label { flex: 1; }
-
-	.form-label {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-		font-size: 0.875rem;
-		font-weight: 500;
-	}
-
-	.form-input {
-		border: 1px solid var(--color-border, #e2e8f0);
-		border-radius: 0.375rem;
-		padding: 0.4rem 0.75rem;
-		font-size: 0.875rem;
-		background: var(--color-background, #fff);
-		color: var(--color-foreground, #0f172a);
-	}
-
-	.form-input:focus {
-		outline: 2px solid var(--color-primary, #3730a3);
-		outline-offset: 1px;
-	}
-
-
-
-	/* Szabadságkeret táblázat */
-	.balance-table {
-		border: 1px solid var(--color-border, #e2e8f0);
-		border-radius: 0.5rem;
-		overflow: hidden;
-	}
-
-	.balance-header,
-	.balance-row {
-		display: grid;
-		grid-template-columns: 1fr 1fr 1fr 1fr;
-		gap: 0.5rem;
-		padding: 0.5rem 0.75rem;
-		font-size: 0.875rem;
-	}
-
-	.balance-header {
-		background: var(--color-muted, #f8fafc);
-		font-weight: 600;
-		font-size: 0.8rem;
-		color: var(--color-muted-foreground, #64748b);
-	}
-
-	.balance-row {
-		border-top: 1px solid var(--color-border, #e2e8f0);
-	}
-
-	.balance-form {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		padding: 1rem;
-		background: var(--color-muted, #f8fafc);
-		border-radius: 0.5rem;
-	}
-
-	.balance-form h4 {
-		font-size: 0.875rem;
-		font-weight: 600;
-		margin: 0;
-	}
-
-	.text-warning { color: #d97706; }
-	.text-success { color: #16a34a; }
-	.font-medium { font-weight: 500; }
-
 	/* Sötét mód */
-	:global(.dark) .modal {
-		background: var(--color-card, oklch(0.205 0 0));
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-	}
-
-	:global(.dark) .modal h3 {
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .modal-footer {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-	}
-
-	:global(.dark) .form-input {
-		background: var(--color-input, oklch(1 0 0 / 15%));
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .balance-table {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-	}
-
-	:global(.dark) .balance-header {
-		background: var(--color-muted, oklch(0.269 0 0));
-		color: var(--color-muted-foreground, oklch(0.708 0 0));
-	}
-
-	:global(.dark) .balance-row {
-		border-color: var(--color-border, oklch(1 0 0 / 10%));
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
-	:global(.dark) .balance-form {
-		background: var(--color-muted, oklch(0.269 0 0));
-	}
-
-	:global(.dark) .balance-form h4 {
-		color: var(--color-foreground, oklch(0.985 0 0));
-	}
-
 	:global(.dark) :global(.badge-pending) { background: oklch(0.3 0.05 60); color: #fde68a; }
 	:global(.dark) :global(.badge-approved) { background: oklch(0.25 0.05 145); color: #86efac; }
 	:global(.dark) :global(.badge-rejected) { background: oklch(0.25 0.05 20); color: #fca5a5; }

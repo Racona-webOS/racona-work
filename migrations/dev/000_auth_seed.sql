@@ -8,8 +8,13 @@ CREATE TABLE IF NOT EXISTS auth.users (
     full_name      VARCHAR(255),
     email          VARCHAR(255) UNIQUE NOT NULL,
     image          TEXT,
-    email_verified BOOLEAN DEFAULT false
+    email_verified BOOLEAN DEFAULT false,
+    user_settings  JSONB DEFAULT '{}'
 );
+
+-- Korábban létrehozott dev adatbázishoz (a core-ban a felhasználó nyelve a
+-- user_settings.locale mezőben van; az emailek nyelve ebből jön)
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS user_settings JSONB DEFAULT '{}';
 
 CREATE TABLE IF NOT EXISTS auth.accounts (
     id                  SERIAL PRIMARY KEY,

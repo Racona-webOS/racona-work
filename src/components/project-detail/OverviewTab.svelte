@@ -10,6 +10,7 @@
 	import { untrack } from 'svelte';
 	import type { ProjectRow } from '../../../server/functions.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
+	import { formatDate as formatAppDate } from '../../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -76,11 +77,7 @@
 
 	function formatDate(raw: string | null): string {
 		if (!raw) return t('projects.detail.dates.empty');
-		try {
-			return new Date(raw).toLocaleDateString();
-		} catch {
-			return raw;
-		}
+		return formatAppDate(raw);
 	}
 </script>
 

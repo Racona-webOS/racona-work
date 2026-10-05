@@ -10,6 +10,8 @@
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import { describeDataRequest } from './dataRequests.js';
 	import { formatSize, openFile } from './files.js';
+	import { formatDate } from '../../utils/format.js';
+	import { isCoreAdminViewer } from '../../stores/organizationStore.svelte.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -151,7 +153,7 @@
 						{:else}
 							<span class="meta">{t('files.none')}</span>
 						{/if}
-						<span class="meta">{new Date(request.createdAt).toLocaleDateString()}</span>
+						<span class="meta">{formatDate(request.createdAt)}</span>
 					</div>
 					{#if rejectingId === request.id}
 						<div class="reject-form">
@@ -175,6 +177,8 @@
 								</button>
 							</div>
 						</div>
+					{:else if request.isOwn && !isCoreAdminViewer()}
+						<p class="own-hint">{t('dataRequest.ownHint')}</p>
 					{:else}
 						<div class="actions">
 							<button
@@ -214,7 +218,7 @@
 						<button class="file-link" onclick={() => openAttachment(file.id)}>📎 {file.fileName}</button>
 						<span class="meta">
 							{description.title} · {t('files.kept.approvedAt', {
-								date: request.decidedAt ? new Date(request.decidedAt).toLocaleDateString() : '—'
+								date: formatDate(request.decidedAt)
 							})}
 						</span>
 						<button class="btn-ghost-danger" onclick={() => deleteKeptFile(file.id)}>
@@ -391,6 +395,12 @@
 
 	:global(.dark) .file-link {
 		background: var(--color-card, oklch(0.205 0 0));
+	}
+
+	.own-hint {
+		margin: 0.25rem 0 0;
+		font-size: 0.8rem;
+		color: var(--color-muted-foreground, #64748b);
 	}
 
 	.actions {

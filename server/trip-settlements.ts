@@ -14,7 +14,7 @@
 
 import type { RemoteContext } from './context.js';
 import { resolveUserId } from './context.js';
-import { hasCapability, requireCapability } from './permissions.js';
+import { ensureNotSelfDecision, hasCapability, requireCapability } from './permissions.js';
 import {
 	SCHEMA,
 	requireId,
@@ -528,6 +528,7 @@ export async function decideSettlement(
 ): Promise<SettlementDocument> {
 	const row = await loadSettlementRow(context, requireId(params?.id, 'rendelvény azonosító'));
 	await requireCapability(context, row.organization_id, 'trip.approve');
+	await ensureNotSelfDecision(context, row.employee_id);
 	if (row.status !== 'submitted') throw new Error('A rendelvényt már elbírálták, vagy nincs beküldve.');
 	const note = text(params.note, 1000);
 	const key = keyOf(row);
@@ -617,6 +618,7 @@ export async function markSettlementPaid(
 ): Promise<SettlementDocument> {
 	const row = await loadSettlementRow(context, requireId(params?.id, 'rendelvény azonosító'));
 	await requireCapability(context, row.organization_id, 'trip.manage');
+	await ensureNotSelfDecision(context, row.employee_id);
 	const paidAt = parseDay(params.paidAt ?? todayInBudapest(), 'Kifizetés dátuma', true)!;
 	if (paidAt > todayInBudapest()) throw new Error('A kifizetés dátuma nem lehet a jövőben.');
 

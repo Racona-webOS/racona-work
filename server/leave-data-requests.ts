@@ -14,7 +14,7 @@
 
 import type { LocalizedText, RemoteContext } from './context.js';
 import { resolveUserId } from './context.js';
-import { requireCapability, requireSelfOrCapability } from './permissions.js';
+import { ensureNotSelfDecision, requireCapability, requireSelfOrCapability } from './permissions.js';
 import { parseDay, todayInBudapest } from './dates.js';
 import {
 	deleteEmployeeChild,
@@ -73,6 +73,8 @@ export interface LeaveDataRequest {
 	createdAt: string;
 	/** A csatolt igazolások adatai (tartalom nélkül). */
 	files: LeaveDataRequestFile[];
+	/** A hívó saját bejelentése: ezt nem bírálhatja el (csak a rendszergazda). */
+	isOwn: boolean;
 }
 
 const KINDS: ReadonlySet<string> = new Set<LeaveDataRequestKind>([
@@ -91,13 +93,14 @@ const MAX_NOTE_LENGTH = 1000;
 const REQUEST_SELECT = `
 	SELECT r.id, r.employee_id, r.organization_id, r.kind, r.child_id, r.payload, r.employee_note,
 	       r.status, r.decision_note, r.decided_at, r.created_at,
-	       u.full_name AS employee_name, d.full_name AS decided_by_name
+	       u.full_name AS employee_name, d.full_name AS decided_by_name, e.user_id AS employee_user_id
 	  FROM ${SCHEMA}.leave_data_requests r
 	  JOIN ${SCHEMA}.employees e ON e.id = r.employee_id
 	  JOIN auth.users u ON u.id = e.user_id
 	  LEFT JOIN auth.users d ON d.id = r.decided_by`;
 
-function mapRequest(row: any): LeaveDataRequest {
+/** @param callerUserId - A lekérdező felhasználó: ehhez képest jelöljük a sajátot. */
+function mapRequest(row: any, callerUserId: number | null = null): LeaveDataRequest {
 	return {
 		id: row.id,
 		employeeId: row.employee_id,
@@ -112,7 +115,8 @@ function mapRequest(row: any): LeaveDataRequest {
 		decidedByName: row.decided_by_name ?? null,
 		decidedAt: row.decided_at ?? null,
 		createdAt: row.created_at,
-		files: []
+		files: [],
+		isOwn: callerUserId !== null && Number(row.employee_user_id) === callerUserId
 	};
 }
 
@@ -343,7 +347,8 @@ export async function getLeaveDataRequests(
 			  LIMIT 50`,
 			[params.employeeId, onlyPending]
 		);
-		return withFiles(context, r.rows.map(mapRequest));
+		const callerUserId = await resolveUserId(context);
+		return withFiles(context, r.rows.map((row: any) => mapRequest(row, callerUserId)));
 	}
 
 	if (!params.organizationId || params.organizationId <= 0) {
@@ -358,7 +363,8 @@ export async function getLeaveDataRequests(
 		  LIMIT 200`,
 		[params.organizationId, onlyPending]
 	);
-	return withFiles(context, r.rows.map(mapRequest));
+	const callerUserId = await resolveUserId(context);
+	return withFiles(context, r.rows.map((row: any) => mapRequest(row, callerUserId)));
 }
 
 // --- Elbírálás ---------------------------------------------------------------
@@ -412,6 +418,7 @@ export async function decideLeaveDataRequest(
 ): Promise<{ request: LeaveDataRequest; recalculated: RecalculatedBalance[] }> {
 	const request = await loadRequest(context, params.id);
 	await requireCapability(context, request.organizationId, 'leave.balance.manage');
+	await ensureNotSelfDecision(context, request.employeeId);
 	if (params.decision !== 'approve' && params.decision !== 'reject') {
 		throw new Error('Érvénytelen döntés.');
 	}

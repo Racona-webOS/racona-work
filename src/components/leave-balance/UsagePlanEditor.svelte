@@ -9,6 +9,7 @@
 	import type { LeaveUsagePlanView } from '../../../server/functions.js';
 	import { uniformMonths, validatePlan } from '../../../server/leave-usage-plan-utils.js';
 	import type { PlanError } from '../../../server/leave-usage-plan-utils.js';
+	import { formatNumber } from '../../utils/format.js';
 
 	let { pluginId = 'racona-work', organizationId }: { pluginId?: string; organizationId: number } = $props();
 
@@ -58,7 +59,7 @@
 	}
 
 	function formatDays(value: number): string {
-		return value.toLocaleString('hu-HU', { maximumFractionDigits: 1 });
+		return formatNumber(value, { maximumFractionDigits: 1 });
 	}
 
 	function increment(i: number): string {

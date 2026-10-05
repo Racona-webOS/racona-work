@@ -4,6 +4,7 @@
  */
 
 import type { Organization } from '../../server/functions.js';
+import { translate } from '../utils/sdk.js';
 
 const STORAGE_KEY = 'racona-work:last-organization-id';
 
@@ -173,7 +174,7 @@ export class OrganizationStore {
 	 */
 	async loadOrganizations(): Promise<void> {
 		if (!this.sdk?.remote) {
-			this.error = 'SDK nem elérhető. Kérlek, frissítsd az oldalt.';
+			this.error = this.t('error.sdkUnavailable');
 			console.error('[OrganizationStore] SDK nem elérhető');
 			return;
 		}
@@ -232,8 +233,8 @@ export class OrganizationStore {
 			}
 		} catch (err: any) {
 			// Követelmény 15.2: Részletes hibaüzenet
-			const errorMessage = err?.message ?? 'Szervezetek betöltése sikertelen';
-			this.error = this.formatErrorMessage(errorMessage, 'Szervezetek betöltése sikertelen');
+			const defaultMessage = this.t('organizations.loadFailed');
+			this.error = this.formatErrorMessage(err?.message ?? defaultMessage, defaultMessage);
 			console.error('[OrganizationStore] Hiba a szervezetek betöltésekor:', err);
 
 			// Toast értesítés a felhasználónak (Követelmény 15.5)
@@ -264,7 +265,7 @@ export class OrganizationStore {
 			const org = this.availableOrganizations.find((o) => o.id === organizationId);
 
 			if (!org) {
-				throw new Error('A megadott szervezet nem található vagy nincs hozzáférésed');
+				throw new Error(this.t('organizations.notAccessible'));
 			}
 
 			// Frissítjük az aktuális szervezetet (Követelmény: 4.1)
@@ -293,62 +294,14 @@ export class OrganizationStore {
 			this.error = null;
 		} catch (err: any) {
 			// Követelmény 15.1, 15.3: Részletes hibaüzenet
-			const errorMessage = err?.message ?? 'Szervezet váltás sikertelen';
-			this.error = this.formatErrorMessage(errorMessage, 'Szervezet váltás sikertelen');
+			const defaultMessage = this.t('organizations.switchFailed');
+			this.error = this.formatErrorMessage(err?.message ?? defaultMessage, defaultMessage);
 			console.error('[OrganizationStore] Hiba a szervezet váltásakor:', err);
 
 			// Toast értesítés a felhasználónak (Követelmény 15.5)
 			if (this.sdk?.ui?.toast) {
 				this.sdk.ui.toast(this.error, 'error');
 			}
-		} finally {
-			this.isLoading = false;
-		}
-	}
-
-	/**
-	 * Új szervezet létrehozása
-	 * Követelmény: 2.1, 2.2, 2.3, 15.1, 15.3
-	 */
-	async createOrganization(data: { name: string }): Promise<Organization | null> {
-		if (!this.sdk?.remote) {
-			this.error = 'SDK nem elérhető. Kérlek, frissítsd az oldalt.';
-			if (this.sdk?.ui?.toast) {
-				this.sdk.ui.toast(this.error, 'error');
-			}
-			return null;
-		}
-
-		this.isLoading = true;
-		this.error = null;
-
-		try {
-			const result = await this.sdk.remote.call('createOrganization', data);
-			const newOrg = result as Organization;
-
-			// Hozzáadjuk az elérhető szervezetekhez
-			this.availableOrganizations = [...this.availableOrganizations, newOrg];
-
-			// Automatikusan váltunk az új szervezetre
-			await this.switchOrganization(newOrg.id);
-
-			// Sikeres toast (Követelmény 15.5)
-			if (this.sdk?.ui?.toast) {
-				this.sdk.ui.toast(`${newOrg.name} sikeresen létrehozva`, 'success');
-			}
-
-			return newOrg;
-		} catch (err: any) {
-			// Követelmény 15.3: Részletes hibaüzenet
-			const errorMessage = err?.message ?? 'Szervezet létrehozása sikertelen';
-			this.error = this.formatErrorMessage(errorMessage, 'Szervezet létrehozása sikertelen');
-			console.error('[OrganizationStore] Hiba a szervezet létrehozásakor:', err);
-
-			// Toast értesítés a felhasználónak (Követelmény 15.5)
-			if (this.sdk?.ui?.toast) {
-				this.sdk.ui.toast(this.error, 'error');
-			}
-			return null;
 		} finally {
 			this.isLoading = false;
 		}
@@ -364,7 +317,7 @@ export class OrganizationStore {
 		projectCount?: number;
 	}> {
 		if (!this.sdk?.remote) {
-			this.error = 'SDK nem elérhető. Kérlek, frissítsd az oldalt.';
+			this.error = this.t('error.sdkUnavailable');
 			if (this.sdk?.ui?.toast) {
 				this.sdk.ui.toast(this.error, 'error');
 			}
@@ -403,11 +356,8 @@ export class OrganizationStore {
 				);
 			}
 
-			// Sikeres toast (Követelmény 15.5)
-			if (this.sdk?.ui?.toast) {
-				this.sdk.ui.toast('Szervezet sikeresen törölve', 'success');
-			}
-
+			// A sikeres és a sikertelen törlést a hívó (Organizations) jelzi, itt nincs toast,
+			// különben két üzenet jelenne meg.
 			return {
 				success: true,
 				memberCount: result?.memberCount,
@@ -415,14 +365,9 @@ export class OrganizationStore {
 			};
 		} catch (err: any) {
 			// Követelmény 15.4: Részletes hibaüzenet
-			const errorMessage = err?.message ?? 'Szervezet törlése sikertelen';
-			this.error = this.formatErrorMessage(errorMessage, 'Szervezet törlése sikertelen');
+			const defaultMessage = this.t('organizations.delete.failed');
+			this.error = this.formatErrorMessage(err?.message ?? defaultMessage, defaultMessage);
 			console.error('[OrganizationStore] Hiba a szervezet törlésekor:', err);
-
-			// Toast értesítés a felhasználónak (Követelmény 15.5)
-			if (this.sdk?.ui?.toast) {
-				this.sdk.ui.toast(this.error, 'error');
-			}
 			return { success: false };
 		} finally {
 			this.isLoading = false;
@@ -508,6 +453,11 @@ export class OrganizationStore {
 		}
 	}
 
+	/** Fordítás a plugin SDK-jával (a store nem komponens, nincs saját t()-je). */
+	private t(key: string): string {
+		return translate(this.sdk, key);
+	}
+
 	/**
 	 * Hibaüzenet formázása felhasználóbarát módon
 	 * Követelmény: 15.1, 15.2, 15.3, 15.4
@@ -517,14 +467,14 @@ export class OrganizationStore {
 		if (errorMessage.toLowerCase().includes('network') ||
 		    errorMessage.toLowerCase().includes('fetch') ||
 		    errorMessage.toLowerCase().includes('connection')) {
-			return 'Hálózati hiba. Kérlek, ellenőrizd az internetkapcsolatot és próbáld újra.';
+			return this.t('error.network');
 		}
 
 		// Ha a hibaüzenet tartalmaz jogosultsági hibát
 		if (errorMessage.toLowerCase().includes('unauthorized') ||
 		    errorMessage.toLowerCase().includes('forbidden') ||
 		    errorMessage.toLowerCase().includes('permission')) {
-			return 'Nincs jogosultságod ehhez a művelethez. Kérj hozzáférést egy rendszergazdától.';
+			return this.t('error.forbidden');
 		}
 
 		// Ha a hibaüzenet tartalmaz validációs hibát
@@ -582,6 +532,15 @@ export function setOrganizationStore(store: OrganizationStore): void {
 /**
  * OrganizationStore lekérése
  */
+/**
+ * A felhasználó core admin (rendszergazda)-e. Saját ügyben csak ő dönthet,
+ * ezért a felület ez alapján mutatja vagy rejti el a döntés gombjait.
+ */
+export function isCoreAdminViewer(): boolean {
+	const store = typeof window !== 'undefined' ? (window as any)[STORE_WINDOW_KEY] : null;
+	return store?.isAdmin === true;
+}
+
 export function getOrganizationStore(): OrganizationStore {
 	const store = typeof window !== 'undefined' ? (window as any)[STORE_WINDOW_KEY] : null;
 	if (!store) {

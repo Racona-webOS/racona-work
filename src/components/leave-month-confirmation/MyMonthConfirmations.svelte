@@ -13,6 +13,7 @@
 	import type { LeaveType } from '../../../server/leave-types.js';
 	import { summarizeSnapshot } from '../../../server/leave-month-confirmation-utils.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
+	import { formatDate as formatAppDate } from '../../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -53,15 +54,11 @@
 	}
 
 	function formatDate(value: string | null): string {
-		return value ? new Date(value).toLocaleDateString() : '—';
+		return formatAppDate(value);
 	}
 
 	function formatDay(iso: string): string {
-		return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
-			month: 'short',
-			day: 'numeric',
-			weekday: 'short'
-		});
+		return formatAppDate(iso, { month: 'short', day: 'numeric', weekday: 'short' });
 	}
 
 	function formatRange(start: string, end: string): string {

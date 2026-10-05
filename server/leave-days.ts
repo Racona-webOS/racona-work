@@ -12,7 +12,7 @@
 
 import type { RemoteContext } from './context.js';
 import { isCoreAdmin, isDevMode, resolveUserId } from './context.js';
-import { hasCapability, requireCapability, EXTERNAL_EMPLOYEE_ERROR } from './permissions.js';
+import { ensureNotSelfDecision, hasCapability, requireCapability, EXTERNAL_EMPLOYEE_ERROR } from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
 import {
 	notifyLeaveDaysAdded,
@@ -627,6 +627,7 @@ export async function previewLeaveCalendarSave(
 	const input = parseChangeParams(params);
 	await requireCapability(context, input.organizationId, 'leave.approve');
 	await assertEmployeeInOrganization(context.db, input.employeeId, input.organizationId);
+	await ensureNotSelfDecision(context, input.employeeId);
 	return planCalendarChanges(context.db, context, input);
 }
 
@@ -648,6 +649,8 @@ export async function saveLeaveCalendar(
 	}
 	await requireCapability(context, input.organizationId, 'leave.approve');
 	await assertEmployeeInOrganization(context.db, input.employeeId, input.organizationId);
+	// A saját szabadságát a jóváhagyó is csak kérelemmel rögzítheti
+	await ensureNotSelfDecision(context, input.employeeId);
 	const userId = await resolveUserId(context);
 	const approverEmployeeId = await findEmployeeIdOfUser(context.db, userId, input.organizationId);
 

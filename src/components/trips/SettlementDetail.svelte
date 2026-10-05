@@ -12,6 +12,8 @@
 	import { errorMessage, formatDateTime, formatDay, formatDecimal, formatHuf, formatKm, statusLabel } from './format.js';
 	import { printSettlement } from './settlement-print.js';
 	import { downloadSettlementXlsx } from './settlement-xlsx.js';
+	import { isCoreAdminViewer } from '../../stores/organizationStore.svelte.js';
+	import { formatNumber } from '../../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -48,6 +50,8 @@
 	const editableOrderer = $derived(canApprove && (status === null || status === 'draft' || status === 'submitted'));
 	const blocked = $derived((doc?.warnings ?? []).some(blocksApproval));
 	const canSubmit = $derived((isOwner || canManage) && (status === null || status === 'draft') && (doc?.rows.length ?? 0) > 0);
+	/** Saját rendelvényről csak a rendszergazda dönthet (a szerver is elutasítaná). */
+	const ownBlocked = $derived(isOwner && !isCoreAdminViewer());
 
 	onMount(load);
 
@@ -192,7 +196,7 @@
 						<div>{doc.vehicle.plate} · {doc.vehicle.model}</div>
 						<div class="muted">
 							{formatDecimal(doc.calc.consumption)} {doc.calc.unit}/100 km · {t('trips.settlement.rate')}:
-							{doc.calc.ratePerKm !== null ? `${doc.calc.ratePerKm.toLocaleString('hu-HU', { maximumFractionDigits: 2 })} Ft/km` : '—'}
+							{doc.calc.ratePerKm !== null ? `${formatNumber(doc.calc.ratePerKm, { maximumFractionDigits: 2 })} Ft/km` : '—'}
 						</div>
 					</div>
 				</div>
@@ -280,7 +284,7 @@
 				{#if status === 'submitted' && isOwner}
 					<button class="btn-secondary" onclick={withdraw} disabled={busy}>{t('trips.settlement.withdraw')}</button>
 				{/if}
-				{#if status === 'submitted' && canApprove}
+				{#if status === 'submitted' && canApprove && !ownBlocked}
 					<button class="btn-secondary" onclick={returnToEmployee} disabled={busy}>{t('trips.settlement.return')}</button>
 					<button class="btn-primary" onclick={approve} disabled={busy || blocked} title={blocked ? t('trips.settlement.blockedHint') : ''}>
 						{t('trips.settlement.approve')}
@@ -288,8 +292,10 @@
 				{/if}
 				{#if status === 'approved' && canManage}
 					<button class="btn-secondary" onclick={reopen} disabled={busy}>{t('trips.settlement.reopen')}</button>
-					<input class="input input-sm" type="date" bind:value={paidAt} aria-label={t('trips.settlement.paidAt')} />
-					<button class="btn-primary" onclick={markPaid} disabled={busy}>{t('trips.settlement.markPaid')}</button>
+					{#if !ownBlocked}
+						<input class="input input-sm" type="date" bind:value={paidAt} aria-label={t('trips.settlement.paidAt')} />
+						<button class="btn-primary" onclick={markPaid} disabled={busy}>{t('trips.settlement.markPaid')}</button>
+					{/if}
 				{/if}
 			</div>
 		</div>

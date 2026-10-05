@@ -10,16 +10,12 @@
 	import { createOrganizationStore, getOrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { OrganizationStore } from '../stores/organizationStore.svelte.js';
 	import type { Organization } from '../../server/functions.js';
+	import { resolveSdk, translate } from '../utils/sdk.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
-	const sdk = $derived(
-		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
-	);
-
-	function t(key: string): string {
-		return sdk?.i18n?.t(key) ?? key;
-	}
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	// --- Store ---
 	let store = $state<OrganizationStore | null>(null);

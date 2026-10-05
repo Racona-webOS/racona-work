@@ -15,6 +15,7 @@
 		WorkEntryCategory
 	} from '../../../server/functions.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
+	import { appLocale, formatDate } from '../../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -42,6 +43,8 @@
 
 	/** A core által megosztott DatePicker; ha nincs, natív date inputra esünk vissza. */
 	const DatePickerComponent = $derived((sdk as any)?.components?.DatePicker ?? null);
+	/** A dátumválasztó nyelve a felület nyelvét követi. */
+	const dateLocale = $derived(appLocale());
 
 	/** A projekt kezdő dátuma (YYYY-MM-DD): ennél korábbi nap nem rögzíthető. */
 	const projectStart = $derived(toYmd(project.startDate));
@@ -153,7 +156,7 @@
 		if (projectStart && workWorkDate < projectStart) {
 			sdk?.ui?.toast?.(
 				t('work.form.beforeStart', {
-					date: new Date(`${projectStart}T00:00:00`).toLocaleDateString()
+					date: formatDate(projectStart)
 				}),
 				'error'
 			);
@@ -272,7 +275,7 @@
 <div class="date-filter-bar">
 	<div class="date-filter-picker">
 		{#if DatePickerComponent}
-			<DatePickerComponent bind:value={workFrom} locale="hu-HU" placeholder="éééé. hh. nn." />
+			<DatePickerComponent bind:value={workFrom} locale={dateLocale} placeholder={t('filter.datePlaceholder')} />
 		{:else}
 			<input class="input input-sm" type="date" bind:value={workFrom} />
 		{/if}
@@ -280,7 +283,7 @@
 	<span class="date-filter-label">{t('filter.from')}</span>
 	<div class="date-filter-picker">
 		{#if DatePickerComponent}
-			<DatePickerComponent bind:value={workTo} locale="hu-HU" placeholder="éééé. hh. nn." />
+			<DatePickerComponent bind:value={workTo} locale={dateLocale} placeholder={t('filter.datePlaceholder')} />
 		{:else}
 			<input class="input input-sm" type="date" bind:value={workTo} />
 		{/if}
@@ -316,7 +319,7 @@
 		{#each workEntries as entry (entry.id)}
 			<div class="entry-row">
 				<div class="entry-date">
-					{new Date(entry.workDate).toLocaleDateString()}
+					{formatDate(entry.workDate)}
 				</div>
 				<div class="entry-main">
 					{#if entry.categoryName}

@@ -14,6 +14,7 @@
 	import { resolveSdk, translate } from '../../utils/sdk.js';
 	import Checkbox from '../ui/Checkbox.svelte';
 	import { errorMessage, monthName, priceTypeLabel } from './format.js';
+	import { formatNumber } from '../../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -42,8 +43,7 @@
 	/** A felülírás kézi be- és kikapcsolása; ami nincs benne, az az alapértelmezés szerint megy. */
 	let overwriteToggles = $state<Record<string, boolean>>({});
 
-	const priceFormat = new Intl.NumberFormat('hu-HU', { maximumFractionDigits: 2 });
-	const fmt = (value: number | null) => (value === null ? '—' : priceFormat.format(value));
+	const fmt = (value: number | null) => (value === null ? '—' : formatNumber(value, { maximumFractionDigits: 2 }));
 
 	const mapping = $derived.by<NavPriceMapping>(() => {
 		const result: NavPriceMapping = {};

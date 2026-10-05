@@ -20,6 +20,7 @@ export type BalanceHistoryAction =
 	| 'recalculated'
 	| 'adjusted'
 	| 'calculation_applied'
+	/** Csak régi naplósorokban: a keret közvetlen kézi beállítása megszűnt. */
 	| 'manual_set';
 
 /** A keret naplózott mezői. */

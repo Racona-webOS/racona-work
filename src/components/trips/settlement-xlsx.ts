@@ -7,7 +7,9 @@
 import type { SettlementDocument } from '../../../server/functions.js';
 import { FUEL_LABELS, consumptionUnitLabel, priceUnitLabel, settlementFileName } from '../../../server/trip-calc.js';
 import { fillTemplate, type CellValue } from './xlsx-template.js';
-import { formatDay } from './format.js';
+import { officialDay } from './format.js';
+import { downloadBytes } from '../../utils/download.js';
+import { translate } from '../../utils/sdk.js';
 
 export const TEMPLATE_ASSET = 'templates/kikuldetesi-rendelveny.xlsx';
 /** A mai nyomtatvány képe: legalább ennyi sor (üresen is). */
@@ -28,14 +30,14 @@ function consumptionBasis(doc: SettlementDocument): string {
 export function settlementTemplateData(doc: SettlementDocument) {
 	const values: Record<string, CellValue> = {
 		'doc.number': doc.documentNumber ?? '',
-		'doc.date': formatDay(doc.issuedOn),
+		'doc.date': officialDay(doc.issuedOn),
 		'period.label': doc.periodLabel,
 		'employer.name': doc.employer.name,
 		'employer.address': doc.employer.address ?? '',
 		'employer.taxNumber': doc.employer.taxNumber ?? '',
 		'employee.name': doc.employee.name,
 		'employee.address': doc.employee.address ?? '',
-		'employee.birth': [doc.employee.birthDate ? formatDay(doc.employee.birthDate) : '', doc.employee.birthPlace ?? '']
+		'employee.birth': [doc.employee.birthDate ? officialDay(doc.employee.birthDate) : '', doc.employee.birthPlace ?? '']
 			.filter(Boolean)
 			.join(' '),
 		'employee.motherName': doc.employee.motherName ?? '',
@@ -49,8 +51,8 @@ export function settlementTemplateData(doc: SettlementDocument) {
 		'vehicle.consumptionBasis': consumptionBasis(doc),
 		'rate.normCost': doc.calc.normCostPerKm,
 		'rate.priceUnit': priceUnitLabel(doc.calc.unit),
-		'approval.text': doc.approval ? `${doc.approval.byName}, ${formatDay(doc.approval.at)}` : '',
-		'payment.text': doc.payment ? `${doc.payment.byName}, ${formatDay(doc.payment.at)}` : ''
+		'approval.text': doc.approval ? `${doc.approval.byName}, ${officialDay(doc.approval.at)}` : '',
+		'payment.text': doc.payment ? `${doc.payment.byName}, ${officialDay(doc.payment.at)}` : ''
 	};
 	const rows: Record<string, CellValue>[] = doc.rows.map((row) => ({
 		'trip.index': row.index,
@@ -75,16 +77,10 @@ export function fillSettlementXlsx(template: Uint8Array, doc: SettlementDocument
 export async function downloadSettlementXlsx(sdk: any, doc: SettlementDocument): Promise<void> {
 	const url: string = sdk?.assets?.getUrl?.(TEMPLATE_ASSET) ?? `/${TEMPLATE_ASSET}`;
 	const response = await fetch(url);
-	if (!response.ok) throw new Error('A rendelvény sablonja nem tölthető le.');
+	if (!response.ok) throw new Error(translate(sdk, 'trips.settlement.xlsxTemplateMissing'));
 	const template = new Uint8Array(await response.arrayBuffer());
-	const bytes = fillSettlementXlsx(template, doc);
-	const blob = new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-	const href = URL.createObjectURL(blob);
-	const link = document.createElement('a');
-	link.href = href;
-	link.download = `${settlementFileName(doc.vehicle.plate, doc.employee.name, doc.year, doc.month)}.xlsx`;
-	document.body.appendChild(link);
-	link.click();
-	link.remove();
-	setTimeout(() => URL.revokeObjectURL(href), 1000);
+	downloadBytes(
+		fillSettlementXlsx(template, doc),
+		`${settlementFileName(doc.vehicle.plate, doc.employee.name, doc.year, doc.month)}.xlsx`
+	);
 }

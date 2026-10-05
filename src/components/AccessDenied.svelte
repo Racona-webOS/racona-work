@@ -3,24 +3,32 @@
 	Követelmények: 13.1, 13.2, 13.3, 13.4, 13.5
 -->
 <script lang="ts">
+	import { resolveSdk, translate } from '../utils/sdk.js';
+
+	// A szövegek alapból a felület nyelvén jelennek meg; a hívó felülírhatja őket.
 	let {
-		title = 'Nincs hozzáférésed ehhez az alkalmazáshoz',
-		message = 'Jelenleg nem vagy tagja egyetlen szervezetnek sem.',
-		instruction = 'Kérj hozzáférést egy rendszergazdától.',
+		pluginId = 'racona-work',
+		title,
+		message,
+		instruction,
 		icon = '🔒'
 	}: {
+		pluginId?: string;
 		title?: string;
 		message?: string;
 		instruction?: string;
 		icon?: string;
 	} = $props();
+
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string) => translate(sdk, key);
 </script>
 
 <div class="access-denied">
 	<div class="access-denied-icon">{icon}</div>
-	<h2 class="access-denied-title">{title}</h2>
-	<p class="access-denied-message">{message}</p>
-	<p class="access-denied-instruction">{instruction}</p>
+	<h2 class="access-denied-title">{title ?? t('accessDenied.title')}</h2>
+	<p class="access-denied-message">{message ?? t('accessDenied.message')}</p>
+	<p class="access-denied-instruction">{instruction ?? t('accessDenied.instruction')}</p>
 </div>
 
 <style>

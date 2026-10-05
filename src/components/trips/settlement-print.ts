@@ -9,7 +9,7 @@
 
 import type { SettlementDocument } from '../../../server/functions.js';
 import { FUEL_LABELS, consumptionUnitLabel, priceUnitLabel, settlementFileName } from '../../../server/trip-calc.js';
-import { formatDateTime, formatDay, formatHuf } from './format.js';
+import { formatHuf, officialDateTime, officialDay } from './format.js';
 
 const MIN_ROWS = 13;
 
@@ -28,7 +28,7 @@ function num(value: number | null | undefined, decimals = 0): string {
 
 /** `2025.08.12.` és alatta `08:00`, hogy a keskeny oszlopba is kiférjen. */
 function dateTimeCell(value: string): string {
-	const [date, time] = formatDateTime(value).split(' ');
+	const [date, time] = officialDateTime(value).split(' ');
 	return `${esc(date)}<br>${esc(time ?? '')}`;
 }
 
@@ -40,7 +40,7 @@ export function settlementPrintHtml(doc: SettlementDocument, options: { watermar
 			: doc.vehicle.consumptionSource === 'override'
 				? `egyedi érték${doc.vehicle.consumptionOverrideReason ? `: ${doc.vehicle.consumptionOverrideReason}` : ''}`
 				: '';
-	const birth = [doc.employee.birthDate ? formatDay(doc.employee.birthDate) : '', doc.employee.birthPlace ?? '']
+	const birth = [doc.employee.birthDate ? officialDay(doc.employee.birthDate) : '', doc.employee.birthPlace ?? '']
 		.filter(Boolean)
 		.join(' ');
 
@@ -137,15 +137,15 @@ ${options.watermark ? `<div class="watermark">${esc(options.watermark)}</div>` :
 		<tr><td colspan="5" class="r bold">Összes:</td><td class="r bold">${num(c.totalKm)}</td><td class="r">${num(c.price, 0)}</td>
 			<td class="r">${num(c.subtotal, 2)}</td><td colspan="3"></td></tr>
 		<tr><td colspan="7" class="r">Kerekítés:</td><td class="r">${num(c.rounding, 2)}</td><td colspan="3"></td></tr>
-		<tr><td colspan="7" class="r bold">Mindösszesen:</td><td class="r bold">${esc(formatHuf(c.total))}</td><td colspan="3"></td></tr>
+		<tr><td colspan="7" class="r bold">Mindösszesen:</td><td class="r bold">${esc(formatHuf(c.total, false, 'hu-HU'))}</td><td colspan="3"></td></tr>
 	</tfoot>
 </table>
 
 <div class="footer">
-	<div>Kelt: ${esc(formatDay(doc.issuedOn))}</div>
+	<div>Kelt: ${esc(officialDay(doc.issuedOn))}</div>
 	<div class="signatures">
-		<p>Igazolta: ${esc(doc.approval ? `${doc.approval.byName}, ${formatDay(doc.approval.at)}` : '')} ______________________</p>
-		<p>Utalványozta: ${esc(doc.payment ? `${doc.payment.byName}, ${formatDay(doc.payment.at)}` : '')} ______________________</p>
+		<p>Igazolta: ${esc(doc.approval ? `${doc.approval.byName}, ${officialDay(doc.approval.at)}` : '')} ______________________</p>
+		<p>Utalványozta: ${esc(doc.payment ? `${doc.payment.byName}, ${officialDay(doc.payment.at)}` : '')} ______________________</p>
 	</div>
 </div>
 </body></html>`;

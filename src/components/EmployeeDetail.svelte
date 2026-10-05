@@ -17,6 +17,8 @@
 	import OtherAllowances from './leave-entitlement/OtherAllowances.svelte';
 	import DataRequestReview from './leave-entitlement/DataRequestReview.svelte';
 	import PersonalDataFields from './trips/PersonalDataFields.svelte';
+	import { resolveSdk, translate } from '../utils/sdk.js';
+	import { formatDate } from '../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -26,17 +28,8 @@
 		employeeId?: number | null;
 	} = $props();
 
-	const sdk = $derived(
-		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
-	);
-
-	function t(key: string, vars?: Record<string, string | number>): string {
-		let str = sdk?.i18n?.t(key) ?? key;
-		if (vars) {
-			for (const [k, v] of Object.entries(vars)) str = str.replace(`{${k}}`, String(v));
-		}
-		return str;
-	}
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	// --- Állapot ---
 	let view = $state<EmployeeDetailView | null>(null);
@@ -95,9 +88,7 @@
 
 	/** YYYY-MM-DD → helyi dátum, időzóna-csúszás nélkül. */
 	function formatDay(day: string | null | undefined): string {
-		if (!day) return '—';
-		const [y, m, d] = day.split('-').map(Number);
-		return new Date(y, m - 1, d).toLocaleDateString();
+		return formatDate(day);
 	}
 
 	/** A dátumváltozás utáni újraszámolás jelzése, és a keret kártyák frissítése. */
@@ -313,7 +304,7 @@
 <div class="rw">
 <section class="page">
 	<div class="page-header">
-		<button class="btn-back" onclick={() => sdk?.ui?.navigateTo('EmployeeList')}>← Vissza</button>
+		<button class="btn-back" onclick={() => sdk?.ui?.navigateTo('EmployeeList')}>{t('employeeDetail.back')}</button>
 		<h2>{t('employeeDetail.title')}</h2>
 	</div>
 
@@ -325,10 +316,10 @@
 	{:else if error}
 		<div class="error-state">
 			<p>{error}</p>
-			<button class="btn-secondary" onclick={loadDetail}>Újra</button>
+			<button class="btn-secondary" onclick={loadDetail}>{t('error.retry')}</button>
 		</div>
 	{:else if !employeeId}
-		<p class="empty-state">Nincs kiválasztott dolgozó.</p>
+		<p class="empty-state">{t('employeeDetail.noEmployee')}</p>
 	{:else if view}
 		<!-- Két hasábos elrendezés: bal = alapadatok + kategóriák, jobb = szabadságkeret -->
 		<div class="two-col-grid">
@@ -522,7 +513,7 @@
 								type="text"
 								bind:value={detailEdit.fieldKey}
 								disabled={detailEdit.mode === 'edit'}
-								placeholder="pl. Telefonszám"
+								placeholder={t('employeeDetail.fieldKeyPlaceholder')}
 							/>
 						</label>
 						<label class="form-label">
@@ -531,7 +522,7 @@
 								class="form-input"
 								type="text"
 								bind:value={detailEdit.fieldValue}
-								placeholder="pl. +36 30 123 4567"
+								placeholder={t('employeeDetail.fieldValuePlaceholder')}
 							/>
 						</label>
 						<div class="form-actions">

@@ -2,9 +2,11 @@
  * Szám- és dátumformázás a Szabadság egyenleg oldal komponenseihez.
  */
 
-/** Napok legfeljebb egy tizedessel (magyar tizedesvesszővel). */
+import { formatNumber, formatShortDay as formatShortDate } from '../../utils/format.js';
+
+/** Napok legfeljebb egy tizedessel, a felület nyelvének tizedesjelével. */
 export function formatDays(value: number, digits = 1): string {
-	return value.toLocaleString('hu-HU', { maximumFractionDigits: digits });
+	return formatNumber(value, { maximumFractionDigits: digits });
 }
 
 /** Előjeles érték: +3,7 / −2 / 0. */
@@ -14,9 +16,9 @@ export function formatSigned(value: number, digits = 1): string {
 	return `${rounded > 0 ? '+' : '−'}${formatDays(Math.abs(rounded), digits)}`;
 }
 
-/** Rövid dátum: „szept. 14.”. */
+/** Rövid dátum: „szept. 14.” / „14 Sept”. */
 export function formatShortDay(iso: string): string {
-	return new Date(`${iso}T00:00:00Z`).toLocaleDateString('hu-HU', { timeZone: 'UTC', month: 'short', day: 'numeric' });
+	return formatShortDate(iso);
 }
 
 /** Monogram a profilkép helyére. */

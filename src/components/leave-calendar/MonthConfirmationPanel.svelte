@@ -16,6 +16,8 @@
 	} from '../../../server/functions.js';
 	import { LEAVE_TYPES } from '../../../server/leave-types.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
+	import { formatDate as formatAppDate } from '../../utils/format.js';
+	import { isCoreAdminViewer } from '../../stores/organizationStore.svelte.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -140,11 +142,11 @@
 	// --- Megjelenítés --------------------------------------------------------
 
 	function formatDate(value: string | null): string {
-		return value ? new Date(value).toLocaleDateString() : '—';
+		return formatAppDate(value);
 	}
 
 	function formatDay(iso: string): string {
-		return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+		return formatAppDate(iso, { month: 'short', day: 'numeric' });
 	}
 
 	function typeLabel(type: string | undefined): string {
@@ -291,9 +293,11 @@
 								<button class="btn-secondary btn-sm" onclick={() => onOpenEmployee(row.employeeId)}>
 									{t('monthConfirmation.actions.openCalendar')}
 								</button>
-								<button class="btn-secondary btn-sm" onclick={() => startAction(conf.id, 'close')} disabled={resolving}>
-									{t('monthConfirmation.actions.close')}
-								</button>
+								{#if !row.isOwn || isCoreAdminViewer()}
+									<button class="btn-secondary btn-sm" onclick={() => startAction(conf.id, 'close')} disabled={resolving}>
+										{t('monthConfirmation.actions.close')}
+									</button>
+								{/if}
 								<button class="btn-primary btn-sm" onclick={() => startAction(conf.id, 'resend')} disabled={resolving}>
 									{t('monthConfirmation.actions.resend')}
 								</button>
@@ -335,9 +339,11 @@
 						<li class="item compact">
 							<span class="name">{row.employeeName}</span>
 							<span class="meta">{t('monthConfirmation.sentAt', { date: formatDate(row.confirmation!.sentAt) })}</span>
-							<button class="link-btn" onclick={() => startAction(row.confirmation!.id, 'close')} disabled={resolving}>
-								{t('monthConfirmation.actions.close')}
-							</button>
+							{#if !row.isOwn || isCoreAdminViewer()}
+								<button class="link-btn" onclick={() => startAction(row.confirmation!.id, 'close')} disabled={resolving}>
+									{t('monthConfirmation.actions.close')}
+								</button>
+							{/if}
 							{@render actionForm(row)}
 						</li>
 					{/each}

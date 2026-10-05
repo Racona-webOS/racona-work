@@ -4,14 +4,13 @@
  */
 
 import type { ChildData, LeaveDataRequest } from '../../../server/functions.js';
+import { formatDate } from '../../utils/format.js';
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
 /** YYYY-MM-DD → helyi dátum, időzóna-csúszás nélkül. */
 export function formatDay(day: string | null | undefined): string {
-	if (!day) return '—';
-	const [y, m, d] = day.split('-').map(Number);
-	return new Date(y, m - 1, d).toLocaleDateString();
+	return formatDate(day);
 }
 
 function childText(child: ChildData | undefined, t: Translate): string {

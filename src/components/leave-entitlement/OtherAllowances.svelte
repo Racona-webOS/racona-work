@@ -7,6 +7,7 @@
 <script lang="ts">
 	import type { ChildLeaveStatus, LeaveAllowances } from '../../../server/functions.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
+	import { formatDate } from '../../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -45,8 +46,7 @@
 
 	/** YYYY-MM-DD → helyi dátum, időzóna-csúszás nélkül. */
 	function formatDay(day: string): string {
-		const [y, m, d] = day.split('-').map(Number);
-		return new Date(y, m - 1, d).toLocaleDateString();
+		return formatDate(day);
 	}
 
 	function childName(child: ChildLeaveStatus): string {

@@ -19,16 +19,13 @@
 	import type { EmployeeRow, PaginatedResult, Organization } from '../../server/functions.js';
 	import AccessDenied from './AccessDenied.svelte';
 	import Checkbox from './ui/Checkbox.svelte';
+	import { resolveSdk, translate } from '../utils/sdk.js';
+	import { roleDescription, roleName, sortRoles } from '../utils/roles.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
-	const sdk = $derived(
-		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
-	);
-
-	function t(key: string): string {
-		return sdk?.i18n?.t(key) ?? key;
-	}
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	// --- Képesség csoportok (UI kategorizáláshoz) -----------------------------
 	const CAPABILITY_GROUPS: Array<{ labelKey: string; items: string[] }> = [
@@ -130,7 +127,7 @@
 			const result = (await sdk.remote.call('listRoles', {
 				organizationId: currentOrganization.id
 			})) as RoleRow[];
-			roles = Array.isArray(result) ? result : [];
+			roles = Array.isArray(result) ? sortRoles(t, result) : [];
 			if (roles.length > 0) {
 				const stillExists = roles.find((r) => r.id === selectedRoleId);
 				if (!stillExists) {
@@ -181,8 +178,9 @@
 	}
 
 	function hydrateEditor(role: RoleRow) {
-		editName = role.name;
-		editDescription = role.description ?? '';
+		// Rendszerszerepnél csak megjelenítés (a felület nyelvén), mentéskor nem megy el
+		editName = roleName(t, role);
+		editDescription = roleDescription(t, role) ?? '';
 		editCapabilities = new Set(role.capabilities);
 	}
 
@@ -204,10 +202,12 @@
 		}
 		saving = true;
 		try {
+			// A rendszerszerep neve és leírása nem módosítható, csak a képességei
 			await sdk.remote.call('updateRole', {
 				id: selectedRole.id,
-				name: editName.trim(),
-				description: editDescription.trim() || null,
+				...(selectedRole.isSystem
+					? {}
+					: { name: editName.trim(), description: editDescription.trim() || null }),
 				capabilities: [...editCapabilities]
 			});
 			sdk?.ui?.toast(t('permissions.role.saveSuccess'), 'success');
@@ -423,7 +423,7 @@
 										onclick={() => selectRole(role.id)}
 									>
 										<span class="role-name">
-											{role.name}
+											{roleName(t, role)}
 											{#if role.isSystem}
 												<span class="badge">{t('permissions.roles.systemBadge')}</span>
 											{/if}
@@ -497,7 +497,7 @@
 					{:else}
 						<div class="editor-header">
 							<h3>
-								{selectedRole.name}
+								{roleName(t, selectedRole)}
 								{#if selectedRole.isSystem}
 									<span class="badge">{t('permissions.roles.systemBadge')}</span>
 								{/if}
@@ -530,6 +530,7 @@
 									class="input textarea"
 									rows="2"
 									bind:value={editDescription}
+									disabled={selectedRole.isSystem}
 								></textarea>
 							</label>
 						</div>
@@ -607,7 +608,7 @@
 				<div class="modal-body">
 					<label>
 						<span>{t('permissions.role.name')} *</span>
-						<input class="input" type="text" bind:value={newName} placeholder="pl. Csoportvezető" />
+						<input class="input" type="text" bind:value={newName} placeholder={t('permissions.role.namePlaceholder')} />
 					</label>
 					<label>
 						<span>{t('permissions.role.key')}</span>

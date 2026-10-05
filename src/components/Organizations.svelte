@@ -22,25 +22,15 @@
     createOrganizationStore,
   } from "../stores/organizationStore.svelte.js";
   import type { OrganizationStore } from "../stores/organizationStore.svelte.js";
+  import { resolveSdk, translate } from "../utils/sdk.js";
 
   let { pluginId = "racona-work" }: { pluginId?: string } = $props();
 
-  const sdk = $derived(
-    (window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS,
-  );
+  const sdk = $derived(resolveSdk(pluginId));
+  const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
   // Organization store - inicializálás
   let orgStore = $state<OrganizationStore | null>(null);
-
-  function t(key: string, vars?: Record<string, string | number>): string {
-    let str = sdk?.i18n?.t(key) ?? key;
-    if (vars) {
-      for (const [k, v] of Object.entries(vars)) {
-        str = str.replace(`{${k}}`, String(v));
-      }
-    }
-    return str;
-  }
 
   // --- Állapot ---
   let organizations = $state<Organization[]>([]);
@@ -223,7 +213,7 @@
     const confirmed = await sdk?.ui?.dialog({
       type: "confirm",
       title: t('organizations.delete.title'),
-      message: t('organizations.delete.title') + `\n\n"${org.name}"\n\n• ${memberCount} tag eltávolítása\n• A szervezet összes adata törlésre kerül\n• Ez a művelet nem vonható vissza!`,
+      message: t('organizations.delete.message', { name: org.name, count: memberCount }),
       confirmLabel: t('organizations.delete.confirmLabel'),
       confirmVariant: "destructive",
     });
@@ -298,7 +288,7 @@
     <div class="page-header">
       <div class="page-header-title">
         <h2>{t("organizations.title")}</h2>
-        <p class="subtitle">{t("dashboard.subtitle")}</p>
+        <p class="subtitle">{t("organizations.subtitle")}</p>
       </div>
       <button class="btn-primary" onclick={() => (showCreateForm = true)}>
         + {t("organizations.create")}
@@ -315,14 +305,14 @@
     <div class="content-grid">
       <!-- Szervezetek listája -->
       <div class="org-list-panel">
-        <h3>Szervezetek</h3>
+        <h3>{t("organizations.list.title")}</h3>
         {#if loading && organizations.length === 0}
           <div class="loading-state">
             <div class="spinner"></div>
             <span>{t("loading")}</span>
           </div>
         {:else if organizations.length === 0}
-          <p class="empty-state">Még nincs szervezet létrehozva</p>
+          <p class="empty-state">{t("organizations.empty")}</p>
         {:else}
           <div class="org-list">
             {#each organizations as org (org.id)}
@@ -533,27 +523,27 @@
           onkeydown={(e) => e.stopPropagation()}
         >
           <div class="modal-header">
-            <h3>Szervezet szerkesztése</h3>
+            <h3>{t("organizations.edit.title")}</h3>
             <button class="modal-close" onclick={() => (showEditForm = false)}
               >✕</button
             >
           </div>
           <div class="modal-body">
             <label>
-              <span>Név *</span>
+              <span>{t("organizations.name")} *</span>
               <input
                 type="text"
                 bind:value={editOrgName}
-                placeholder="pl. Acme Kft."
+                placeholder={t("organizations.name.placeholder")}
                 class="input"
               />
             </label>
             <label>
-              <span>Cím</span>
+              <span>{t("organizations.address")}</span>
               <input
                 type="text"
                 bind:value={editOrgAddress}
-                placeholder="pl. 1234 Budapest, Fő utca 1."
+                placeholder={t("organizations.address.placeholder")}
                 class="input"
               />
             </label>
@@ -567,37 +557,37 @@
               />
             </label>
             <label>
-              <span>Telefon</span>
+              <span>{t("organizations.phone")}</span>
               <input
                 type="tel"
                 bind:value={editOrgPhone}
-                placeholder="pl. +36 1 234 5678"
+                placeholder={t("organizations.phone.placeholder")}
                 class="input"
               />
             </label>
             <label>
-              <span>Email</span>
+              <span>{t("organizations.email")}</span>
               <input
                 type="email"
                 bind:value={editOrgEmail}
-                placeholder="pl. info@acme.hu"
+                placeholder={t("organizations.email.placeholder")}
                 class="input"
               />
             </label>
             <label>
-              <span>Weboldal</span>
+              <span>{t("organizations.website")}</span>
               <input
                 type="url"
                 bind:value={editOrgWebsite}
-                placeholder="pl. https://acme.hu"
+                placeholder={t("organizations.website.placeholder")}
                 class="input"
               />
             </label>
             <label>
-              <span>Megjegyzés</span>
+              <span>{t("organizations.comment")}</span>
               <textarea
                 bind:value={editOrgNotes}
-                placeholder="Opcionális megjegyzések..."
+                placeholder={t("organizations.comment.placeholder")}
                 class="input textarea"
                 rows="3"
               ></textarea>
@@ -617,21 +607,21 @@
               }}
               disabled={loading}
             >
-              Törlés
+              {t("button.delete")}
             </button>
             <div style="flex: 1;"></div>
             <button
               class="btn-secondary"
               onclick={() => (showEditForm = false)}
             >
-              Mégse
+              {t("button.cancel")}
             </button>
             <button
               class="btn-primary"
               onclick={handleUpdateOrganization}
               disabled={loading}
             >
-              Mentés
+              {t("button.save")}
             </button>
           </div>
         </div>

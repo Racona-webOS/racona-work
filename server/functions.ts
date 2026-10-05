@@ -98,8 +98,7 @@ export {
 	rejectLeaveRequest,
 	withdrawLeaveRequest,
 	deleteLeaveRequest,
-	getLeaveBalances,
-	setLeaveBalance
+	getLeaveBalances
 } from './leave.js';
 
 export type {
@@ -287,9 +286,7 @@ export {
 	updateOrganization,
 	deleteOrganization,
 	getOrganizationMembers,
-	addEmployeeToOrganization,
-	removeEmployeeFromOrganization,
-	getAvailableEmployeesForOrganization
+	removeEmployeeFromOrganization
 } from './organizations.js';
 
 export type {

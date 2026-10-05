@@ -13,7 +13,6 @@ import {
 	hasCapability,
 	requireSelfOrCapability
 } from '../server/permissions.ts';
-import { setLeaveBalance } from '../server/leave.ts';
 import type { RemoteContext } from '../server/context.ts';
 
 const ROLE_CAPS = ['leave.request', 'trip.record', 'employee.view', 'project.view.own', 'work.log'];
@@ -80,13 +79,5 @@ describe('külsős dolgozóra vonatkozó műveletek', () => {
 	test('a saját adatokon keresztüli műveletek hibát adnak', async () => {
 		const { context } = fakeContext({ external: false });
 		await expect(requireSelfOrCapability(context, 9, 'employee.view')).rejects.toThrow(EXTERNAL_EMPLOYEE_ERROR);
-	});
-
-	test('külsős dolgozónak nem állítható szabadságkeret', async () => {
-		const { context, writes } = fakeContext({ external: false });
-		await expect(
-			setLeaveBalance({ employeeId: 9, organizationId: 3, year: 2026, totalDays: 20 }, context)
-		).rejects.toThrow(EXTERNAL_EMPLOYEE_ERROR);
-		expect(writes).toEqual([]);
 	});
 });

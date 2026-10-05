@@ -16,6 +16,8 @@
 		WorkEntryListResult
 	} from '../../../server/functions.js';
 	import { resolveSdk, translate } from '../../utils/sdk.js';
+	import { downloadText } from '../../utils/download.js';
+	import { appLocale, formatDate } from '../../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
@@ -32,6 +34,8 @@
 
 	/** A core által megosztott DatePicker; ha nincs, natív date inputra esünk vissza. */
 	const DatePickerComponent = $derived((sdk as any)?.components?.DatePicker ?? null);
+	/** A dátumválasztó nyelve a felület nyelvét követi. */
+	const dateLocale = $derived(appLocale());
 
 	let report = $state<ProjectReport | null>(null);
 	let reportLoading = $state(false);
@@ -118,13 +122,13 @@
 
 			// Fejléc
 			const headers = [
-				t('work.columns.date') || 'Dátum',
-				t('work.columns.employee') || 'Dolgozó',
+				t('work.columns.date'),
+				t('work.columns.employee'),
 				'E-mail',
-				t('work.form.category') || 'Kategória',
-				t('work.columns.title') || 'Megnevezés',
-				t('work.form.description') || 'Leírás',
-				t('work.columns.hours') || 'Óra'
+				t('work.form.category'),
+				t('work.columns.title'),
+				t('work.form.description'),
+				t('work.columns.hours')
 			];
 
 			const escapeCell = (val: string | number | null | undefined): string => {
@@ -153,27 +157,17 @@
 				escapeCell(e.hours)
 			]);
 
-			const csvContent =
-				'\uFEFF' + // BOM az Excel kompatibilitáshoz
-				[headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+			const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
 
-			const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
 			const projectSlug = project.name
 				.replace(/[^a-zA-Z0-9áéíóöőúüűÁÉÍÓÖŐÚÜŰ]/g, '_')
 				.toLowerCase();
 			const dateStr = new Date().toISOString().slice(0, 10);
-			a.href = url;
-			a.download = `${projectSlug}_feladatok_${dateStr}.csv`;
-			document.body.appendChild(a);
-			a.click();
-			document.body.removeChild(a);
-			URL.revokeObjectURL(url);
+			downloadText(csvContent, `${projectSlug}_feladatok_${dateStr}.csv`);
 
-			sdk?.ui?.toast?.(t('report.export.success') || 'CSV exportálva', 'success');
+			sdk?.ui?.toast?.(t('report.export.success'), 'success');
 		} catch (err: any) {
-			sdk?.ui?.toast?.(err?.message ?? (t('error.saveFailed') || 'Export sikertelen'), 'error');
+			sdk?.ui?.toast?.(err?.message ?? t('report.export.failed'), 'error');
 		} finally {
 			exportLoading = false;
 		}
@@ -183,13 +177,13 @@
 <!-- Intervallum szűrő -->
 <div class="date-filter-bar">
 	{#if DatePickerComponent}
-		<DatePickerComponent bind:value={reportFrom} locale="hu-HU" placeholder="éééé. hh. nn." />
+		<DatePickerComponent bind:value={reportFrom} locale={dateLocale} placeholder={t('filter.datePlaceholder')} />
 	{:else}
 		<input class="input input-sm" type="date" bind:value={reportFrom} />
 	{/if}
 	<span class="date-filter-label">{t('filter.from')}</span>
 	{#if DatePickerComponent}
-		<DatePickerComponent bind:value={reportTo} locale="hu-HU" placeholder="éééé. hh. nn." />
+		<DatePickerComponent bind:value={reportTo} locale={dateLocale} placeholder={t('filter.datePlaceholder')} />
 	{:else}
 		<input class="input input-sm" type="date" bind:value={reportTo} />
 	{/if}
@@ -218,10 +212,10 @@
 				class="btn-primary btn-sm btn-export"
 				onclick={exportReportCsv}
 				disabled={exportLoading}
-				title={t('report.export.tooltip') || 'Feladatok exportálása CSV-be'}
+				title={t('report.export.tooltip')}
 			>
 				{#if exportLoading}
-					{t('loading') || '...'}
+					{t('loading')}
 				{:else}
 					<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
 					CSV
@@ -251,7 +245,7 @@
 			<span class="kpi-label">{t('report.firstEntry')}</span>
 			<span class="kpi-value small">
 				{report.totals.firstEntryDate
-					? new Date(report.totals.firstEntryDate).toLocaleDateString()
+					? formatDate(report.totals.firstEntryDate)
 					: '—'}
 			</span>
 		</div>
@@ -259,7 +253,7 @@
 			<span class="kpi-label">{t('report.lastEntry')}</span>
 			<span class="kpi-value small">
 				{report.totals.lastEntryDate
-					? new Date(report.totals.lastEntryDate).toLocaleDateString()
+					? formatDate(report.totals.lastEntryDate)
 					: '—'}
 			</span>
 		</div>
@@ -369,7 +363,7 @@
 										<span>
 											{t('report.byEmployee.lastEntry')}:
 											{emp.lastEntryDate
-												? new Date(emp.lastEntryDate).toLocaleDateString()
+												? formatDate(emp.lastEntryDate)
 												: t('report.byEmployee.never')}
 										</span>
 									</div>
@@ -379,7 +373,7 @@
 										class="emp-expand-btn"
 										class:emp-expand-btn-open={isExpanded}
 										onclick={() => toggleEmployeeExpand(emp.employeeId)}
-										title={isExpanded ? 'Kategóriák elrejtése' : 'Kategóriák megjelenítése'}
+										title={isExpanded ? t('report.byEmployee.hideCategories') : t('report.byEmployee.showCategories')}
 										aria-expanded={isExpanded}
 									>
 										<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -484,11 +478,9 @@
 				{/each}
 			</div>
 			<div class="daily-range">
-				<span>{new Date(report.daily[0].date).toLocaleDateString()}</span>
+				<span>{formatDate(report.daily[0].date)}</span>
 				<span>
-					{new Date(
-						report.daily[report.daily.length - 1].date
-					).toLocaleDateString()}
+					{formatDate(report.daily[report.daily.length - 1].date)}
 				</span>
 			</div>
 		{/if}
@@ -521,11 +513,9 @@
 				{/each}
 			</div>
 			<div class="daily-range">
-				<span>{new Date(report.lifetime.points[0].date).toLocaleDateString()}</span>
+				<span>{formatDate(report.lifetime.points[0].date)}</span>
 				<span>
-					{new Date(
-						report.lifetime.points[report.lifetime.points.length - 1].to
-					).toLocaleDateString()}
+					{formatDate(report.lifetime.points[report.lifetime.points.length - 1].to)}
 				</span>
 			</div>
 		{/if}
@@ -567,7 +557,7 @@
 								<span class="emp-name">{emp.userName}</span>
 								<span class="emp-meta-sub">
 									{emp.lastEntryDate
-										? `${t('report.byEmployee.lastEntry')}: ${new Date(emp.lastEntryDate).toLocaleDateString()}`
+										? `${t('report.byEmployee.lastEntry')}: ${formatDate(emp.lastEntryDate)}`
 										: t('report.byEmployee.never')}
 								</span>
 							</div>
@@ -600,7 +590,7 @@
 					{#each report.recentEntries as entry (entry.id)}
 						<div class="entry-row">
 							<div class="entry-date">
-								{new Date(entry.workDate).toLocaleDateString()}
+								{formatDate(entry.workDate)}
 							</div>
 							<div class="entry-main">
 								<div class="entry-title">{entry.title}</div>

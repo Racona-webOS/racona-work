@@ -17,25 +17,17 @@
 	import AccessDenied from './AccessDenied.svelte';
 	import Checkbox from './ui/Checkbox.svelte';
 	import UsagePlanEditor from './leave-balance/UsagePlanEditor.svelte';
+	import { resolveSdk, translate } from '../utils/sdk.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
-	const sdk = $derived(
-		(window as any).__webOS_instances?.get(pluginId) ?? (window as any).webOS
-	);
+	const sdk = $derived(resolveSdk(pluginId));
+	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	// Organization store - inicializálás
 	let orgStore = $state<OrganizationStore | null>(null);
 	let currentOrganization = $state<import('../../server/functions.js').Organization | null>(null);
 	let hasAccess = $state(false);
-
-	function t(key: string, vars?: Record<string, string | number>): string {
-		let str = sdk?.i18n?.t(key) ?? key;
-		if (vars) {
-			for (const [k, v] of Object.entries(vars)) str = str.replace(`{${k}}`, String(v));
-		}
-		return str;
-	}
 
 	// --- Állapot ---
 	let employees = $state<EmployeeRow[]>([]);
@@ -246,7 +238,7 @@
 						{#if selectedNotifierIds.length === 0}
 							<p class="no-selection-hint">{t('settings.leaveNotifiers.noSelection')}</p>
 						{:else}
-							<p class="selection-count">{selectedNotifierIds.length} dolgozó kiválasztva</p>
+							<p class="selection-count">{t('settings.leaveNotifiers.selectedCount', { count: selectedNotifierIds.length })}</p>
 						{/if}
 					{/if}
 					<button class="btn-primary" onclick={saveSettings} disabled={saving}>
