@@ -1620,6 +1620,7 @@
 	"notificationSettings.event.document.reviewed.recipients": "a feltöltő dolgozó",
 	"menu.settings.workLog": "Munkanapló",
 	"notificationSettings.group.worklog": "Munkanapló",
+	"notificationSettings.worklog.checkDisabled": "A munkanapló-figyelés ki van kapcsolva, ezért ezek az emailek nem mennek ki. Bekapcsolás: Beállítások → Munkanapló.",
 	"notificationSettings.event.worklog.missingEntries": "Pótolatlan munkanapló-bejegyzések (eszkaláció)",
 	"notificationSettings.event.worklog.missingEntries.recipients": "a Munkanapló beállításoknál megadott címek",
 	"workLogSettings.title": "Munkanapló-figyelés",

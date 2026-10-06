@@ -29,7 +29,7 @@ A cél a napi munkanyilvántartás: minden dolgozónak minden olyan munkanapra l
 | D5 | Emlékeztető | A dolgozó minden este egy emailt kap az ablak összes még hiányzó munkanapjáról, amíg pótolja őket, vagy amíg kiesnek az ablakból. Nincs nyilvántartva, minden futás újra számol. |
 | D6 | Eszkaláció | Ha egy nap úgy esik ki az ablakból, hogy még hiányzik (a futás napja − N − 1), a címzettek egyszer kapnak róla jelzést (`work_log_alerts`). Kimaradt futásnál az előtte lévő 7 napot is pótolja. Csak a bekapcsoláskor már az ablakban lévő napok eszkalálódnak (`enabledOn`), így bekapcsoláskor nem zúdul a címzettre a múlt. |
 | D7 | Címzettek | Szabadon megadható email címek (legfeljebb 10); üresen nincs eszkaláció (és a napok sem jelölődnek). Ha a cím egy felhasználóé, az ő nevén és nyelvén megy; egyébként „Címzett” megszólítással, magyarul. |
-| D8 | Email kapcsolók | Új értesítési kategória: Munkanapló, saját válaszcímmel. Események: `worklog.missingEntriesEmployee` (dolgozói emlékeztető) és `worklog.missingEntries` (eszkaláció), mindkettő alapból be. Az eszkaláció kikapcsolt emailnél is „elküldöttnek” számít. |
+| D8 | Email kapcsolók | Új értesítési kategória: Munkanapló, saját válaszcímmel. Események: `worklog.missingEntriesEmployee` (dolgozói emlékeztető) és `worklog.missingEntries` (eszkaláció), mindkettő alapból be. Az eszkaláció kikapcsolt emailnél is „elküldöttnek” számít. Az emailek csak bekapcsolt figyelésnél mennek; kikapcsolt figyelésnél az Értesítések oldal Munkanapló blokkja ezt jelzi (`getWorkLogCheckStatus`, `org.manage`). |
 
 ## 3. Megvalósítás
 

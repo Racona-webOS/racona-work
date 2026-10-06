@@ -201,7 +201,7 @@ export type {
 } from './leave-month-automation-utils.js';
 // Hiányzó munkanapló-bejegyzések figyelése (specs/work-log-check.md). A napi futás
 // (runWorkLogCheckForAll) szándékosan nincs itt: csak a server/jobs.ts hívhatja.
-export { getWorkLogCheck, saveWorkLogCheck } from './work-log-check.js';
+export { getWorkLogCheck, getWorkLogCheckStatus, saveWorkLogCheck } from './work-log-check.js';
 export type { WorkLogCheckInfo, WorkLogCheckEmployee, WorkLogCheckLastRun } from './work-log-check.js';
 export type { WorkLogCheckSettings } from './work-log-check-utils.js';
 export type {

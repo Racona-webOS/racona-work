@@ -167,6 +167,20 @@ export async function getWorkLogCheck(
 	return buildInfo(context, organizationId, await loadWorkLogCheckSettings(context, organizationId));
 }
 
+/**
+ * Be van-e kapcsolva a figyelés. Az Értesítések oldal (`org.manage`) jelzi
+ * vele, hogy a munkanapló emailjei kikapcsolt figyelésnél nem mennek ki.
+ */
+export async function getWorkLogCheckStatus(
+	params: { organizationId: number },
+	context: RemoteContext
+): Promise<{ enabled: boolean }> {
+	const organizationId = requireOrganizationId(params?.organizationId);
+	await requireCapability(context, organizationId, 'org.manage');
+	const settings = await loadWorkLogCheckSettings(context, organizationId);
+	return { enabled: settings.enabled };
+}
+
 export async function saveWorkLogCheck(
 	params: { organizationId: number; settings: unknown },
 	context: RemoteContext

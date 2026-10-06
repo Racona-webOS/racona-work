@@ -1621,6 +1621,7 @@
 	"notificationSettings.event.document.reviewed.recipients": "the employee who uploaded it",
 	"menu.settings.workLog": "Work log",
 	"notificationSettings.group.worklog": "Work log",
+	"notificationSettings.worklog.checkDisabled": "Work log monitoring is turned off, so these emails are not sent. Turn it on under Settings → Work log.",
 	"notificationSettings.event.worklog.missingEntries": "Work log entries still missing (escalation)",
 	"notificationSettings.event.worklog.missingEntries.recipients": "the addresses set in the Work log settings",
 	"workLogSettings.title": "Work log check",

@@ -85,6 +85,8 @@
 	/** Kategóriánkénti válaszcím; üres szöveg = a rendszerszintű érvényes. */
 	let replyTo = $state<Record<NotificationGroup, string> | null>(null);
 	let savedReplyTo = $state<Record<NotificationGroup, string> | null>(null);
+	/** Kikapcsolt munkanapló-figyelésnél a kategória emailjei nem mennek ki; null = ismeretlen. */
+	let workLogCheckEnabled = $state<boolean | null>(null);
 	const dirty = $derived(
 		(!!email &&
 			!!savedEmail &&
@@ -115,16 +117,29 @@
 
 	async function load() {
 		if (!currentOrganization) return;
+		const organizationId = currentOrganization.id;
 		loading = true;
+		workLogCheckEnabled = null;
+		loadWorkLogCheckStatus(organizationId);
 		try {
 			const settings: NotificationSettings = await sdk.remote.call('getNotificationSettings', {
-				organizationId: currentOrganization.id
+				organizationId
 			});
 			apply(settings);
 		} catch (err) {
 			sdk?.ui?.toast(errorMessage(err, t('error.loadFailed')), 'error');
 		} finally {
 			loading = false;
+		}
+	}
+
+	/** Csak tájékoztató: ha nem sikerül lekérni, a figyelmeztetés nem jelenik meg. */
+	async function loadWorkLogCheckStatus(organizationId: number) {
+		try {
+			const status: { enabled: boolean } = await sdk.remote.call('getWorkLogCheckStatus', { organizationId });
+			if (currentOrganization?.id === organizationId) workLogCheckEnabled = status.enabled;
+		} catch {
+			// nincs figyelmeztetés
 		}
 	}
 
@@ -211,6 +226,9 @@
 						{#each column as section (section.group)}
 							<div class="settings-section">
 								<h3>{t(`notificationSettings.group.${section.group}`)}</h3>
+								{#if section.group === 'worklog' && workLogCheckEnabled === false}
+									<p class="notice is-warning">{t('notificationSettings.worklog.checkDisabled')}</p>
+								{/if}
 								<label class="reply-to">
 									<span>{t('notificationSettings.replyTo')}</span>
 									<input
@@ -296,6 +314,24 @@
 		font-size: 1rem;
 		font-weight: 600;
 		margin: 0;
+	}
+
+	.notice {
+		margin: 0;
+		padding: 0.6rem 0.9rem;
+		border-radius: 0.375rem;
+		font-size: 0.8rem;
+		line-height: 1.5;
+	}
+
+	.notice.is-warning {
+		background: #fef3c7;
+		color: #92400e;
+	}
+
+	:global(.dark) .notice.is-warning {
+		background: oklch(0.35 0.07 75 / 40%);
+		color: #fcd34d;
 	}
 
 	.reply-to {
