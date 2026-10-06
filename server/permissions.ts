@@ -17,6 +17,9 @@
  *
  * Belső (nem remote): seedDefaultRoles — új szervezethez, a createOrganization hívja.
  *
+ * Projektszinten a projektvezető (project_members.role = 'lead') a saját
+ * projektjén a PROJECT_LEAD_CAPABILITIES képességeket kapja (specs/project-lead.md).
+ *
  * Felső korlát: a `roles.manage` joggal csak a hívó saját képességein belül
  * lehet szerepet szerkeszteni, törölni és tagot hozzáadni/eltávolítani
  * (capabilitiesBeyond). A core admin és a dev mód kivétel.
@@ -76,6 +79,15 @@ export const EXTERNAL_CAPABILITIES: ReadonlySet<string> = new Set<Capability>([
 	// A dokumentumok a külsős dolgozókra is vonatkoznak (specs/employee-documents.md, D7)
 	'employee.documents.own'
 ]);
+
+/** A projekttag szerepe, amely projektvezetői jogot ad (specs/project-lead.md). */
+export const PROJECT_LEAD_ROLE = 'lead';
+
+/**
+ * A projektvezető ezeket kapja a saját projektjén, a szervezeti szerepein felül.
+ * Projektszinten csak ezeket a képességeket ellenőrizzük (projectId-vel).
+ */
+export const PROJECT_LEAD_CAPABILITIES: ReadonlySet<string> = new Set<Capability>(['project.manage', 'project.close']);
 
 export const EXTERNAL_EMPLOYEE_ERROR = 'Külsős dolgozóra ez a funkció nem vonatkozik.';
 
@@ -252,17 +264,17 @@ export async function hasCapability(
 		return false;
 	}
 
-	// Projektszintű felülbírálás (ha van)
-	if (projectId) {
-		const pr = await context.db.query(
+	// A projektvezető a saját projektjén
+	if (projectId && PROJECT_LEAD_CAPABILITIES.has(capability)) {
+		const lead = await context.db.query(
 			`SELECT 1
-			   FROM app__racona_work.wp_project_member_roles pmr
-			   JOIN app__racona_work.wp_role_capabilities rc ON rc.role_id = pmr.role_id
-			  WHERE pmr.project_id = $1 AND pmr.user_id = $2 AND rc.capability = $3
+			   FROM app__racona_work.project_members pm
+			   JOIN app__racona_work.employees e ON e.id = pm.employee_id
+			  WHERE pm.project_id = $1 AND e.user_id = $2 AND pm.role = $3
 			  LIMIT 1`,
-			[projectId, userId, capability]
+			[projectId, userId, PROJECT_LEAD_ROLE]
 		);
-		if (pr.rows.length > 0) return true;
+		if (lead.rows.length > 0) return true;
 	}
 
 	// Szervezet-szintű szerepek
@@ -390,47 +402,6 @@ async function requireRoleWithinOwnCapabilities(
 	if (beyond.length > 0) {
 		throw new Error(
 			`Ezt a szerepet csak az kezelheti, aki a szerep összes képességével rendelkezik (hiányzik: ${beyond.join(', ')}).`
-		);
-	}
-}
-
-/**
- * Projektszintű szerepkiosztás felső korlátja (mint a szervezeti szerepeknél):
- * csak olyan szerepet lehet adni vagy elvenni, amelynek minden képességével a hívó
- * rendelkezik a szervezetben vagy ezen a projekten. Így a project.manage joggal
- * senki nem adhat magának vagy másnak bővebb jogot, mint ami neki van.
- * A core admin és a dev mód kivétel.
- */
-export async function requireProjectRolesWithinOwnCapabilities(
-	context: RemoteContext,
-	organizationId: number,
-	projectId: number,
-	roleIds: number[]
-): Promise<void> {
-	if (roleIds.length === 0 || isCoreAdmin(context) || isDevMode(context)) return;
-
-	const own = await loadOwnCapabilities(context, organizationId);
-	const projectCaps = await context.db.query(
-		`SELECT DISTINCT rc.capability
-		   FROM app__racona_work.wp_project_member_roles pmr
-		   JOIN app__racona_work.wp_role_capabilities rc ON rc.role_id = pmr.role_id
-		  WHERE pmr.project_id = $1 AND pmr.user_id = $2`,
-		[projectId, await resolveUserId(context)]
-	);
-	const external = await isExternalMember(context, organizationId, await resolveUserId(context));
-	for (const row of projectCaps.rows as { capability: string }[]) {
-		if (!external || EXTERNAL_CAPABILITIES.has(row.capability)) own.add(row.capability);
-	}
-
-	const beyond = new Set<string>();
-	for (const roleId of roleIds) {
-		for (const cap of capabilitiesBeyond(own, [], await loadRoleCapabilities(context, roleId))) {
-			beyond.add(cap);
-		}
-	}
-	if (beyond.size > 0) {
-		throw new Error(
-			`Csak olyan szerepet adhatsz vagy vehetsz el, amelynek minden képességével te is rendelkezel (hiányzik: ${[...beyond].sort().join(', ')}).`
 		);
 	}
 }

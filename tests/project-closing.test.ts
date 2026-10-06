@@ -13,7 +13,6 @@ import {
 	deleteProject,
 	removeProjectMember,
 	reopenProject,
-	setProjectUserRoles,
 	updateProject
 } from '../server/projects.ts';
 import { createWorkEntry, deleteWorkEntry, updateWorkEntry } from '../server/work-entries.ts';
@@ -122,7 +121,7 @@ describe('lezárás és visszanyitás', () => {
 	});
 });
 
-describe('lezárt projekt adatai, tagjai és jogosultságai', () => {
+describe('lezárt projekt adatai és tagjai', () => {
 	test('az adatai nem módosíthatók', async () => {
 		const { context, writes } = fakeContext({ closed: true, own: ['project.manage'] });
 		await expect(updateProject({ id: 5, name: 'Új név' }, context)).rejects.toThrow('le van zárva');
@@ -133,12 +132,6 @@ describe('lezárt projekt adatai, tagjai és jogosultságai', () => {
 		const { context, writes } = fakeContext({ closed: true, own: ['project.manage'] });
 		await expect(addProjectMember({ projectId: 5, employeeId: 2 }, context)).rejects.toThrow('le van zárva');
 		await expect(removeProjectMember({ projectId: 5, employeeId: 2 }, context)).rejects.toThrow('le van zárva');
-		expect(writes).toEqual([]);
-	});
-
-	test('a projekt-szintű szerepek nem módosíthatók', async () => {
-		const { context, writes } = fakeContext({ closed: true, own: ['project.manage'] });
-		await expect(setProjectUserRoles({ projectId: 5, userId: 9, roleIds: [] }, context)).rejects.toThrow('le van zárva');
 		expect(writes).toEqual([]);
 	});
 

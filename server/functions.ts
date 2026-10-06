@@ -35,7 +35,7 @@
  *   notification-email.ts — közös email-küldés, a beállítás ellenőrzésével
  *   organizations.ts — szervezetek és szervezeti tagság
  *   permissions.ts   — szerepek és képességek
- *   projects.ts      — projektek, projekt tagok, projekt-szintű szerepek
+ *   projects.ts      — projektek, projekt tagok, projektvezetők
  *   work-entries.ts  — munkabejegyzések (lista, CRUD, kategóriák)
  *   project-report.ts — projekt riport (munkabejegyzések aggregálása)
  *   trip-calc.ts     — kiküldetési rendelvény számítása (tiszta függvények, a kliens is importálja)
@@ -393,10 +393,7 @@ export {
 	reopenProject,
 	listProjectMembers,
 	addProjectMember,
-	removeProjectMember,
-	listProjectRoleOverrides,
-	setProjectUserRoles,
-	clearProjectUserRoles
+	removeProjectMember
 } from './projects.js';
 
 export type {
@@ -406,7 +403,8 @@ export type {
 	ProjectListParams,
 	ProjectListResult,
 	ProjectMemberRow,
-	ProjectRoleOverrideRow
+	ProjectAccess,
+	ProjectDetailRow
 } from './projects.js';
 
 // --- Munkabejegyzések (work entries) ---------------------------------------

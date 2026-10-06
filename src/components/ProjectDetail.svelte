@@ -19,10 +19,12 @@
 	  - MembersTab      — tagok listája + hozzáadás modal
 	  - WorkLogTab      — munkanapló (saját szűrők, felviteli modal)
 	  - ReportTab       — aggregált riport + CSV export (önállóan tölt)
-	  - PermissionsTab  — projekt-szintű szerep-felülbírálások
 
-	Az a lista, amit a fejléc badge-e is használ (tagok, felülbírálások),
-	itt marad; a fülek `onChanged`-del kérnek újratöltést.
+	Az a lista, amit a fejléc badge-e is használ (tagok), itt marad; a fülek
+	`onChanged`-del kérnek újratöltést.
+
+	A kezelési és lezárási jog a szervezeti szerepből vagy projektvezetőként
+	jöhet (specs/project-lead.md); az utóbbit a getProject `access` mezője adja.
 -->
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
@@ -35,6 +37,8 @@
 	import type {
 		Organization,
 		ProjectRow,
+		ProjectDetailRow,
+		ProjectAccess,
 		ProjectMemberRow,
 		EmployeeRow,
 		PaginatedResult,
@@ -45,8 +49,6 @@
 	import MembersTab from './project-detail/MembersTab.svelte';
 	import WorkLogTab from './project-detail/WorkLogTab.svelte';
 	import ReportTab from './project-detail/ReportTab.svelte';
-	import PermissionsTab from './project-detail/PermissionsTab.svelte';
-	import type { RoleRow, OverrideRow } from './project-detail/types.js';
 	import { resolveSdk, translate } from '../utils/sdk.js';
 	import { formatDateTime } from '../utils/format.js';
 
@@ -59,15 +61,22 @@
 	let orgStore = $state<OrganizationStore | null>(null);
 	let currentOrganization = $state<Organization | null>(null);
 	let hasAccess = $state(false);
-	let canManage = $state(false);
+	// Szervezeti szerepből
+	let orgCanManage = $state(false);
+	let orgCanClose = $state(false);
+	let orgCanViewAllWork = $state(false);
 	let canLogWork = $state(false);
-	let canViewAllWork = $state(false);
-	let canClose = $state(false);
+	// Ezen a projekten (szervezeti szerep vagy projektvezetés)
+	let projectAccess = $state<ProjectAccess>({ manage: false, close: false });
+
+	let canManage = $derived(orgCanManage || projectAccess.manage);
+	let canClose = $derived(orgCanClose || projectAccess.close);
+	let canViewAllWork = $derived(orgCanViewAllWork || canManage);
 
 	// Csak akkor látható a riport fül, ha van jog hozzá.
 	let canViewReport = $derived(canViewAllWork);
 
-	type Tab = 'overview' | 'members' | 'work' | 'report' | 'permissions' | 'settings';
+	type Tab = 'overview' | 'members' | 'work' | 'report' | 'settings';
 	let activeTab = $state<Tab>('overview');
 
 	// Projekt adatok
@@ -81,11 +90,6 @@
 	let membersLoading = $state(false);
 	let orgEmployees = $state<EmployeeRow[]>([]);
 
-	// Projekt-szintű jogosultságok
-	let orgRoles = $state<RoleRow[]>([]);
-	let overrides = $state<OverrideRow[]>([]);
-	let overridesLoading = $state(false);
-
 	// Munkanapló bejegyzések száma a fül badge-éhez. A fül mountolásakor a
 	// WorkLogTab írja (bind), előtte egy könnyű darabszám-kéréssel töltjük.
 	let workEntryCount = $state(0);
@@ -95,11 +99,13 @@
 		loading = true;
 		loadError = null;
 		try {
-			const result = (await sdk.remote.call('getProject', { id: projectId })) as ProjectRow;
+			const result = (await sdk.remote.call('getProject', { id: projectId })) as ProjectDetailRow;
 			project = result;
+			projectAccess = result.access ?? { manage: false, close: false };
 		} catch (err: any) {
 			loadError = err?.message ?? t('error.loadFailed');
 			project = null;
+			projectAccess = { manage: false, close: false };
 		} finally {
 			loading = false;
 		}
@@ -133,33 +139,6 @@
 			orgEmployees = result?.data ?? [];
 		} catch {
 			orgEmployees = [];
-		}
-	}
-
-	async function loadOrgRoles() {
-		if (!currentOrganization || !sdk?.remote) return;
-		try {
-			const result = (await sdk.remote.call('listRoles', {
-				organizationId: currentOrganization.id
-			})) as RoleRow[];
-			orgRoles = Array.isArray(result) ? result : [];
-		} catch {
-			orgRoles = [];
-		}
-	}
-
-	async function loadOverrides() {
-		if (!projectId || !sdk?.remote) return;
-		overridesLoading = true;
-		try {
-			const result = (await sdk.remote.call('listProjectRoleOverrides', {
-				projectId
-			})) as OverrideRow[];
-			overrides = Array.isArray(result) ? result : [];
-		} catch {
-			overrides = [];
-		} finally {
-			overridesLoading = false;
 		}
 	}
 
@@ -246,10 +225,10 @@
 	}
 
 	function syncCapabilities(store: OrganizationStore) {
-		canManage = store.can('project.manage');
-		canClose = store.can('project.close');
+		orgCanManage = store.can('project.manage');
+		orgCanClose = store.can('project.close');
 		canLogWork = store.can('work.log');
-		canViewAllWork = store.can('work.view.all') || canManage;
+		orgCanViewAllWork = store.can('work.view.all');
 	}
 
 	onMount(async () => {
@@ -282,9 +261,6 @@
 		await loadProject();
 		await loadMembers();
 		await loadOrgEmployees();
-		if (canManage) {
-			await Promise.all([loadOrgRoles(), loadOverrides()]);
-		}
 		await loadWorkEntryCount();
 	});
 
@@ -320,7 +296,6 @@
 				editMode = false;
 				loadProject();
 				loadMembers();
-				if (canManage) loadOverrides();
 				loadWorkEntryCount();
 			}
 		});
@@ -329,11 +304,6 @@
 	let availableToAdd = $derived.by(() => {
 		const existing = new Set(members.map((m) => m.employeeId));
 		return orgEmployees.filter((e) => !existing.has(e.id));
-	});
-
-	let availableToOverride = $derived.by(() => {
-		const existing = new Set(overrides.map((o) => o.userId));
-		return orgEmployees.filter((e) => !existing.has(e.userId));
 	});
 </script>
 
@@ -409,18 +379,6 @@
 						{t('projects.detail.tabs.report')}
 					</button>
 				{/if}
-				{#if canManage}
-					<button
-						class="tab"
-						class:active={activeTab === 'permissions'}
-						onclick={() => (activeTab = 'permissions')}
-					>
-						{t('projects.detail.tabs.permissions')}
-						{#if overrides.length > 0}
-							<span class="tab-badge">{overrides.length}</span>
-						{/if}
-					</button>
-				{/if}
 				{#if canManage || canClose}
 					<button
 						class="tab"
@@ -447,6 +405,7 @@
 						{membersLoading}
 						{availableToAdd}
 						canManage={canManage && !project.closedAt}
+						canAssignLead={canClose}
 						closed={!!project.closedAt}
 						onChanged={reloadMembers}
 					/>
@@ -507,20 +466,6 @@
 							</button>
 						</div>
 					{/if}
-				</div>
-			{/if}
-
-			{#if activeTab === 'permissions' && canManage}
-				<div class="tab-content">
-					<PermissionsTab
-						{pluginId}
-						{project}
-						{orgRoles}
-						{overrides}
-						{overridesLoading}
-						{availableToOverride}
-						onChanged={loadOverrides}
-					/>
 				</div>
 			{/if}
 		{/if}

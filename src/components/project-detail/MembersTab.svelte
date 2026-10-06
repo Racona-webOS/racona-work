@@ -4,6 +4,9 @@
 	A tagok listája és a "Tag hozzáadása" modal. A tag- és projektadatok
 	betöltése a szülőben marad (a fejléc badge-e is azokat használja), ezért
 	minden módosítás után `onChanged`-del kérünk újratöltést.
+
+	A "lead" szerepű tag a projektvezető: a projektet kezelheti és lezárhatja
+	(specs/project-lead.md). Kijelölni csak az tudja, aki maga is lezárhatja.
 -->
 <script lang="ts">
 	import type { ProjectRow, ProjectMemberRow, EmployeeRow } from '../../../server/functions.js';
@@ -16,6 +19,7 @@
 		membersLoading = false,
 		availableToAdd,
 		canManage = false,
+		canAssignLead = false,
 		closed = false,
 		onChanged
 	}: {
@@ -25,6 +29,8 @@
 		membersLoading?: boolean;
 		availableToAdd: EmployeeRow[];
 		canManage?: boolean;
+		/** Projektvezetőt kijelölhet és elvehet (project.close ezen a projekten). */
+		canAssignLead?: boolean;
 		/** Lezárt projekt: a tagok nem módosíthatók (a szülő a canManage-et is hamisra állítja). */
 		closed?: boolean;
 		onChanged: () => void | Promise<void>;
@@ -40,21 +46,32 @@
 		return label === key ? role : label;
 	}
 
-	type ProjectMemberRole =
-		| 'member'
-		| 'member_developer'
-		| 'member_designer'
-		| 'member_tester'
-		| 'member_external'
-		| 'member_consultant'
-		| 'member_observer'
-		| 'lead'
-		| 'owner';
+	const ROLE_OPTIONS = [
+		'member',
+		'member_developer',
+		'member_designer',
+		'member_tester',
+		'member_external',
+		'member_consultant',
+		'member_observer',
+		'lead',
+		'owner'
+	] as const;
+
+	const LEAD_ROLE = 'lead';
+
+	/** A választható szerepek; egy régi, listán kívüli szerep is megmarad választhatónak. */
+	function roleOptions(current?: string): string[] {
+		return current && !(ROLE_OPTIONS as readonly string[]).includes(current)
+			? [...ROLE_OPTIONS, current]
+			: [...ROLE_OPTIONS];
+	}
 
 	let showAddMember = $state(false);
 	let addMemberEmployeeId = $state<number | null>(null);
-	let addMemberRole = $state<ProjectMemberRole>('member');
+	let addMemberRole = $state<string>('member');
 	let addMemberSaving = $state(false);
+	let roleSaving = $state<number | null>(null);
 
 	function initials(name: string | null | undefined): string {
 		return (
@@ -80,6 +97,25 @@
 			sdk?.ui?.toast?.(err?.message ?? t('error.saveFailed'), 'error');
 		} finally {
 			addMemberSaving = false;
+		}
+	}
+
+	async function handleRoleChange(member: ProjectMemberRow, role: string) {
+		if (role === member.role) return;
+		roleSaving = member.employeeId;
+		try {
+			await sdk.remote.call('addProjectMember', {
+				projectId: project.id,
+				employeeId: member.employeeId,
+				role
+			});
+			sdk?.ui?.toast?.(t('projects.members.roleChanged'), 'success');
+		} catch (err: any) {
+			sdk?.ui?.toast?.(err?.message ?? t('error.saveFailed'), 'error');
+		} finally {
+			roleSaving = null;
+			// Hibánál is: a választó visszaáll a mentett szerepre; sikernél a saját jog is változhatott
+			await onChanged();
 		}
 	}
 
@@ -141,9 +177,26 @@
 						{#if m.position}· {m.position}{/if}
 					</span>
 				</div>
-				<span class="role-badge">
-					{roleLabel(m.role)}
-				</span>
+				{#if canManage}
+					<select
+						class="role-select"
+						class:lead={m.role === LEAD_ROLE}
+						value={m.role}
+						disabled={roleSaving === m.employeeId || (m.role === LEAD_ROLE && !canAssignLead)}
+						aria-label={t('projects.members.role')}
+						onchange={(e) => handleRoleChange(m, e.currentTarget.value)}
+					>
+						{#each roleOptions(m.role) as role (role)}
+							<option value={role} disabled={role === LEAD_ROLE && !canAssignLead && m.role !== LEAD_ROLE}>
+								{roleLabel(role)}
+							</option>
+						{/each}
+					</select>
+				{:else}
+					<span class="role-badge" class:lead={m.role === LEAD_ROLE}>
+						{roleLabel(m.role)}
+					</span>
+				{/if}
 				{#if canManage}
 					<button
 						class="remove-btn"
@@ -179,16 +232,11 @@
 				<label>
 					<span>{t('projects.members.role')}</span>
 					<select class="input" bind:value={addMemberRole}>
-						<option value="member">{t('projects.members.roleOptions.member')}</option>
-						<option value="member_developer">{t('projects.members.roleOptions.member_developer')}</option>
-						<option value="member_designer">{t('projects.members.roleOptions.member_designer')}</option>
-						<option value="member_tester">{t('projects.members.roleOptions.member_tester')}</option>
-						<option value="member_external">{t('projects.members.roleOptions.member_external')}</option>
-						<option value="member_consultant">{t('projects.members.roleOptions.member_consultant')}</option>
-						<option value="member_observer">{t('projects.members.roleOptions.member_observer')}</option>
-						<option value="lead">{t('projects.members.roleOptions.lead')}</option>
-						<option value="owner">{t('projects.members.roleOptions.owner')}</option>
+						{#each ROLE_OPTIONS as role (role)}
+							<option value={role} disabled={role === LEAD_ROLE && !canAssignLead}>{roleLabel(role)}</option>
+						{/each}
 					</select>
+					<small class="lead-hint">{t('projects.members.leadHint')}</small>
 				</label>
 			</div>
 			<div class="modal-footer">
@@ -268,6 +316,35 @@
 		background: var(--color-muted, #f1f5f9);
 		color: var(--color-muted-foreground, #64748b);
 		text-transform: capitalize;
+	}
+
+	.role-badge.lead,
+	.role-select.lead {
+		background: var(--color-primary-subtle, #eef2ff);
+		color: var(--color-primary, #3730a3);
+		font-weight: 600;
+	}
+
+	.role-select {
+		width: auto;
+		max-width: 14rem;
+		font-size: 0.75rem;
+		padding: 0.2rem 0.5rem;
+		border: 1px solid var(--color-border, #e2e8f0);
+		border-radius: 999px;
+		background: var(--color-muted, #f1f5f9);
+		color: var(--color-foreground, #0f172a);
+		cursor: pointer;
+	}
+
+	.role-select:disabled {
+		cursor: not-allowed;
+		opacity: 0.8;
+	}
+
+	.lead-hint {
+		font-size: 0.75rem;
+		color: var(--color-muted-foreground, #64748b);
 	}
 
 	:global(.dark) .member-item:hover {

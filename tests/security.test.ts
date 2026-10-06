@@ -1,6 +1,6 @@
 /**
  * Biztonsági javítások tesztjei: escapelés, a szabadságkérelmek láthatósága,
- * a projektszerepek kiosztása, a saját ügyben hozott döntés tiltása és a
+ * a projektvezető jogai és kijelölése, a saját ügyben hozott döntés tiltása és a
  * dolgozói adatlap láthatósága.
  *
  * Futtatás: bun test
@@ -8,9 +8,9 @@
 
 import { describe, expect, test } from 'bun:test';
 import { escapeHtml, safeImageUrl } from '../src/utils/html.ts';
-import { ensureNotSelfDecision, SELF_DECISION_ERROR } from '../server/permissions.ts';
+import { ensureNotSelfDecision, hasCapability, SELF_DECISION_ERROR } from '../server/permissions.ts';
 import { getLeaveRequests } from '../server/leave.ts';
-import { setProjectUserRoles } from '../server/projects.ts';
+import { addProjectMember, removeProjectMember } from '../server/projects.ts';
 import { getEmployeeDetails } from '../server/employees.ts';
 import type { RemoteContext } from '../server/context.ts';
 
@@ -37,15 +37,13 @@ describe('escapelés', () => {
 
 /**
  * Ál-kontextus a 3-as szervezetben, a hívó a 7-es felhasználó (a 70-es dolgozó).
- * `caps`: a hívó szervezeti képességei; `projectCaps`: a 9-es projekten kapott
- * képességei; `roleCaps`: szerepazonosító → képességek.
+ * `caps`: a hívó szervezeti képességei; `leadOf`: a projektek, amelyeknek a hívó
+ * projektvezetője; `memberRole`: a 9-es projekt 80-as tagjának jelenlegi szerepe.
  */
 function fakeContext(opts: {
 	caps: string[];
-	projectCaps?: string[];
-	roleCaps?: Record<number, string[]>;
-	members?: number[];
-	currentProjectRoles?: number[];
+	leadOf?: number[];
+	memberRole?: string;
 	coreAdmin?: boolean;
 }) {
 	const queries: { sql: string; params: unknown[] }[] = [];
@@ -54,30 +52,23 @@ function fakeContext(opts: {
 		if (/^\s*(INSERT|UPDATE|DELETE|BEGIN|COMMIT|ROLLBACK)/i.test(sql)) return { rows: [] };
 		if (sql.includes('SELECT is_external FROM')) return { rows: [{ is_external: false }] };
 		if (sql.includes('rc.capability = $3')) {
-			const cap = String(params[2]);
-			const fromProject = sql.includes('wp_project_member_roles') && (opts.projectCaps ?? []).includes(cap);
-			return { rows: fromProject || (!sql.includes('wp_project_member_roles') && opts.caps.includes(cap)) ? [{ ok: 1 }] : [] };
+			return { rows: opts.caps.includes(String(params[2])) ? [{ ok: 1 }] : [] };
 		}
-		if (sql.includes('SELECT DISTINCT rc.capability') && sql.includes('wp_project_member_roles')) {
-			return { rows: (opts.projectCaps ?? []).map((capability) => ({ capability })) };
+		if (sql.includes('pm.role = $3')) {
+			const lead = params[1] === 7 && params[2] === 'lead' && (opts.leadOf ?? []).includes(Number(params[0]));
+			return { rows: lead ? [{ ok: 1 }] : [] };
 		}
 		if (sql.includes('SELECT DISTINCT rc.capability')) {
 			return { rows: opts.caps.map((capability) => ({ capability })) };
 		}
-		if (sql.includes('FROM app__racona_work.wp_role_capabilities WHERE role_id')) {
-			return { rows: (opts.roleCaps?.[Number(params[0])] ?? []).map((capability) => ({ capability })) };
-		}
-		if (sql.includes('SELECT id FROM app__racona_work.wp_roles')) {
-			return { rows: (params[0] as number[]).map((id) => ({ id })) };
-		}
-		if (sql.includes('SELECT role_id FROM app__racona_work.wp_project_member_roles')) {
-			return { rows: (opts.currentProjectRoles ?? []).map((role_id) => ({ role_id })) };
-		}
 		if (sql.includes('SELECT id, organization_id, closed_at FROM app__racona_work.projects')) {
 			return { rows: [{ id: 9, organization_id: 3, closed_at: null }] };
 		}
-		if (sql.includes('SELECT 1 FROM app__racona_work.employees')) {
-			return { rows: (opts.members ?? []).includes(Number(params[1])) ? [{ ok: 1 }] : [] };
+		if (sql.includes('SELECT id, organization_id FROM app__racona_work.employees WHERE id = $1')) {
+			return { rows: [{ id: Number(params[0]), organization_id: 3 }] };
+		}
+		if (sql.includes('SELECT role FROM app__racona_work.project_members')) {
+			return { rows: opts.memberRole ? [{ role: opts.memberRole }] : [] };
 		}
 		if (sql.includes('SELECT id FROM') && sql.includes('employees WHERE user_id = $1')) {
 			return { rows: Number(params[0]) === 7 ? [{ id: 70 }] : [] };
@@ -161,47 +152,52 @@ describe('saját ügyben nincs döntés', () => {
 	});
 });
 
-describe('projektszerepek kiosztása', () => {
-	const roleCaps = { 1: ['project.manage', 'work.log'], 2: ['project.close', 'org.manage'] };
+describe('projektvezető', () => {
+	const written = (queries: { sql: string }[]) =>
+		queries.some((q) => /^\s*(INSERT|DELETE)/i.test(q.sql) && q.sql.includes('project_members'));
 
-	test('a szervezeten kívüli felhasználó nem kaphat projektszerepet', async () => {
-		const { context } = fakeContext({ caps: ['project.manage', 'work.log'], roleCaps, members: [7] });
-		await expect(setProjectUserRoles({ projectId: 9, userId: 99, roleIds: [1] }, context)).rejects.toThrow(
-			'nem tagja a szervezetnek'
+	test('a saját projektjén kezelheti és lezárhatja, máshol nem', async () => {
+		const { context } = fakeContext({ caps: ['work.log'], leadOf: [9] });
+		expect(await hasCapability(context, 3, 'project.manage', 9)).toBe(true);
+		expect(await hasCapability(context, 3, 'project.close', 9)).toBe(true);
+		expect(await hasCapability(context, 3, 'project.manage', 10)).toBe(false);
+		expect(await hasCapability(context, 3, 'project.manage')).toBe(false);
+	});
+
+	test('a projektvezetés más képességet nem ad', async () => {
+		const { context, queries } = fakeContext({ caps: [], leadOf: [9] });
+		expect(await hasCapability(context, 3, 'employee.manage', 9)).toBe(false);
+		expect(await hasCapability(context, 3, 'project.view.all', 9)).toBe(false);
+		expect(queries.some((q) => q.sql.includes('pm.role = $3'))).toBe(false);
+	});
+
+	test('lezárási jog nélkül nem jelölhető ki', async () => {
+		const { context, queries } = fakeContext({ caps: ['project.manage'] });
+		await expect(addProjectMember({ projectId: 9, employeeId: 80, role: 'lead' }, context)).rejects.toThrow(
+			'Projektvezetőt csak az'
 		);
+		expect(written(queries)).toBe(false);
 	});
 
-	test('a hívó képességein túli szerepet nem adhat, magának sem', async () => {
-		const { context } = fakeContext({ caps: ['project.manage', 'work.log'], roleCaps, members: [7, 8] });
-		await expect(setProjectUserRoles({ projectId: 9, userId: 7, roleIds: [2] }, context)).rejects.toThrow(
-			'org.manage, project.close'
+	test('lezárási jog nélkül nem vehető el, eltávolítással sem', async () => {
+		const { context, queries } = fakeContext({ caps: ['project.manage'], memberRole: 'lead' });
+		await expect(addProjectMember({ projectId: 9, employeeId: 80, role: 'member' }, context)).rejects.toThrow(
+			'Projektvezetőt csak az'
 		);
+		await expect(removeProjectMember({ projectId: 9, employeeId: 80 }, context)).rejects.toThrow('Projektvezetőt csak az');
+		expect(written(queries)).toBe(false);
 	});
 
-	test('a hívó képességein túli szerepet el sem vehet', async () => {
-		const { context } = fakeContext({
-			caps: ['project.manage', 'work.log'],
-			roleCaps,
-			members: [7, 8],
-			currentProjectRoles: [2]
-		});
-		await expect(setProjectUserRoles({ projectId: 9, userId: 8, roleIds: [] }, context)).rejects.toThrow('hiányzik');
+	test('lezárási jog nélkül a többi szerep szabadon módosítható', async () => {
+		const { context, queries } = fakeContext({ caps: ['project.manage'], memberRole: 'member' });
+		await addProjectMember({ projectId: 9, employeeId: 80, role: 'member_tester' }, context);
+		expect(written(queries)).toBe(true);
 	});
 
-	test('a saját képességein belüli szerep kiosztható', async () => {
-		const { context, queries } = fakeContext({ caps: ['project.manage', 'work.log'], roleCaps, members: [7, 8] });
-		await setProjectUserRoles({ projectId: 9, userId: 8, roleIds: [1] }, context);
-		expect(queries.some((q) => q.sql.includes('INSERT INTO app__racona_work.wp_project_member_roles'))).toBe(true);
-	});
-
-	test('a projekten kapott képesség is beleszámít a felső korlátba', async () => {
-		const { context } = fakeContext({
-			caps: ['project.manage', 'work.log'],
-			projectCaps: ['project.close', 'org.manage'],
-			roleCaps,
-			members: [7, 8]
-		});
-		await expect(setProjectUserRoles({ projectId: 9, userId: 8, roleIds: [2] }, context)).resolves.toEqual({ ok: true });
+	test('a projektvezető kijelölhet újabb projektvezetőt', async () => {
+		const { context, queries } = fakeContext({ caps: ['work.log'], leadOf: [9] });
+		await addProjectMember({ projectId: 9, employeeId: 80, role: 'lead' }, context);
+		expect(written(queries)).toBe(true);
 	});
 });
 

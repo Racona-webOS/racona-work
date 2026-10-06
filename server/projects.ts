@@ -8,16 +8,15 @@
  *   - project.manage                        → módosítás, törlés, tagok
  *   - project.close                         → lezárás, visszanyitás
  *
+ * A projektvezető (tag, role = 'lead') a saját projektjén szervezeti szerep
+ * nélkül is kapja a project.manage és project.close jogot (specs/project-lead.md).
+ *
  * A publikus (remote hívható) funkciók a functions.ts-ben vannak reexportálva.
  */
 
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
-import {
-	hasCapability,
-	requireCapability,
-	requireProjectRolesWithinOwnCapabilities
-} from './permissions.js';
+import { hasCapability, requireCapability, PROJECT_LEAD_ROLE } from './permissions.js';
 
 // --- Típusok ----------------------------------------------------------------
 
@@ -43,6 +42,16 @@ export interface ProjectRow extends Project {
 	memberCount: number;
 	createdByName: string | null;
 	closedByName: string | null;
+}
+
+/** A hívó jogai egy projekten: szervezeti szerepből vagy projektvezetőként. */
+export interface ProjectAccess {
+	manage: boolean;
+	close: boolean;
+}
+
+export interface ProjectDetailRow extends ProjectRow {
+	access: ProjectAccess;
 }
 
 export interface ProjectListParams {
@@ -232,7 +241,7 @@ export async function listProjects(
 export async function getProject(
 	params: { id: number },
 	context: RemoteContext
-): Promise<ProjectRow> {
+): Promise<ProjectDetailRow> {
 	if (!params?.id) throw new Error('Érvénytelen projekt azonosító');
 
 	const result = await context.db.query(
@@ -279,7 +288,14 @@ export async function getProject(
 		}
 	}
 
-	return mapProjectRow(row);
+	const access: ProjectAccess =
+		dev || coreAdmin
+			? { manage: true, close: true }
+			: {
+					manage: await hasCapability(context, orgId, 'project.manage', row.id),
+					close: await hasCapability(context, orgId, 'project.close', row.id)
+				};
+	return { ...mapProjectRow(row), access };
 }
 
 // --- Létrehozás -------------------------------------------------------------
@@ -521,6 +537,29 @@ export async function reopenProject(
 
 // --- Tagok ------------------------------------------------------------------
 
+/**
+ * Projektvezetőt kijelölni vagy elvenni csak az tud, akinek a projektvezető
+ * minden joga megvan ezen a projekten (a project.manage mellett a project.close is),
+ * így senki nem adhat bővebb jogot, mint ami neki van.
+ */
+async function requireLeadChangeAllowed(
+	context: RemoteContext,
+	project: { id: number; organization_id: number },
+	employeeId: number,
+	newRole: string | null
+): Promise<void> {
+	const current = await context.db.query(
+		`SELECT role FROM app__racona_work.project_members WHERE project_id = $1 AND employee_id = $2`,
+		[project.id, employeeId]
+	);
+	const wasLead = current.rows[0]?.role === PROJECT_LEAD_ROLE;
+	const isLead = newRole === PROJECT_LEAD_ROLE;
+	if (wasLead === isLead) return;
+	if (!(await hasCapability(context, project.organization_id, 'project.close', project.id))) {
+		throw new Error('Projektvezetőt csak az jelölhet ki vagy vehet el, aki a projektet le is zárhatja.');
+	}
+}
+
 export async function listProjectMembers(
 	params: { projectId: number },
 	context: RemoteContext
@@ -585,6 +624,7 @@ export async function addProjectMember(
 	}
 
 	const role = params.role?.trim() || 'member';
+	await requireLeadChangeAllowed(context, project, emp.id, role);
 
 	await context.db.query(
 		`INSERT INTO app__racona_work.project_members (project_id, employee_id, role)
@@ -613,6 +653,7 @@ export async function removeProjectMember(
 
 	await requireCapability(context, project.organization_id, 'project.manage', project.id);
 	ensureProjectOpen(project.closed_at, 'A projekt le van zárva, a tagjai nem módosíthatók');
+	await requireLeadChangeAllowed(context, project, params.employeeId, null);
 
 	await context.db.query(
 		`DELETE FROM app__racona_work.project_members
@@ -620,179 +661,4 @@ export async function removeProjectMember(
 		[project.id, params.employeeId]
 	);
 	return { ok: true };
-}
-
-// --- Projekt-szintű szerep felülbírálások (wp_project_member_roles) --------
-
-export interface ProjectRoleOverrideRow {
-	userId: number;
-	userName: string;
-	userEmail: string;
-	userImage: string | null;
-	roles: Array<{ id: number; key: string; name: string; isSystem: boolean }>;
-}
-
-/**
- * Lista a projekt-szintű szerep-felülbírálásokról, user-enként csoportosítva.
- * Jog: project.manage (szervezet- vagy projekt-szinten).
- */
-export async function listProjectRoleOverrides(
-	params: { projectId: number },
-	context: RemoteContext
-): Promise<ProjectRoleOverrideRow[]> {
-	if (!params?.projectId) throw new Error('Érvénytelen projekt azonosító');
-
-	const projectRow = await context.db.query(
-		`SELECT id, organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
-		[params.projectId]
-	);
-	if (projectRow.rows.length === 0) throw new Error('Projekt nem található');
-	const project = projectRow.rows[0] as { id: number; organization_id: number; closed_at: string | null };
-
-	await requireCapability(context, project.organization_id, 'project.manage', project.id);
-
-	const result = await context.db.query(
-		`SELECT u.id AS user_id,
-		        u.full_name AS user_name,
-		        u.email AS user_email,
-		        u.image AS user_image,
-		        json_agg(
-		          json_build_object(
-		            'id', r.id,
-		            'key', r.key,
-		            'name', r.name,
-		            'isSystem', r.is_system
-		          ) ORDER BY r.name
-		        ) AS roles
-		   FROM app__racona_work.wp_project_member_roles pmr
-		   JOIN app__racona_work.wp_roles r ON r.id = pmr.role_id
-		   JOIN auth.users u ON u.id = pmr.user_id
-		  WHERE pmr.project_id = $1
-		  GROUP BY u.id, u.full_name, u.email, u.image
-		  ORDER BY u.full_name ASC`,
-		[project.id]
-	);
-
-	return result.rows.map((r: any) => ({
-		userId: r.user_id,
-		userName: r.user_name,
-		userEmail: r.user_email,
-		userImage: r.user_image ?? null,
-		roles: Array.isArray(r.roles) ? r.roles : []
-	}));
-}
-
-/**
- * Egy user projekt-szintű szerepeinek (felülbírálások) beállítása.
- * A roleIds lista teljes: ami nincs benne, azt töröljük; ami új, beszúrjuk.
- * Üres roleIds tömb esetén a user összes felülbírálása törlődik.
- *
- * Minden megadott szerepnek ugyanahhoz a szervezethez kell tartoznia,
- * mint a projekt.
- *
- * Jog: project.manage (szervezet- vagy projekt-szinten).
- */
-export async function setProjectUserRoles(
-	params: { projectId: number; userId: number; roleIds: number[] },
-	context: RemoteContext
-): Promise<{ ok: true }> {
-	if (!params?.projectId || !params?.userId) {
-		throw new Error('Érvénytelen paraméter');
-	}
-	if (!Array.isArray(params.roleIds)) {
-		throw new Error('Érvénytelen roleIds lista');
-	}
-
-	const projectRow = await context.db.query(
-		`SELECT id, organization_id, closed_at FROM app__racona_work.projects WHERE id = $1`,
-		[params.projectId]
-	);
-	if (projectRow.rows.length === 0) throw new Error('Projekt nem található');
-	const project = projectRow.rows[0] as { id: number; organization_id: number; closed_at: string | null };
-
-	await requireCapability(context, project.organization_id, 'project.manage', project.id);
-	ensureProjectOpen(project.closed_at, 'A projekt le van zárva, a jogosultságai nem módosíthatók');
-
-	// Duplikátumok kiszűrése
-	const roleIds = [...new Set(params.roleIds.filter((id) => Number.isInteger(id) && id > 0))];
-
-	// Validáció: minden szerep létezik és ugyanahhoz a szervezethez tartozik.
-	if (roleIds.length > 0) {
-		const check = await context.db.query(
-			`SELECT id FROM app__racona_work.wp_roles
-			  WHERE id = ANY($1::int[]) AND organization_id = $2`,
-			[roleIds, project.organization_id]
-		);
-		if (check.rows.length !== roleIds.length) {
-			throw new Error('Egy vagy több szerep nem érvényes ebben a szervezetben');
-		}
-
-		// Projektszerep csak a szervezet dolgozójának adható: más szervezet felhasználója
-		// ettől a projekt adataihoz férne hozzá. (Elvenni bárkitől lehet.)
-		const memberCheck = await context.db.query(
-			`SELECT 1 FROM app__racona_work.employees
-			  WHERE organization_id = $1 AND user_id = $2 LIMIT 1`,
-			[project.organization_id, params.userId]
-		);
-		if (memberCheck.rows.length === 0) {
-			throw new Error('A felhasználó nem tagja a szervezetnek');
-		}
-	}
-
-	// Felső korlát: csak a hívó saját képességein belüli szerepet lehet adni vagy elvenni
-	const current = await context.db.query(
-		`SELECT role_id FROM app__racona_work.wp_project_member_roles
-		  WHERE project_id = $1 AND user_id = $2`,
-		[project.id, params.userId]
-	);
-	const currentIds = new Set<number>(current.rows.map((r: { role_id: number }) => Number(r.role_id)));
-	const changed = [
-		...roleIds.filter((id) => !currentIds.has(id)),
-		...[...currentIds].filter((id) => !roleIds.includes(id))
-	];
-	await requireProjectRolesWithinOwnCapabilities(context, project.organization_id, project.id, changed);
-
-	// Üres lista esetén csak törlünk, egyébként az user felől tranzakcióban csere.
-	const client = await context.db.connect();
-	try {
-		await client.query('BEGIN');
-
-		await client.query(
-			`DELETE FROM app__racona_work.wp_project_member_roles
-			  WHERE project_id = $1 AND user_id = $2`,
-			[project.id, params.userId]
-		);
-
-		for (const rid of roleIds) {
-			await client.query(
-				`INSERT INTO app__racona_work.wp_project_member_roles (project_id, user_id, role_id)
-				 VALUES ($1, $2, $3)
-				 ON CONFLICT DO NOTHING`,
-				[project.id, params.userId, rid]
-			);
-		}
-
-		await client.query('COMMIT');
-	} catch (err) {
-		await client.query('ROLLBACK');
-		throw err;
-	} finally {
-		client.release();
-	}
-
-	return { ok: true };
-}
-
-/**
- * Egyszerűsített "all" törlés: egy user összes projekt-szintű szerepének törlése
- * egy adott projektben. A setProjectUserRoles hívható üres roleIds-szal is.
- */
-export async function clearProjectUserRoles(
-	params: { projectId: number; userId: number },
-	context: RemoteContext
-): Promise<{ ok: true }> {
-	return setProjectUserRoles(
-		{ projectId: params.projectId, userId: params.userId, roleIds: [] },
-		context
-	);
 }

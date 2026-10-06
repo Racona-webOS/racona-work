@@ -50,13 +50,6 @@
 				"icon": "Plus",
 				"component": "ProjectCreate",
 				"requiredCapability": "project.create"
-			},
-			{
-				"labelKey": "menu.projects.permissions",
-				"href": "#projects/permissions",
-				"icon": "KeyRound",
-				"component": "ProjectPermissions",
-				"requiredCapability": "project.manage"
 			}
 		]
 	},
