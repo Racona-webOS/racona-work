@@ -354,6 +354,8 @@
 		requestMode = false;
 	}
 	let requestType = $state<LeaveType>('annual');
+	/** A HR felvételnél választott típus (szerkeszthető naptár). */
+	let addType = $state<LeaveType>('annual');
 
 	/** A jelölések típusa: a HR felvételnél vagy a dolgozó kérelménél. */
 	const activeType = $derived(editable ? addType : requestType);
@@ -396,7 +398,6 @@
 			.catch(() => (allowances = null));
 	});
 
-	let addType = $state<LeaveType>('annual');
 	// Sima Set, minden változásnál újra létrehozva. A svelte/reactivity SvelteSet
 	// nem használható: a build csak a 'svelte' és a 'svelte/internal/client'
 	// csomagot veszi a core közös runtime-jából, a svelte/reactivity a csomagba
