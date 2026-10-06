@@ -800,4 +800,10 @@
 	:global(.dark) .badge-ok { background: oklch(0.25 0.05 145); color: #86efac; }
 	:global(.dark) .badge-muted { background: oklch(0.3 0 0); color: #cbd5e1; }
 	:global(.dark) .badge-info { background: oklch(0.3 0.06 300); color: #ddd6fe; }
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .btn-ghost-sm.danger:hover {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
 </style>

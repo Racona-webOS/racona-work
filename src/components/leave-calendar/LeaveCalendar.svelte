@@ -1997,4 +1997,89 @@
 	:global(.dark) .cell.is-off {
 		background: oklch(1 0 0 / 6%);
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .mini.has-count {
+		background: var(--rw-dark-info-bg);
+		color: var(--rw-dark-info-fg);
+	}
+
+	:global(.dark) .mc-accepted {
+		background: var(--rw-dark-success-bg);
+		color: var(--rw-dark-success-fg);
+	}
+
+	:global(.dark) .mc-closed {
+		background: var(--rw-dark-neutral-bg);
+		color: var(--rw-dark-neutral-fg);
+	}
+
+	:global(.dark) .mc-pending {
+		background: var(--rw-dark-warning-bg);
+		color: var(--rw-dark-warning-fg);
+	}
+
+	:global(.dark) .mc-disputed {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .mc-stale {
+		background: var(--rw-dark-info-bg);
+		color: var(--rw-dark-info-fg);
+	}
+
+	:global(.dark) .type-annual {
+		background: var(--rw-dark-success-bg);
+		color: var(--rw-dark-success-fg);
+	}
+
+	:global(.dark) .type-company_mandatory {
+		background: var(--rw-dark-teal-bg);
+		color: var(--rw-dark-teal-fg);
+	}
+
+	:global(.dark) .type-sick {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .type-paternity,
+	:global(.dark) .type-parental {
+		background: var(--rw-dark-violet-bg);
+		color: var(--rw-dark-violet-fg);
+	}
+
+	:global(.dark) .type-unpaid {
+		background: var(--rw-dark-orange-bg);
+		color: var(--rw-dark-orange-fg);
+	}
+
+	:global(.dark) .type-other {
+		background: var(--rw-dark-neutral-bg);
+		color: var(--rw-dark-neutral-fg);
+	}
+
+	:global(.dark) .type-unknown {
+		background: var(--rw-dark-info-bg);
+		color: var(--rw-dark-info-fg);
+	}
+
+	:global(.dark) .link-btn {
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .chip.mark-remove {
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .summary-text .is-negative,
+	:global(.dark) .summary-text .is-error {
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .error-banner {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
 </style>

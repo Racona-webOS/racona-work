@@ -621,4 +621,9 @@
 	.ev-actor {
 		font-weight: 500;
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .btn-ghost-sm.danger:hover {
+		color: var(--rw-dark-danger-fg);
+	}
 </style>

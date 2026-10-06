@@ -889,4 +889,9 @@
 	:global(.dark) .badge-manual { background: oklch(0.3 0 0); color: #cbd5e1; }
 	:global(.dark) .badge-locked { background: oklch(0.3 0.06 300); color: #ddd6fe; }
 	:global(.dark) .badge-differs { background: oklch(0.3 0.05 60); color: #fde68a; }
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .hint.carry-expired {
+		color: var(--rw-dark-danger-fg);
+	}
 </style>

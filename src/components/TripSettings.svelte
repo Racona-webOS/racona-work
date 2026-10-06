@@ -694,4 +694,10 @@
 		background: var(--color-card, oklch(0.205 0 0));
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .tag {
+		background: var(--rw-dark-success-bg);
+		color: var(--rw-dark-success-fg);
+	}
 </style>

@@ -278,7 +278,7 @@
 				cell: ({ row }: any) => {
 					const name = row.original.userName ?? '—';
 					const external = row.original.isExternal
-						? ` <span style="margin-left:0.375rem;font-size:0.7rem;font-weight:600;padding:0.05rem 0.45rem;border-radius:999px;background:#ede9fe;color:#6d28d9">${escapeHtml(t('employees.external.badge'))}</span>`
+						? ` <span class="badge-external-inline">${escapeHtml(t('employees.external.badge'))}</span>`
 						: '';
 					const snippet = createRawSnippet(() => ({ render: () => `<span><span class="font-medium">${escapeHtml(name)}</span>${external}</span>` }));
 					return renderSnippet(snippet, {});
@@ -769,6 +769,15 @@
 	:global(.badge-member) { background: #e0e7ff; color: #3730a3; }
 	:global(.badge-doc-danger) { background: #fee2e2; color: #b91c1c; }
 	:global(.badge-doc-warn) { background: #fef3c7; color: #92400e; }
+	:global(.badge-external-inline) {
+		margin-left: 0.375rem;
+		font-size: 0.7rem;
+		font-weight: 600;
+		padding: 0.05rem 0.45rem;
+		border-radius: 999px;
+		background: #ede9fe;
+		color: #6d28d9;
+	}
 
 	.doc-filter {
 		display: inline-flex;
@@ -1017,5 +1026,41 @@
 
 	:global(.dark) .modal-description {
 		color: var(--color-muted-foreground, oklch(0.708 0 0));
+	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) :global(.badge-active) {
+		background: var(--rw-dark-success-bg);
+		color: var(--rw-dark-success-fg);
+	}
+
+	:global(.dark) :global(.badge-inactive) {
+		background: var(--rw-dark-neutral-bg);
+		color: var(--rw-dark-neutral-fg);
+	}
+
+	:global(.dark) :global(.badge-on-leave) {
+		background: var(--rw-dark-info-bg);
+		color: var(--rw-dark-info-fg);
+	}
+
+	:global(.dark) :global(.badge-external-inline) {
+		background: var(--rw-dark-violet-bg);
+		color: var(--rw-dark-violet-fg);
+	}
+
+	:global(.dark) :global(.badge-member) {
+		background: var(--rw-dark-indigo-bg);
+		color: var(--rw-dark-indigo-fg);
+	}
+
+	:global(.dark) :global(.badge-doc-danger) {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) :global(.badge-doc-warn) {
+		background: var(--rw-dark-warning-bg);
+		color: var(--rw-dark-warning-fg);
 	}
 </style>

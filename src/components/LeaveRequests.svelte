@@ -717,4 +717,10 @@
 	:global(.dark) :global(.badge-approved) { background: oklch(0.25 0.05 145); color: #86efac; }
 	:global(.dark) :global(.badge-rejected) { background: oklch(0.25 0.05 20); color: #fca5a5; }
 	:global(.dark) :global(.badge-withdrawn) { background: oklch(0.3 0 0); color: #d4d4d8; }
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) :global(.badge-reduced) {
+		background: var(--rw-dark-orange-bg);
+		color: var(--rw-dark-orange-fg);
+	}
 </style>

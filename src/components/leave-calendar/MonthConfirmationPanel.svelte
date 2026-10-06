@@ -621,4 +621,35 @@
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 		border-top-color: #3b82f6;
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .status-accepted {
+		background: var(--rw-dark-success-bg);
+		color: var(--rw-dark-success-fg);
+	}
+
+	:global(.dark) .status-pending {
+		background: var(--rw-dark-warning-bg);
+		color: var(--rw-dark-warning-fg);
+	}
+
+	:global(.dark) .status-disputed {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .status-closed {
+		background: var(--rw-dark-neutral-bg);
+		color: var(--rw-dark-neutral-fg);
+	}
+
+	:global(.dark) .status-stale {
+		background: var(--rw-dark-info-bg);
+		color: var(--rw-dark-info-fg);
+	}
+
+	:global(.dark) .badge-count {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
 </style>

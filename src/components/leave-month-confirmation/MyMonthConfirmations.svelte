@@ -560,4 +560,37 @@
 	:global(.dark) .disputed {
 		background: rgba(249, 115, 22, 0.12);
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .stale {
+		color: var(--rw-dark-info-fg);
+	}
+
+	:global(.dark) .chip.type-annual {
+		background: var(--rw-dark-info-bg);
+		color: var(--rw-dark-info-fg);
+	}
+
+	:global(.dark) .chip.type-company_mandatory {
+		background: var(--rw-dark-indigo-bg);
+		color: var(--rw-dark-indigo-fg);
+	}
+
+	:global(.dark) .chip.type-sick {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .chip.type-paternity,
+	:global(.dark) .chip.type-parental {
+		background: var(--rw-dark-success-bg);
+		color: var(--rw-dark-success-fg);
+	}
+
+	:global(.dark) .chip.type-unpaid,
+	:global(.dark) .chip.type-other,
+	:global(.dark) .chip.type-unknown {
+		background: var(--rw-dark-neutral-bg);
+		color: var(--rw-dark-neutral-fg);
+	}
 </style>

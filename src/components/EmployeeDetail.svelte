@@ -1048,4 +1048,25 @@
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 		color: var(--color-foreground, oklch(0.985 0 0));
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .btn-ghost-sm.danger:hover {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .badge-active {
+		background: var(--rw-dark-success-bg);
+		color: var(--rw-dark-success-fg);
+	}
+
+	:global(.dark) .badge-inactive {
+		background: var(--rw-dark-neutral-bg);
+		color: var(--rw-dark-neutral-fg);
+	}
+
+	:global(.dark) .badge-onLeave {
+		background: var(--rw-dark-info-bg);
+		color: var(--rw-dark-info-fg);
+	}
 </style>

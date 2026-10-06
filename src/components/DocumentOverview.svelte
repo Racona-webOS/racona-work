@@ -292,4 +292,10 @@
 		background: rgba(245, 158, 11, 0.2);
 		color: #fcd34d;
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .ext {
+		background: var(--rw-dark-violet-bg);
+		color: var(--rw-dark-violet-fg);
+	}
 </style>

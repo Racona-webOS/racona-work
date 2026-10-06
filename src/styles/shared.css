@@ -348,6 +348,52 @@ label span {
 
 .rw {
 
+/*
+ * Témaváltozók. A host (Tailwind) a --color-* változók közül csak azokat
+ * adja ki, amelyeket maga is használ, így pl. a --color-card hiányzik, és a
+ * komponensek a világos tartalékértékre esnének vissza sötét módban is. Ezért
+ * a host alapváltozóiból (--card, --border …, a .dark-ban felülírva) magunk
+ * képezzük le őket. A tartalékérték a host nélküli (dev) futásé.
+ */
+--color-background: var(--background, #ffffff);
+--color-foreground: var(--foreground, #0f172a);
+--color-card: var(--card, #ffffff);
+--color-card-foreground: var(--card-foreground, #0f172a);
+--color-primary: var(--primary, #3730a3);
+--color-primary-foreground: var(--primary-foreground, #ffffff);
+--color-primary-subtle: color-mix(in oklab, var(--color-primary) 12%, var(--color-card));
+--color-primary-border: color-mix(in oklab, var(--color-primary) 35%, var(--color-card));
+--color-secondary: var(--secondary, #f1f5f9);
+--color-muted: var(--muted, #f1f5f9);
+--color-muted-foreground: var(--muted-foreground, #64748b);
+--color-accent: var(--accent, #f1f5f9);
+--color-destructive: var(--destructive, #dc2626);
+--color-border: var(--border, #e2e8f0);
+--color-input: var(--input, #e2e8f0);
+--color-sidebar: var(--sidebar, #f8fafc);
+
+/* Státuszszínek sötét módban: áttetsző alap, világos szöveg (a világos módú pasztell párok helyett) */
+--rw-dark-success-bg: rgba(34, 197, 94, 0.16);
+--rw-dark-success-fg: #86efac;
+--rw-dark-warning-bg: rgba(245, 158, 11, 0.16);
+--rw-dark-warning-fg: #fcd34d;
+--rw-dark-danger-bg: rgba(239, 68, 68, 0.16);
+--rw-dark-danger-fg: #fca5a5;
+--rw-dark-danger-border: rgba(239, 68, 68, 0.35);
+--rw-dark-info-bg: rgba(59, 130, 246, 0.16);
+--rw-dark-info-fg: #93c5fd;
+--rw-dark-violet-bg: rgba(139, 92, 246, 0.18);
+--rw-dark-violet-fg: #c4b5fd;
+--rw-dark-indigo-bg: rgba(99, 102, 241, 0.18);
+--rw-dark-indigo-fg: #a5b4fc;
+--rw-dark-orange-bg: rgba(249, 115, 22, 0.16);
+--rw-dark-orange-fg: #fdba74;
+--rw-dark-teal-bg: rgba(20, 184, 166, 0.16);
+--rw-dark-teal-fg: #5eead4;
+--rw-dark-neutral-bg: rgba(148, 163, 184, 0.14);
+--rw-dark-neutral-fg: #cbd5e1;
+
+
 .page {
 	padding: 2rem;
 	display: flex;
@@ -451,4 +497,11 @@ label span {
 	}
 
 	.subtitle { color: var(--color-muted-foreground, oklch(0.708 0 0)); }
+}
+
+
+/* Sötét mód: a világos státuszszínek sötét párjai */
+:global(.dark) .remove-btn:hover {
+	background: var(--rw-dark-danger-bg);
+	color: var(--rw-dark-danger-fg);
 }

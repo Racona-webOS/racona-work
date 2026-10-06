@@ -558,4 +558,13 @@
 	:global(.dark) tbody tr.selected td {
 		background: var(--color-primary-subtle, oklch(0.269 0 0));
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .status-badge.status-too_high {
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .deviation.status-too_high {
+		color: var(--rw-dark-danger-fg);
+	}
 </style>

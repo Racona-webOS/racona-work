@@ -193,3 +193,34 @@ textarea.m-input {
 	border-color: rgba(220, 38, 38, 0.3);
 	color: #fca5a5;
 }
+
+
+/* Sötét mód: a világos státuszszínek sötét párjai */
+:global(.dark) .m-btn-danger {
+	border-color: var(--rw-dark-danger-border);
+}
+
+:global(.dark) .m-chip {
+	background: var(--rw-dark-neutral-bg);
+	color: var(--rw-dark-neutral-fg);
+}
+
+:global(.dark) .m-chip.status-pending {
+	background: var(--rw-dark-warning-bg);
+	color: var(--rw-dark-warning-fg);
+}
+
+:global(.dark) .m-chip.status-approved {
+	background: var(--rw-dark-success-bg);
+	color: var(--rw-dark-success-fg);
+}
+
+:global(.dark) .m-chip.status-rejected {
+	background: var(--rw-dark-danger-bg);
+	color: var(--rw-dark-danger-fg);
+}
+
+:global(.dark) .m-chip.status-withdrawn {
+	background: var(--rw-dark-neutral-bg);
+	color: var(--rw-dark-neutral-fg);
+}

@@ -1008,4 +1008,40 @@
 		color: var(--color-muted-foreground, #64748b);
 		margin: 0.35rem 0 0.25rem;
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .chip.is-closed {
+		background: var(--rw-dark-neutral-bg);
+		color: var(--rw-dark-neutral-fg);
+	}
+
+	:global(.dark) .notice.is-warning {
+		background: var(--rw-dark-warning-bg);
+		color: var(--rw-dark-warning-fg);
+	}
+
+	:global(.dark) .is-public-holiday {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
+
+	:global(.dark) .is-relocated-rest-day {
+		background: var(--rw-dark-orange-bg);
+		color: var(--rw-dark-orange-fg);
+	}
+
+	:global(.dark) .is-company-day {
+		background: var(--rw-dark-violet-bg);
+		color: var(--rw-dark-violet-fg);
+	}
+
+	:global(.dark) .is-mandatory-leave {
+		background: var(--rw-dark-teal-bg);
+		color: var(--rw-dark-teal-fg);
+	}
+
+	:global(.dark) .is-workday {
+		background: var(--rw-dark-success-bg);
+		color: var(--rw-dark-success-fg);
+	}
 </style>

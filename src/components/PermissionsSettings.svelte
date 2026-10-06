@@ -785,6 +785,7 @@
 		width: 100%;
 		text-align: left;
 		background: transparent;
+		color: inherit;
 		border: 1px solid transparent;
 		border-radius: 0.5rem;
 		padding: 0.5rem 0.625rem;

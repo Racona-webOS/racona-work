@@ -568,4 +568,10 @@
 		background: rgba(59, 130, 246, 0.15);
 		color: #bfdbfe;
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .badge {
+		background: var(--rw-dark-indigo-bg);
+		color: var(--rw-dark-indigo-fg);
+	}
 </style>

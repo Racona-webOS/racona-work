@@ -289,4 +289,9 @@
 	:global(.dark) tfoot td {
 		background: var(--color-muted, oklch(0.269 0 0));
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .negative {
+		color: var(--rw-dark-danger-fg);
+	}
 </style>

@@ -200,4 +200,10 @@
 		color: var(--color-primary, #3730a3);
 		cursor: pointer;
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .count {
+		background: var(--rw-dark-warning-bg);
+		color: var(--rw-dark-warning-fg);
+	}
 </style>

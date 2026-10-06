@@ -435,4 +435,10 @@
 		background: oklch(0.3 0.06 50);
 		color: #fed7aa;
 	}
+
+	/* Sötét mód: a világos státuszszínek sötét párjai */
+	:global(.dark) .btn-ghost-danger:hover {
+		background: var(--rw-dark-danger-bg);
+		color: var(--rw-dark-danger-fg);
+	}
 </style>
