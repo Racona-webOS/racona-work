@@ -50,6 +50,7 @@ import {
 	type DayRange,
 	type WorkLogCheckSettings
 } from './work-log-check-utils.js';
+import { MOBILE_ENTRY } from './mobile.js';
 
 /** Az értesítésben legfeljebb ennyi tétel szerepel felsorolva. */
 const MAX_LISTED = 5;
@@ -306,7 +307,7 @@ async function remindEmployee(
 			en: `No entry recorded yet for: ${daysText(item.days, 'en')}`
 		},
 		type: 'warning',
-		data: { organizationId, days: item.days }
+		data: { organizationId, days: item.days, mobileEntry: MOBILE_ENTRY.worklog }
 	});
 
 	await sendEmails(context, {

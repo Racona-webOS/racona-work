@@ -250,7 +250,7 @@ export async function listWorkEntries(
 
 	const dataR = await context.db.query(
 		`SELECT we.id, we.project_id, we.employee_id, we.title, we.description,
-		        we.hours, we.work_date, we.status, we.created_at, we.updated_at,
+		        we.hours, to_char(we.work_date, 'YYYY-MM-DD') AS work_date, we.status, we.created_at, we.updated_at,
 		        we.category_id, wec.name AS category_name,
 		        u.full_name AS employee_name, u.email AS employee_email,
 		        p.name AS project_name

@@ -5,17 +5,17 @@ import { copyFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
- * A src/styles/shared.css összes szelektora. A komponensek a <style> blokkjukba
+ * A src/styles/shared.css és mobile.css összes szelektora. A komponensek a <style> blokkjukba
  * importálják ezt a fájlt, így a Svelte minden olyan közös szabályra
  * `css_unused_selector` warningot dob, amit az adott komponens nem használ
  * (a kimenetből ettől még kidobja őket). Ezeket a warningokat elnyomjuk,
  * a komponensek saját, tényleg felesleges szelektoraira viszont továbbra is szól.
  */
 function collectSharedSelectors(): Set<string> {
-	const css = readFileSync(resolve(__dirname, 'src/styles/shared.css'), 'utf8').replace(
-		/\/\*[\s\S]*?\*\//g,
-		''
-	);
+	const css = ['src/styles/shared.css', 'src/styles/mobile.css']
+		.map((file) => readFileSync(resolve(__dirname, file), 'utf8'))
+		.join('\n')
+		.replace(/\/\*[\s\S]*?\*\//g, '');
 	const selectors = new Set<string>();
 	for (const [, prelude] of css.matchAll(/([^{};]+)\{/g)) {
 		if (prelude.trim().startsWith('@')) continue;

@@ -31,6 +31,7 @@ import {
 import type { Recipient } from './notification-email.js';
 import { requireCapability } from './permissions.js';
 import { requireOrganizationId } from './trip-access.js';
+import { MOBILE_ENTRY } from './mobile.js';
 
 const SCHEMA = 'app__racona_work';
 
@@ -272,7 +273,8 @@ export async function notifyLeaveRequestDecision(
 				en: `${leaveType.en}, ${period.en} (${workingDaysEn(request.days)})`
 			},
 			type: texts.type,
-			data: { leaveRequestId: request.id, organizationId: request.organizationId }
+			// A mobil keretben a szabadság-képernyő nyílik meg
+			data: { leaveRequestId: request.id, organizationId: request.organizationId, mobileEntry: MOBILE_ENTRY.leave }
 		});
 
 		const organizationName = await loadOrganizationName(context, request.organizationId);

@@ -33,6 +33,7 @@ import { formatMonthLabel, summarizeSnapshot } from './leave-month-confirmation-
 import type { DisputeItem, MonthSnapshot, SnapshotPeriod, SnapshotSummary } from './leave-month-confirmation-utils.js';
 import type { MonthConfirmationOverview } from './leave-month-confirmations.js';
 import { SCHEMA } from './trip-access.js';
+import { MOBILE_ENTRY } from './mobile.js';
 
 type Locale = keyof LocalizedText;
 
@@ -204,7 +205,7 @@ export async function notifyMonthConfirmationRequested(
 				en: `${label.en}: ${recorded.en}. Accept it on the dashboard, or report if something is wrong.${notice.note ? ` HR: ${notice.note}` : ''}`
 			},
 			type: 'info',
-			data: { monthConfirmationId: notice.id, organizationId: notice.organizationId }
+			data: { monthConfirmationId: notice.id, organizationId: notice.organizationId, mobileEntry: MOBILE_ENTRY.month }
 		});
 
 		const organizationName = await loadOrganizationName(context, notice.organizationId);
@@ -367,7 +368,7 @@ export async function notifyMonthConfirmationClosed(
 			title: { hu: 'A HR lezárta a havi szabadság-ellenőrzést', en: 'HR closed the monthly leave check' },
 			message: { hu: `${label.hu}: ${notice.note}`, en: `${label.en}: ${notice.note}` },
 			type: 'info',
-			data: { monthConfirmationId: notice.id, organizationId: notice.organizationId }
+			data: { monthConfirmationId: notice.id, organizationId: notice.organizationId, mobileEntry: MOBILE_ENTRY.month }
 		});
 
 		const organizationName = await loadOrganizationName(context, notice.organizationId);
@@ -426,7 +427,7 @@ export async function notifyMonthConfirmationReminder(
 				en: `${label.en}: you have not answered the monthly leave summary yet.${deadlineText(notice.deadline, 'en', ' ')} Accept it on the dashboard, or report if something is wrong.`
 			},
 			type: 'warning',
-			data: { monthConfirmationId: notice.id, organizationId: notice.organizationId }
+			data: { monthConfirmationId: notice.id, organizationId: notice.organizationId, mobileEntry: MOBILE_ENTRY.month }
 		});
 
 		const organizationName = await loadOrganizationName(context, notice.organizationId);

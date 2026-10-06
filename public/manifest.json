@@ -8,7 +8,7 @@
 		"hu": "Céges nyilvántartó alkalmazás (dolgozó kezelése, projektek, szabadságok).",
 		"en": "Company records app (employee management, projects, leave requests)."
 	},
-	"version": "0.13.0",
+	"version": "0.14.0",
 	"author": "Racona Developer <szigeti.developer@gmail.com>",
 	"entry": "dist/index.iife.js",
 	"icon": "icon.webp",
@@ -59,6 +59,28 @@
 			"catchUp": "once"
 		}
 	],
+	"mobile": {
+		"entries": [
+			{
+				"id": "leave",
+				"label": { "hu": "Szabadság igénylése", "en": "Request leave" },
+				"icon": "CalendarPlus",
+				"component": "MobileLeaveRequest"
+			},
+			{
+				"id": "month",
+				"label": { "hu": "Havi szabadság-összesítő", "en": "Monthly leave summary" },
+				"icon": "CalendarCheck",
+				"component": "MobileMonthConfirmation"
+			},
+			{
+				"id": "worklog",
+				"label": { "hu": "Munka rögzítése", "en": "Log work" },
+				"icon": "ClipboardPen",
+				"component": "MobileWorkLog"
+			}
+		]
+	},
 	"multiInstance": false,
 	"defaultSize": {
 		"width": 800,

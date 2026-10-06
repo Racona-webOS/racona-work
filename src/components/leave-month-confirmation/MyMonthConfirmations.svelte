@@ -18,11 +18,14 @@
 	let {
 		pluginId = 'racona-work',
 		organizationId,
-		refreshKey = 0
+		refreshKey = 0,
+		count = $bindable<number | null>(null)
 	}: {
 		pluginId?: string;
 		organizationId: number;
 		refreshKey?: number;
+		/** A nyitott tételek száma betöltés után (a mobil képernyő üres állapotához) */
+		count?: number | null;
 	} = $props();
 
 	const sdk = $derived(resolveSdk(pluginId));
@@ -36,6 +39,7 @@
 		} catch {
 			items = [];
 		}
+		count = items.length;
 	}
 
 	$effect(() => {
@@ -334,6 +338,7 @@
 	@import '../../styles/shared.css';
 
 	.mmc {
+		container-type: inline-size;
 		display: flex;
 		flex-direction: column;
 		gap: 0.6rem;
@@ -513,6 +518,32 @@
 		font-size: 0.8rem;
 		color: #dc2626;
 		margin-left: auto;
+	}
+
+	/* Keskeny kártya (telefon): a sorok egymás alá, a választók teljes szélességben,
+	   16px-es betűvel (iPhone-on kisebbnél fókuszáláskor ránagyít) */
+	@container (max-width: 30rem) {
+		.range,
+		.type {
+			min-width: 0;
+		}
+
+		.day-rows li .select,
+		.add-row .select,
+		.add-row button {
+			flex: 1 1 100%;
+			min-height: 2.5rem;
+			font-size: 1rem;
+		}
+
+		.textarea {
+			font-size: 1rem;
+		}
+
+		.actions button {
+			flex: 1;
+			min-height: 2.75rem;
+		}
 	}
 
 	:global(.dark) .mmc {
