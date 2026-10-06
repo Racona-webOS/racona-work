@@ -113,7 +113,7 @@
 				<h2>{t('documentOverview.title')}</h2>
 				<p class="subtitle">{t('documentOverview.subtitle')}</p>
 			</div>
-			<button class="btn-secondary" onclick={load} disabled={loading}>{t('documentOverview.refresh')}</button>
+			<button class="btn-primary" onclick={load} disabled={loading}>{t('documentOverview.refresh')}</button>
 		</div>
 
 		{#if loadError}
