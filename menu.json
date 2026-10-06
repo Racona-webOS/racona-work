@@ -142,6 +142,13 @@
 				"requiredCapability": "trip.manage"
 			},
 			{
+				"labelKey": "menu.settings.workLog",
+				"href": "#settings/work-log",
+				"icon": "ClipboardCheck",
+				"component": "WorkLogSettings",
+				"requiredCapability": "project.manage"
+			},
+			{
 				"labelKey": "menu.settings.documentTypes",
 				"href": "#settings/document-types",
 				"icon": "FileText",

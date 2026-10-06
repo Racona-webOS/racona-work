@@ -8,7 +8,7 @@
 		"hu": "Céges nyilvántartó alkalmazás (dolgozó kezelése, projektek, szabadságok).",
 		"en": "Company records app (employee management, projects, leave requests)."
 	},
-	"version": "0.12.0",
+	"version": "0.13.0",
 	"author": "Racona Developer <szigeti.developer@gmail.com>",
 	"entry": "dist/index.iife.js",
 	"icon": "icon.webp",
@@ -42,6 +42,18 @@
 			"description": {
 				"hu": "Dolgozói dokumentumok: lejárati emlékeztetők",
 				"en": "Employee documents: expiry reminders"
+			},
+			"timeoutSeconds": 600,
+			"catchUp": "once"
+		},
+		{
+			"id": "work-log-missing-check",
+			"handler": "runWorkLogCheck",
+			"schedule": "55 23 * * *",
+			"timezone": "Europe/Budapest",
+			"description": {
+				"hu": "Munkanapló: emlékeztető a hiányzó bejegyzésekről, eszkaláció a projektvezetőnek",
+				"en": "Work log: reminders about missing entries, escalation to the project lead"
 			},
 			"timeoutSeconds": 600,
 			"catchUp": "once"

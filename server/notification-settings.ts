@@ -7,7 +7,7 @@
  * jogosultság-ellenőrzés nélkül történik (`loadNotificationSettings`), a lekérés és a
  * mentés a felületről `org.manage` joggal.
  *
- * Kategóriánként (dolgozók, szabadság, dokumentumok, kiküldetések) egy
+ * Kategóriánként (dolgozók, szabadság, dokumentumok, kiküldetések, munkanapló) egy
  * válaszcím (Reply-To) is megadható; üresen a rendszerszintű érvényes.
  */
 
@@ -44,7 +44,10 @@ export const NOTIFICATION_EVENT_DEFAULTS = {
 	'document.expiring': true,
 	'document.expiringEmployee': false,
 	'document.submitted': false,
-	'document.reviewed': false
+	'document.reviewed': false,
+	// Hiányzó munkanapló-bejegyzések (specs/work-log-check.md): csak bekapcsolt figyelésnél megy bármi
+	'worklog.missingEntriesEmployee': true,
+	'worklog.missingEntries': true
 } as const satisfies Record<string, boolean>;
 
 export type NotificationEvent = keyof typeof NOTIFICATION_EVENT_DEFAULTS;
@@ -52,7 +55,7 @@ export type NotificationEvent = keyof typeof NOTIFICATION_EVENT_DEFAULTS;
 export const NOTIFICATION_EVENTS = Object.keys(NOTIFICATION_EVENT_DEFAULTS) as NotificationEvent[];
 
 /** Az események kategóriái: a felület csoportjai és a válaszcím egysége. */
-export const NOTIFICATION_GROUPS = ['employees', 'leave', 'documents', 'trips'] as const;
+export const NOTIFICATION_GROUPS = ['employees', 'leave', 'documents', 'trips', 'worklog'] as const;
 
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
 
@@ -60,7 +63,8 @@ const EVENT_PREFIX_GROUP: Record<string, NotificationGroup> = {
 	employee: 'employees',
 	leave: 'leave',
 	document: 'documents',
-	trip: 'trips'
+	trip: 'trips',
+	worklog: 'worklog'
 };
 
 /** Az esemény kategóriája a kulcs előtagjából (`leave.requestCreated` → leave). */

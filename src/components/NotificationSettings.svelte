@@ -68,7 +68,8 @@
 			{
 				group: 'trips',
 				events: ['trip.settlementSubmitted', 'trip.settlementStatus', 'trip.ordererChanged']
-			}
+			},
+			{ group: 'worklog', events: ['worklog.missingEntriesEmployee', 'worklog.missingEntries'] }
 		]
 	];
 

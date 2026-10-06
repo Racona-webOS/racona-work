@@ -60,7 +60,8 @@ describe('válaszcím (D6)', () => {
 			employees: null,
 			leave: null,
 			documents: null,
-			trips: null
+			trips: null,
+			worklog: null
 		});
 	});
 
@@ -68,7 +69,7 @@ describe('válaszcím (D6)', () => {
 		const { replyTo } = normalizeNotificationSettings({
 			replyTo: { leave: '  hr@ceg.hu ', trips: 'Könyvelés <konyv@ceg.hu>', documents: '', bogus: 'x@y.hu' }
 		});
-		expect(replyTo).toEqual({ employees: null, leave: 'hr@ceg.hu', documents: null, trips: null });
+		expect(replyTo).toEqual({ employees: null, leave: 'hr@ceg.hu', documents: null, trips: null, worklog: null });
 	});
 
 	test('csak azt a címformát fogadja el, amit a core is', () => {

@@ -16,6 +16,7 @@ import type {
 import { parseDay, todayInBudapest } from './dates.js';
 import { runLeaveMonthAutomationForAll } from './leave-month-automation.js';
 import { runDocumentRemindersForAll } from './document-reminders.js';
+import { runWorkLogCheckForAll } from './work-log-check.js';
 
 /** A dev-server kiegészítése: szimulált mai nap (YYYY-MM-DD) */
 type JobParams = ScheduledJobParams & { today?: string };
@@ -67,6 +68,33 @@ export const runEmployeeDocumentReminders = (async (
 		`${totals.organizations} szervezet · dokumentum: ${totals.documents}` +
 		` · HR értesítés: ${totals.managerNotices} · dolgozói értesítés: ${totals.employeeNotices}` +
 		` · hiba: ${totals.failed.length}`;
+	if (totals.failed.length > 0) {
+		throw new Error(`${summary} — ${totals.failed.map((f) => `#${f.organizationId}: ${f.error}`).join('; ')}`);
+	}
+	return { summary, data: { today, ...totals } };
+}) satisfies ScheduledJobHandler;
+
+/**
+ * Hiányzó munkanapló-bejegyzések figyelése (specs/work-log-check.md): a
+ * dolgozók emlékeztetőt kapnak az utolsó napok hiányzó munkanapjairól, az
+ * ablakból pótolatlanul kieső napokról a beállított címzettek jelzést.
+ * Naponta 23:55-kor fut.
+ *
+ * @throws Ha valamelyik szervezet feldolgozása hibás (a core futásnaplójában „sikertelen”).
+ */
+export const runWorkLogCheck = (async (
+	params: JobParams,
+	context: JobContext
+): Promise<ScheduledJobResult> => {
+	const simulated = context.devMode ? parseDay(params?.today, 'today') : null;
+	const today = simulated ?? todayInBudapest();
+	// Szimulált napon a futás ideje annak estéje (23:55 Budapesten, kb. 21:55 UTC)
+	const now = simulated ? new Date(`${simulated}T21:55:00Z`) : new Date();
+	const totals = await runWorkLogCheckForAll(context, today, now);
+
+	const summary =
+		`${totals.organizations} szervezet · emlékeztetett dolgozó: ${totals.reminded}` +
+		` · eszkaláció: ${totals.escalatedEmployees} dolgozó, ${totals.escalatedDays} nap · hiba: ${totals.failed.length}`;
 	if (totals.failed.length > 0) {
 		throw new Error(`${summary} — ${totals.failed.map((f) => `#${f.organizationId}: ${f.error}`).join('; ')}`);
 	}
