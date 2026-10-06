@@ -8,6 +8,12 @@
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { hasCapability, requireCapability } from './permissions.js';
+import {
+	canViewOrganizationDocuments,
+	emptyCounts,
+	loadDocumentIssues,
+	type DocumentIssueCounts
+} from './document-overview.js';
 import { parseDay, todayInBudapest } from './dates.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
 import { geocodeAddress } from './geo.js';
@@ -38,6 +44,12 @@ export interface EmployeeRow extends Employee {
 	 * A kulcs és az isSystem a rendszerszerepek fordított nevéhez kell (src/utils/roles.ts).
 	 */
 	roles?: Array<{ key: string; name: string; isSystem: boolean }>;
+	/**
+	 * Lejárt, lejáró, hiányzó kötelező és fájl nélküli dokumentumok száma
+	 * (specs/employee-documents.md, K11). Csak `withDocumentIssues` kérésre és
+	 * dokumentum-olvasási joggal.
+	 */
+	documentIssues?: DocumentIssueCounts;
 }
 
 export interface EmployeeDetail {
@@ -52,7 +64,13 @@ export interface EmployeeDetail {
 
 export interface EmployeeDetailView {
 	employee: EmployeeRow;
+	/**
+	 * Az adatlap kulcs-érték sorai. Csak a dolgozó maga és a HR (employee.manage
+	 * vagy leave.balance.manage) kapja meg; másnak üres tömb.
+	 */
 	details: EmployeeDetail[];
+	/** A hívó láthatja-e az adatlapot (details); ha nem, csak az alapadatok jönnek. */
+	detailsVisible: boolean;
 	/** A munkaviszony dátumai YYYY-MM-DD formában (a szabadság arányosításához is kellenek). */
 	employment: {
 		hireDate: string | null;
@@ -110,6 +128,10 @@ export interface EmployeeListParams {
 	 * szerepek). Alapból kimaradnak, mert a többi funkcióra nem vonatkoznak.
 	 */
 	includeExternal?: boolean;
+	/** A sorok kapják meg a dokumentumproblémák számát (dokumentum-olvasási joggal). */
+	withDocumentIssues?: boolean;
+	/** Csak a dokumentumproblémás dolgozók (dokumentum-olvasási joggal; különben figyelmen kívül marad). */
+	documentIssuesOnly?: boolean;
 }
 
 export interface UnlinkedUser {
@@ -390,6 +412,23 @@ export async function getEmployees(
 		conditions.push('e.is_external = FALSE');
 	}
 
+	// Dokumentumproblémák (jelvény és szűrő) — csak dokumentum-olvasási joggal
+	const wantsIssues = params.withDocumentIssues === true || params.documentIssuesOnly === true;
+	const issueCounts = new Map<number, DocumentIssueCounts>();
+	const issuesAllowed = wantsIssues && (await canViewOrganizationDocuments(context, params.organizationId));
+	if (issuesAllowed) {
+		for (const issue of await loadDocumentIssues(context, params.organizationId)) {
+			const counts = issueCounts.get(issue.employeeId) ?? emptyCounts();
+			counts[issue.kind]++;
+			issueCounts.set(issue.employeeId, counts);
+		}
+		if (params.documentIssuesOnly) {
+			conditions.push(`e.id = ANY($${paramIndex}::int[])`);
+			queryParams.push([...issueCounts.keys()]);
+			paramIndex++;
+		}
+	}
+
 	const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
 	// Összes találat száma a lapozáshoz
@@ -456,7 +495,10 @@ export async function getEmployees(
 		userEmail: row.user_email,
 		userImage: row.user_image ?? null,
 		isExternal: row.is_external === true,
-		roles: row.role_list ?? []
+		roles: row.role_list ?? [],
+		...(issuesAllowed && params.withDocumentIssues
+			? { documentIssues: issueCounts.get(row.id) ?? emptyCounts() }
+			: {})
 	}));
 
 	return {
@@ -577,6 +619,18 @@ export async function getEmployeeDetails(
 		isExternal: empRow.is_external === true
 	};
 
+	const employment = {
+		hireDate: empRow.hire_day ?? null,
+		employmentEndDate: empRow.employment_end_day ?? null,
+		hireDateConfirmed: empRow.hire_date_confirmed === true
+	};
+
+	// Az adatlap és a személyes adatok csak a dolgozónak és a HR-nek járnak;
+	// a többi employee.view jogú hívó (pl. kiküldetés jóváhagyó) csak az alapadatokat kapja.
+	if (!(await canSeePersonalData(context, orgId, empRow.user_id))) {
+		return { employee, details: [], detailsVisible: false, employment, personal: null };
+	}
+
 	// Adatlap részletek lekérdezése
 	const detailsResult = await context.db.query(
 		`SELECT id, employee_id, category, field_key, field_value, created_at, updated_at
@@ -596,17 +650,12 @@ export async function getEmployeeDetails(
 		updatedAt: row.updated_at
 	}));
 
-	const personal = (await canSeePersonalData(context, orgId, empRow.user_id)) ? mapPersonal(empRow) : null;
-
 	return {
 		employee,
 		details,
-		employment: {
-			hireDate: empRow.hire_day ?? null,
-			employmentEndDate: empRow.employment_end_day ?? null,
-			hireDateConfirmed: empRow.hire_date_confirmed === true
-		},
-		personal
+		detailsVisible: true,
+		employment,
+		personal: mapPersonal(empRow)
 	};
 }
 

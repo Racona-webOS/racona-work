@@ -15,6 +15,7 @@ import type {
 } from '@racona/sdk/server';
 import { parseDay, todayInBudapest } from './dates.js';
 import { runLeaveMonthAutomationForAll } from './leave-month-automation.js';
+import { runDocumentRemindersForAll } from './document-reminders.js';
 
 /** A dev-server kiegészítése: szimulált mai nap (YYYY-MM-DD) */
 type JobParams = ScheduledJobParams & { today?: string };
@@ -42,6 +43,30 @@ export const runLeaveMonthAutomation = (async (
 	const summary =
 		`${totals.organizations} szervezet · kiküldve: ${totals.autoSent} · emlékeztető: ${totals.reminders}` +
 		` · zárási összesítő: ${totals.closingNotices} · hiba: ${totals.failed.length}`;
+	if (totals.failed.length > 0) {
+		throw new Error(`${summary} — ${totals.failed.map((f) => `#${f.organizationId}: ${f.error}`).join('; ')}`);
+	}
+	return { summary, data: { today, ...totals } };
+}) satisfies ScheduledJobHandler;
+
+/**
+ * Dolgozói dokumentumok lejárati emlékeztetői: a HR napi összesítője és a
+ * dolgozó saját jelzése (specs/employee-documents.md, K9). Naponta egyszer fut.
+ *
+ * @throws Ha valamelyik szervezet feldolgozása hibás (a core futásnaplójában „sikertelen”).
+ */
+export const runEmployeeDocumentReminders = (async (
+	params: JobParams,
+	context: JobContext
+): Promise<ScheduledJobResult> => {
+	const simulated = context.devMode ? parseDay(params?.today, 'today') : null;
+	const today = simulated ?? todayInBudapest();
+	const totals = await runDocumentRemindersForAll(context, today);
+
+	const summary =
+		`${totals.organizations} szervezet · dokumentum: ${totals.documents}` +
+		` · HR értesítés: ${totals.managerNotices} · dolgozói értesítés: ${totals.employeeNotices}` +
+		` · hiba: ${totals.failed.length}`;
 	if (totals.failed.length > 0) {
 		throw new Error(`${summary} — ${totals.failed.map((f) => `#${f.organizationId}: ${f.error}`).join('; ')}`);
 	}

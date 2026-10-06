@@ -17,15 +17,19 @@
 	import OtherAllowances from './leave-entitlement/OtherAllowances.svelte';
 	import DataRequestReview from './leave-entitlement/DataRequestReview.svelte';
 	import PersonalDataFields from './trips/PersonalDataFields.svelte';
+	import EmployeeDocumentsTab from './employee-documents/EmployeeDocumentsTab.svelte';
 	import { resolveSdk, translate } from '../utils/sdk.js';
 	import { formatDate } from '../utils/format.js';
 
 	let {
 		pluginId = 'racona-work',
-		employeeId = null
+		employeeId = null,
+		tab = null
 	}: {
 		pluginId?: string;
 		employeeId?: number | null;
+		/** Melyik fül nyíljon meg (pl. a Dokumentumok oldalról jövet: 'documents') */
+		tab?: 'details' | 'documents' | null;
 	} = $props();
 
 	const sdk = $derived(resolveSdk(pluginId));
@@ -40,6 +44,10 @@
 	// látszanak (a bontásból kiderül a gyerekek száma, az egészségkárosodás).
 	let canManageBalance = $state(false);
 	let canManageEmployee = $state(false);
+	/** A Dokumentumok fül (specs/employee-documents.md): olvasási vagy kezelési joggal. */
+	let canViewDocuments = $state(false);
+	// svelte-ignore state_referenced_locally
+	let activeTab = $state<'details' | 'documents'>(tab === 'documents' ? 'documents' : 'details');
 	/** A születési dátumot a HR menti: employee.manage vagy leave.balance.manage. */
 	const canEditPersonal = $derived(canManageEmployee || canManageBalance);
 
@@ -47,6 +55,8 @@
 		const store = (window as any).__racona_work_org_store__;
 		canManageBalance = store?.can?.('leave.balance.manage') ?? false;
 		canManageEmployee = store?.can?.('employee.manage') ?? false;
+		canViewDocuments =
+			(store?.can?.('employee.documents.view') ?? false) || (store?.can?.('employee.documents.manage') ?? false);
 	}
 
 	$effect(() => {
@@ -321,6 +331,34 @@
 	{:else if !employeeId}
 		<p class="empty-state">{t('employeeDetail.noEmployee')}</p>
 	{:else if view}
+		{#if canViewDocuments}
+			<div class="tabs" role="tablist">
+				<button
+					class="tab"
+					class:active={activeTab === 'details'}
+					role="tab"
+					aria-selected={activeTab === 'details'}
+					onclick={() => (activeTab = 'details')}
+				>
+					{t('employeeDetail.tabs.details')}
+				</button>
+				<button
+					class="tab"
+					class:active={activeTab === 'documents'}
+					role="tab"
+					aria-selected={activeTab === 'documents'}
+					onclick={() => (activeTab = 'documents')}
+				>
+					{t('employeeDetail.tabs.documents')}
+				</button>
+			</div>
+		{/if}
+
+		{#if activeTab === 'documents' && canViewDocuments}
+			<div class="tab-content">
+				<EmployeeDocumentsTab {pluginId} employeeId={view.employee.id} />
+			</div>
+		{:else}
 		<!-- Két hasábos elrendezés: bal = alapadatok + kategóriák, jobb = szabadságkeret -->
 		<div class="two-col-grid">
 			<div class="col-main">
@@ -328,7 +366,7 @@
 				<div class="card">
 			<div class="card-header">
 				<h3>{t('employeeDetail.basicInfo')}</h3>
-				{#if !editingBasic}
+				{#if !editingBasic && canManageEmployee}
 					<button class="btn-ghost" onclick={startEditBasic}>{t('employeeDetail.editDetail')}</button>
 				{/if}
 			</div>
@@ -428,14 +466,19 @@
 			{/if}
 		</div>
 
-				<!-- Kategóriák -->
+				<!-- Kategóriák: az adatlapot csak a dolgozó maga és a HR kapja meg a szervertől -->
+				{#if !view.detailsVisible}
+					<div class="notice"><span>{t('employeeDetail.detailsRestricted')}</span></div>
+				{:else}
 				{#each CATEGORIES as cat (cat)}
 			<div class="card">
 				<div class="card-header">
 					<h3>{categoryLabel(cat)}</h3>
-					<button class="btn-ghost" onclick={() => startAddDetail(cat)}>
-						+ {t('employeeDetail.addDetail')}
-					</button>
+					{#if canManageEmployee}
+						<button class="btn-ghost" onclick={() => startAddDetail(cat)}>
+							+ {t('employeeDetail.addDetail')}
+						</button>
+					{/if}
 				</div>
 
 				<!-- A születési dátum rögzített mező: csak a HR és maga a dolgozó látja -->
@@ -490,14 +533,16 @@
 							<div class="detail-row">
 								<span class="detail-key">{detail.fieldKey}</span>
 								<span class="detail-value">{detail.fieldValue}</span>
-								<div class="detail-actions">
-									<button class="btn-ghost-sm" onclick={() => startEditDetail(detail)}>
-										{t('employeeDetail.editDetail')}
-									</button>
-									<button class="btn-ghost-sm danger" onclick={() => deleteDetail(detail)}>
-										{t('employeeDetail.deleteDetail')}
-									</button>
-								</div>
+								{#if canManageEmployee}
+									<div class="detail-actions">
+										<button class="btn-ghost-sm" onclick={() => startEditDetail(detail)}>
+											{t('employeeDetail.editDetail')}
+										</button>
+										<button class="btn-ghost-sm danger" onclick={() => deleteDetail(detail)}>
+											{t('employeeDetail.deleteDetail')}
+										</button>
+									</div>
+								{/if}
 							</div>
 						{/each}
 					</div>
@@ -535,6 +580,7 @@
 				{/if}
 			</div>
 		{/each}
+				{/if}
 			</div><!-- /col-main -->
 
 			<!-- Jobb hasáb: szabadságkeret és a számítás adatai -->
@@ -552,6 +598,7 @@
 				</div><!-- /col-side -->
 			{/if}
 		</div><!-- /two-col-grid -->
+		{/if}
 	{/if}
 </section>
 </div>
@@ -617,6 +664,38 @@
 		flex-direction: column;
 		gap: 1.25rem;
 		container-type: inline-size;
+	}
+
+	.tabs {
+		display: flex;
+		gap: 0.25rem;
+		border-bottom: 1px solid var(--color-border, #e2e8f0);
+		max-width: calc(var(--max-col-width) * 2);
+	}
+
+	.tab {
+		background: transparent;
+		border: none;
+		border-bottom: 2px solid transparent;
+		padding: 0.5rem 0.75rem;
+		margin-bottom: -1px;
+		font-size: 0.875rem;
+		cursor: pointer;
+		color: var(--color-muted-foreground, #64748b);
+	}
+
+	.tab:hover {
+		color: var(--color-foreground, #0f172a);
+	}
+
+	.tab.active {
+		color: var(--color-primary, #3730a3);
+		border-bottom-color: var(--color-primary, #3730a3);
+		font-weight: 600;
+	}
+
+	.tab-content {
+		max-width: calc(var(--max-col-width) * 2);
 	}
 
 	.two-col-grid {

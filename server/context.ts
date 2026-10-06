@@ -41,6 +41,41 @@ export interface PluginNotificationService {
 	}): Promise<{ success: boolean; error?: string }>;
 }
 
+/** A core által tárolt fájl adatai (`context.files`). */
+export interface PluginFileInfo {
+	id: string;
+	originalName: string;
+	mimeType: string;
+	size: number;
+	sha256: string;
+	ref: string | null;
+	createdBy: number | null;
+	createdAt: Date;
+	claimedAt: Date | null;
+}
+
+/**
+ * A core fájltárolója (lemezen, nem az adatbázisban). Csak a 'file_access'
+ * jogosultságú plugin kapja meg. A hibáknak `code` mezője van
+ * (FILE_NOT_FOUND, PERMISSION_DENIED, INVALID_INPUT, INVALID_MIME, FILE_TOO_LARGE).
+ */
+export interface PluginFileService {
+	get(fileId: string): Promise<PluginFileInfo | null>;
+	read(fileId: string): Promise<Uint8Array>;
+	delete(fileId: string): Promise<void>;
+	claim(fileId: string, options?: { ref?: string }): Promise<PluginFileInfo>;
+	createUploadUrl(options: {
+		allowedMimeTypes: string[];
+		maxBytes?: number;
+		ref?: string;
+		ttlSeconds?: number;
+	}): Promise<{ uploadUrl: string; expiresAt: Date }>;
+	createDownloadUrl(
+		fileId: string,
+		options?: { disposition?: 'inline' | 'attachment'; ttlSeconds?: number }
+	): Promise<{ url: string; expiresAt: Date }>;
+}
+
 export interface RemoteContext {
 	pluginId: string;
 	/**
@@ -59,6 +94,8 @@ export interface RemoteContext {
 	permissions: string[];
 	email?: PluginEmailService;
 	notifications?: PluginNotificationService;
+	/** A core fájltárolója; csak 'file_access' jogosultsággal (specs/employee-documents.md). */
+	files?: PluginFileService;
 	/**
 	 * Csak a lokális dev-server állítja be. Dev módban a jogosultság-ellenőrzések
 	 * lazábbak, és nem numerikus userId esetén az első auth.users rekordot használjuk.

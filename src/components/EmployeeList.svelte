@@ -53,6 +53,9 @@
 	let paginationInfo = $state({ page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });
 	let tableState = $state({ page: 1, pageSize: 20, sortBy: 'userName', sortOrder: 'asc' as 'asc' | 'desc' });
 	let columns = $state<any[]>([]);
+	/** Dokumentum-jelvények és szűrő (specs/employee-documents.md, K11) — olvasási joggal. */
+	let canViewDocuments = $state(false);
+	let documentIssuesOnly = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout>;
 
 	// --- Modal állapot ---
@@ -87,7 +90,9 @@
 				sortBy: tableState.sortBy,
 				sortOrder: tableState.sortOrder,
 				search: debouncedSearch || undefined,
-				includeExternal: true
+				includeExternal: true,
+				withDocumentIssues: canViewDocuments,
+				documentIssuesOnly: canViewDocuments && documentIssuesOnly
 			});
 			data = result?.data ?? [];
 			paginationInfo = result?.pagination ?? { page: 1, pageSize: 20, totalCount: 0, totalPages: 0 };
@@ -172,6 +177,50 @@
 		window.addEventListener('organization-changed', handleOrgChange);
 		return () => window.removeEventListener('organization-changed', handleOrgChange);
 	});
+
+	function syncDocumentCapability(): boolean {
+		const store = (window as any).__racona_work_org_store__;
+		const next =
+			(store?.can?.('employee.documents.view') ?? false) || (store?.can?.('employee.documents.manage') ?? false);
+		const changed = next !== canViewDocuments;
+		canViewDocuments = next;
+		if (!next) documentIssuesOnly = false;
+		return changed;
+	}
+
+	$effect(() => {
+		const onCapabilities = () => {
+			if (syncDocumentCapability()) {
+				buildColumns();
+				if (sdk?.remote && currentOrganization) loadData();
+			}
+		};
+		window.addEventListener('plugin-capabilities-changed', onCapabilities);
+		window.addEventListener('organization-changed', onCapabilities);
+		return () => {
+			window.removeEventListener('plugin-capabilities-changed', onCapabilities);
+			window.removeEventListener('organization-changed', onCapabilities);
+		};
+	});
+
+	function toggleDocumentIssuesOnly(e: Event) {
+		documentIssuesOnly = (e.currentTarget as HTMLInputElement).checked;
+		tableState = { ...tableState, page: 1 };
+	}
+
+	/** A dolgozó dokumentumproblémái jelvényként (lejárt, lejáró, hiányzó, fájl nélküli). */
+	function documentIssuesHtml(issues: EmployeeRow['documentIssues']): string {
+		if (!issues) return '';
+		const parts: string[] = [];
+		if (issues.pending) parts.push(`<span class="badge badge-on-leave">${escapeHtml(t('employees.documents.pending', { count: issues.pending }))}</span>`);
+		if (issues.expired) parts.push(`<span class="badge badge-doc-danger">${escapeHtml(t('employees.documents.expired', { count: issues.expired }))}</span>`);
+		if (issues.expiring) parts.push(`<span class="badge badge-doc-warn">${escapeHtml(t('employees.documents.expiring', { count: issues.expiring }))}</span>`);
+		const missing = issues.missing + issues.fileMissing;
+		if (missing) parts.push(`<span class="badge badge-doc-warn">${escapeHtml(t('employees.documents.missing', { count: missing }))}</span>`);
+		return parts.length
+			? `<span class="role-badges">${parts.join('')}</span>`
+			: `<span class="text-sm text-muted-foreground">${escapeHtml(t('employees.documents.ok'))}</span>`;
+	}
 
 	// --- Oszlopok ---
 	function buildColumns() {
@@ -279,6 +328,22 @@
 					return renderSnippet(snippet, {});
 				}
 			},
+			...(canViewDocuments
+				? [
+						{
+							accessorKey: 'documentIssues',
+							enableHiding: true,
+							enableSorting: false,
+							meta: { title: t('employees.columns.documents') },
+							header: () => t('employees.columns.documents'),
+							cell: ({ row }: any) => {
+								const html = documentIssuesHtml(row.original.documentIssues);
+								const snippet = createRawSnippet(() => ({ render: () => html }));
+								return renderSnippet(snippet, {});
+							}
+						}
+					]
+				: []),
 			{
 				accessorKey: 'roles',
 				enableHiding: true,
@@ -486,6 +551,7 @@
 			hasAccess = orgStore.hasAccess;
 		}
 
+		syncDocumentCapability();
 		buildColumns();
 		if (sdk?.remote && currentOrganization) loadData();
 	});
@@ -530,6 +596,12 @@
 									class="h-8"
 								/>
 							</div>
+						{/if}
+						{#if canViewDocuments}
+							<label class="doc-filter">
+								<input type="checkbox" checked={documentIssuesOnly} onchange={toggleDocumentIssuesOnly} />
+								<span>{t('employees.documents.filter')}</span>
+							</label>
 						{/if}
 					{/snippet}
 				</svelte:component>
@@ -695,6 +767,18 @@
 	:global(.badge-inactive) { background: #f1f5f9; color: #475569; }
 	:global(.badge-on-leave) { background: #dbeafe; color: #1e40af; }
 	:global(.badge-member) { background: #e0e7ff; color: #3730a3; }
+	:global(.badge-doc-danger) { background: #fee2e2; color: #b91c1c; }
+	:global(.badge-doc-warn) { background: #fef3c7; color: #92400e; }
+
+	.doc-filter {
+		display: inline-flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 0.4rem;
+		font-size: 0.8rem;
+		white-space: nowrap;
+		cursor: pointer;
+	}
 
 	:global(.role-badges) {
 		display: inline-flex;

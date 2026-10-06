@@ -8,7 +8,7 @@
 		"hu": "Céges nyilvántartó alkalmazás (dolgozó kezelése, projektek, szabadságok).",
 		"en": "Company records app (employee management, projects, leave requests)."
 	},
-	"version": "0.9.0",
+	"version": "0.12.0",
 	"author": "Racona Developer <szigeti.developer@gmail.com>",
 	"entry": "dist/index.iife.js",
 	"icon": "icon.webp",
@@ -18,7 +18,8 @@
 		"database",
 		"remote_functions",
 		"notifications",
-		"scheduler"
+		"scheduler",
+		"file_access"
 	],
 	"scheduledJobs": [
 		{
@@ -31,6 +32,18 @@
 				"en": "Monthly leave check: automatic sending and reminders"
 			},
 			"timeoutSeconds": 900,
+			"catchUp": "once"
+		},
+		{
+			"id": "employee-document-reminders",
+			"handler": "runEmployeeDocumentReminders",
+			"schedule": "15 7 * * *",
+			"timezone": "Europe/Budapest",
+			"description": {
+				"hu": "Dolgozói dokumentumok: lejárati emlékeztetők",
+				"en": "Employee documents: expiry reminders"
+			},
+			"timeoutSeconds": 600,
 			"catchUp": "once"
 		}
 	],

@@ -87,6 +87,45 @@ export type {
 	UnlinkedUser
 } from './employees.js';
 
+// --- Dolgozói dokumentumok (specs/employee-documents.md) -------------------
+
+export {
+	listDocumentTypes,
+	saveDocumentType,
+	archiveDocumentType,
+	deleteDocumentType,
+	getDocumentSettings,
+	saveDocumentSettings
+} from './document-types.js';
+export type { DocumentType, DocumentFileMode, DocumentTypeInput, DocumentSettings } from './document-types.js';
+
+export {
+	listEmployeeDocuments,
+	getEmployeeDocumentEvents,
+	saveEmployeeDocument,
+	deleteEmployeeDocument,
+	prepareDocumentUpload,
+	attachDocumentFile,
+	deleteDocumentFile,
+	getDocumentFileUrl,
+	getMyDocumentsEmployee,
+	submitMyDocument,
+	confirmMyDocumentSubmission,
+	reviewEmployeeDocument
+} from './employee-documents.js';
+export { getDocumentOverview } from './document-overview.js';
+export type { DocumentIssue, DocumentIssueKind, DocumentIssueCounts, DocumentOverview } from './document-overview.js';
+export type {
+	EmployeeDocument,
+	EmployeeDocumentFile,
+	EmployeeDocumentsView,
+	EmployeeDocumentEvent,
+	DocumentStatus,
+	DocumentExpiryStatus,
+	DocumentEventAction,
+	SaveEmployeeDocumentInput
+} from './employee-documents.js';
+
 // --- Szabadság nyilvántartó -------------------------------------------------
 
 export {

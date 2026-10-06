@@ -48,6 +48,9 @@ export const CAPABILITIES = [
 
 	'employee.view',
 	'employee.manage',
+	'employee.documents.view',
+	'employee.documents.manage',
+	'employee.documents.own',
 
 	'trip.record',
 	'trip.approve',
@@ -69,7 +72,9 @@ export const EXTERNAL_CAPABILITIES: ReadonlySet<string> = new Set<Capability>([
 	'project.view.all',
 	'project.view.own',
 	'work.log',
-	'work.view.all'
+	'work.view.all',
+	// A dokumentumok a külsős dolgozókra is vonatkoznak (specs/employee-documents.md, D7)
+	'employee.documents.own'
 ]);
 
 export const EXTERNAL_EMPLOYEE_ERROR = 'Külsős dolgozóra ez a funkció nem vonatkozik.';
@@ -124,6 +129,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 			'leave.balance.manage',
 			'employee.view',
 			'employee.manage',
+			'employee.documents.view',
+			'employee.documents.manage',
+			'employee.documents.own',
 			'trip.record',
 			'trip.approve',
 			'trip.manage'
@@ -153,6 +161,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 			'leave.balance.manage',
 			'employee.manage',
 			'employee.view',
+			'employee.documents.view',
+			'employee.documents.manage',
 			'members.view',
 			'work.view.all',
 			'trip.record',
@@ -164,7 +174,14 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 		key: 'employee',
 		name: 'Dolgozó',
 		description: 'Alap hozzáférés a saját adatokhoz',
-		capabilities: ['leave.request', 'project.view.own', 'employee.view', 'work.log', 'trip.record']
+		capabilities: [
+			'leave.request',
+			'project.view.own',
+			'employee.view',
+			'employee.documents.own',
+			'work.log',
+			'trip.record'
+		]
 	}
 ];
 

@@ -20,6 +20,20 @@
 		"requiredCapability": "employee.manage"
 	},
 	{
+		"labelKey": "menu.documents",
+		"href": "#documents",
+		"icon": "FileWarning",
+		"component": "DocumentOverview",
+		"requiredCapability": "employee.documents.view"
+	},
+	{
+		"labelKey": "menu.myDocuments",
+		"href": "#my-documents",
+		"icon": "FileUser",
+		"component": "MyDocuments",
+		"requiredCapability": "employee.documents.own"
+	},
+	{
 		"labelKey": "menu.projects",
 		"href": "#",
 		"icon": "FolderKanban",
@@ -126,6 +140,13 @@
 				"icon": "Fuel",
 				"component": "TripSettings",
 				"requiredCapability": "trip.manage"
+			},
+			{
+				"labelKey": "menu.settings.documentTypes",
+				"href": "#settings/document-types",
+				"icon": "FileText",
+				"component": "DocumentTypes",
+				"requiredCapability": "employee.documents.manage"
 			},
 			{
 				"labelKey": "menu.settings.notifications",

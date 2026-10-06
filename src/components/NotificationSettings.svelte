@@ -59,6 +59,10 @@
 		[
 			{ group: 'employees', events: ['employee.welcome'] },
 			{
+				group: 'documents',
+				events: ['document.expiring', 'document.expiringEmployee', 'document.submitted', 'document.reviewed']
+			},
+			{
 				group: 'trips',
 				events: ['trip.settlementSubmitted', 'trip.settlementStatus', 'trip.ordererChanged']
 			}

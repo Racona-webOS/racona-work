@@ -1,6 +1,7 @@
 /**
  * Biztonsági javítások tesztjei: escapelés, a szabadságkérelmek láthatósága,
- * a projektszerepek kiosztása és a saját ügyben hozott döntés tiltása.
+ * a projektszerepek kiosztása, a saját ügyben hozott döntés tiltása és a
+ * dolgozói adatlap láthatósága.
  *
  * Futtatás: bun test
  */
@@ -10,6 +11,7 @@ import { escapeHtml, safeImageUrl } from '../src/utils/html.ts';
 import { ensureNotSelfDecision, SELF_DECISION_ERROR } from '../server/permissions.ts';
 import { getLeaveRequests } from '../server/leave.ts';
 import { setProjectUserRoles } from '../server/projects.ts';
+import { getEmployeeDetails } from '../server/employees.ts';
 import type { RemoteContext } from '../server/context.ts';
 
 describe('escapelés', () => {
@@ -82,6 +84,35 @@ function fakeContext(opts: {
 		}
 		if (sql.includes('SELECT user_id FROM app__racona_work.employees WHERE id = $1')) {
 			return { rows: [{ user_id: Number(params[0]) === 70 ? 7 : 8 }] };
+		}
+		if (sql.includes('SELECT organization_id FROM app__racona_work.employees WHERE id = $1')) {
+			return { rows: [{ organization_id: 3 }] };
+		}
+		if (sql.includes('JOIN auth.users u ON e.user_id = u.id') && sql.includes('WHERE e.id = $1')) {
+			const id = Number(params[0]);
+			return {
+				rows: [
+					{
+						id,
+						user_id: id === 70 ? 7 : 8,
+						position: 'Fejlesztő',
+						status: 'active',
+						is_external: false,
+						hire_day: '2024-01-01',
+						employment_end_day: null,
+						birth_day: '1990-05-05',
+						tax_id: '8123456789',
+						hire_date_confirmed: true,
+						user_name: 'Teszt Elek',
+						user_email: 'teszt@example.com'
+					}
+				]
+			};
+		}
+		if (sql.includes('FROM app__racona_work.employee_details')) {
+			return {
+				rows: [{ id: 1, employee_id: Number(params[0]), category: 'contact', field_key: 'Telefon', field_value: '+36 30 123 4567' }]
+			};
 		}
 		if (sql.includes('COUNT(*) AS total')) return { rows: [{ total: '0' }] };
 		return { rows: [] };
@@ -171,5 +202,48 @@ describe('projektszerepek kiosztása', () => {
 			members: [7, 8]
 		});
 		await expect(setProjectUserRoles({ projectId: 9, userId: 8, roleIds: [2] }, context)).resolves.toEqual({ ok: true });
+	});
+});
+
+describe('a dolgozói adatlap láthatósága', () => {
+	const detailsQueried = (queries: { sql: string }[]) =>
+		queries.some((q) => q.sql.includes('FROM app__racona_work.employee_details'));
+
+	test('employee.view joggal más dolgozónál csak az alapadatok jönnek', async () => {
+		const { context, queries } = fakeContext({ caps: ['employee.view'] });
+		const view = await getEmployeeDetails({ employeeId: 71 }, context);
+		expect(view.employee.userName).toBe('Teszt Elek');
+		expect(view.details).toEqual([]);
+		expect(view.detailsVisible).toBe(false);
+		expect(view.personal).toBeNull();
+		expect(detailsQueried(queries)).toBe(false);
+	});
+
+	test('a dolgozó a saját adatlapját teljesen látja', async () => {
+		const { context } = fakeContext({ caps: ['employee.view'] });
+		const view = await getEmployeeDetails({ employeeId: 70 }, context);
+		expect(view.detailsVisible).toBe(true);
+		expect(view.details.map((d) => d.fieldKey)).toEqual(['Telefon']);
+		expect(view.personal?.birthDate).toBe('1990-05-05');
+	});
+
+	test('employee.manage joggal más adatlapja is teljes', async () => {
+		const { context } = fakeContext({ caps: ['employee.view', 'employee.manage'] });
+		const view = await getEmployeeDetails({ employeeId: 71 }, context);
+		expect(view.detailsVisible).toBe(true);
+		expect(view.details).toHaveLength(1);
+		expect(view.personal?.taxId).toBe('8123456789');
+	});
+
+	test('leave.balance.manage joggal más adatlapja is teljes', async () => {
+		const { context } = fakeContext({ caps: ['employee.view', 'leave.balance.manage'] });
+		const view = await getEmployeeDetails({ employeeId: 71 }, context);
+		expect(view.detailsVisible).toBe(true);
+		expect(view.details).toHaveLength(1);
+	});
+
+	test('employee.view nélkül a saját adatlap sem kérhető le', async () => {
+		const { context } = fakeContext({ caps: ['leave.request'] });
+		await expect(getEmployeeDetails({ employeeId: 70 }, context)).rejects.toThrow('Nincs jogosultságod');
 	});
 });

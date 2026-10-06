@@ -31,6 +31,7 @@
   import MyLeaveData from "./leave-entitlement/MyLeaveData.svelte";
   import DataRequestReview from "./leave-entitlement/DataRequestReview.svelte";
   import CarryOverAlerts from "./leave-entitlement/CarryOverAlerts.svelte";
+  import DocumentAlerts from "./employee-documents/DocumentAlerts.svelte";
   import MyMonthConfirmations from "./leave-month-confirmation/MyMonthConfirmations.svelte";
   import { LEAVE_TYPES, consumesAnnualBalance } from "../../server/leave-types.js";
   import { resolveSdk, translate } from "../utils/sdk.js";
@@ -56,6 +57,8 @@
   let canApprove = $state(false);
   // A dolgozói adatbejelentéseket a HR bírálja el
   let canManageBalance = $state(false);
+  /** Lejáró és hiányzó dolgozói dokumentumok kártya (specs/employee-documents.md, K10) */
+  let canViewDocuments = $state(false);
   let decidingId = $state<number | null>(null);
   let orgLoading = $derived(orgStore?.isLoading ?? false);
 
@@ -213,6 +216,8 @@
     isExternal = orgStore.isExternal;
     canApprove = orgStore.can("leave.approve");
     canManageBalance = orgStore.can("leave.balance.manage");
+    canViewDocuments =
+      orgStore.can("employee.documents.view") || orgStore.can("employee.documents.manage");
     canManagerView =
       canApprove || canManageBalance || orgStore.can("employee.manage");
   }
@@ -436,6 +441,9 @@
             onDecided={onDataRequestDecided}
           />
           <CarryOverAlerts {pluginId} organizationId={currentOrganization.id} />
+        {/if}
+        {#if canViewDocuments && currentOrganization}
+          <DocumentAlerts {pluginId} organizationId={currentOrganization.id} />
         {/if}
 
         <div class="recent-section">

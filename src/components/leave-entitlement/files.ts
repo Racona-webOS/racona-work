@@ -18,7 +18,8 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
 export function formatSize(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-	return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+	const mb = bytes / 1024 / 1024;
+	return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB`;
 }
 
 /** Hibaüzenet, ha a fájl biztosan nem fog átmenni; különben null. */

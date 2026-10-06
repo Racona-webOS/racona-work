@@ -44,7 +44,13 @@
 		},
 		{
 			labelKey: 'capabilities.group.employees',
-			items: ['employee.view', 'employee.manage']
+			items: [
+				'employee.view',
+				'employee.manage',
+				'employee.documents.view',
+				'employee.documents.manage',
+				'employee.documents.own'
+			]
 		},
 		{
 			labelKey: 'capabilities.group.trips',

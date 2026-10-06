@@ -35,7 +35,12 @@ export const NOTIFICATION_EVENT_DEFAULTS = {
 	'leave.monthConfirmationSummary': true,
 	'trip.settlementSubmitted': false,
 	'trip.settlementStatus': false,
-	'trip.ordererChanged': false
+	'trip.ordererChanged': false,
+	// Dolgozói dokumentumok (specs/employee-documents.md, 6. fejezet): a HR összesítője a funkció lényege
+	'document.expiring': true,
+	'document.expiringEmployee': false,
+	'document.submitted': false,
+	'document.reviewed': false
 } as const satisfies Record<string, boolean>;
 
 export type NotificationEvent = keyof typeof NOTIFICATION_EVENT_DEFAULTS;

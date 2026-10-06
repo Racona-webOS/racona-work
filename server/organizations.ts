@@ -9,6 +9,8 @@
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
 import { requireCapability, seedDefaultRoles } from './permissions.js';
+import { seedDocumentTypes } from './document-types.js';
+import { collectOrganizationDocumentFileIds, deleteStoredFiles } from './employee-documents.js';
 import type { PaginatedResult } from './types.js';
 import { geocodeAddress } from './geo.js';
 import { loadOrganizationName } from './notification-email.js';
@@ -171,6 +173,13 @@ export async function createOrganization(
 		await seedDefaultRoles({ organizationId: row.id, creatorUserId }, context);
 	} catch (err) {
 		console.error('[createOrganization] Szerepek seedelése sikertelen:', err);
+	}
+
+	// Alapértelmezett dokumentumtípusok (specs/employee-documents.md, K2), szintén best-effort
+	try {
+		await seedDocumentTypes(context, row.id);
+	} catch (err) {
+		console.error('[createOrganization] Dokumentumtípusok seedelése sikertelen:', err);
 	}
 
 	const addressGeocodeFailed = await geocodeOrganizationAddress(context, row.id, row.address ?? null);
@@ -344,6 +353,7 @@ export async function deleteOrganization(
 	requireAdmin(context);
 
 	const client = await context.db.connect();
+	let documentFileIds: string[] = [];
 
 	try {
 		await client.query('BEGIN');
@@ -369,6 +379,9 @@ export async function deleteOrganization(
 
 		const memberCount = parseInt(memberResult.rows[0].count, 10);
 
+		// A dokumentumok fájljai a core tárolójában vannak: a sorokkal együtt azokat is törölni kell
+		documentFileIds = await collectOrganizationDocumentFileIds(client, params.id);
+
 		// 1. Dolgozók törlése (employees rekordok) - CASCADE törli a kapcsolódó adatokat
 		await client.query(`DELETE FROM app__racona_work.employees WHERE organization_id = $1`, [
 			params.id
@@ -378,6 +391,8 @@ export async function deleteOrganization(
 		await client.query(`DELETE FROM app__racona_work.organizations WHERE id = $1`, [params.id]);
 
 		await client.query('COMMIT');
+
+		await deleteStoredFiles(context, documentFileIds);
 
 		// Visszaadjuk a törölt tagok és projektek számát
 		return { memberCount, projectCount };
@@ -516,7 +531,8 @@ export async function removeEmployeeFromOrganization(
 		    EXISTS (SELECT 1 FROM app__racona_work.leave_balances WHERE employee_id = $1) AS leave_balances,
 		    EXISTS (SELECT 1 FROM app__racona_work.work_entries WHERE employee_id = $1) AS work_entries,
 		    EXISTS (SELECT 1 FROM app__racona_work.trips WHERE employee_id = $1) AS trips,
-		    EXISTS (SELECT 1 FROM app__racona_work.trip_settlements WHERE employee_id = $1) AS trip_settlements`,
+		    EXISTS (SELECT 1 FROM app__racona_work.trip_settlements WHERE employee_id = $1) AS trip_settlements,
+		    EXISTS (SELECT 1 FROM app__racona_work.employee_documents WHERE employee_id = $1) AS documents`,
 		[params.employeeId]
 	);
 	const found = records.rows[0] ?? {};
@@ -525,7 +541,8 @@ export async function removeEmployeeFromOrganization(
 		found.approved_requests && 'általa jóváhagyott kérelmek',
 		found.leave_balances && 'szabadságkeretek',
 		found.work_entries && 'munkaidő-bejegyzések',
-		(found.trips || found.trip_settlements) && 'kiküldetések'
+		(found.trips || found.trip_settlements) && 'kiküldetések',
+		found.documents && 'dokumentumok'
 	].filter(Boolean);
 	if (kept.length > 0) {
 		throw new Error(
