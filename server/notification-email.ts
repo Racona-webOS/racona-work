@@ -8,7 +8,7 @@
 
 import type { LocalizedText, RemoteContext } from './context.js';
 import { SCHEMA } from './trip-access.js';
-import { isEmailEnabled } from './notification-settings.js';
+import { loadNotificationSettings, replyToFor } from './notification-settings.js';
 import type { NotificationEvent } from './notification-settings.js';
 
 export type EmailLocale = keyof LocalizedText;
@@ -76,7 +76,7 @@ export async function loadOrganizationName(
 /**
  * Címzettenként külön email, hogy egy hibás cím ne akassza meg a többit.
  * Email cím nélküli címzett kimarad; ha az eseményhez ki van kapcsolva az
- * email, semmi nem megy ki.
+ * email, semmi nem megy ki. A válaszcím az esemény kategóriájáé.
  */
 export async function sendEmails(
 	context: RemoteContext,
@@ -93,7 +93,9 @@ export async function sendEmails(
 		(r): r is Recipient & { email: string } => !!r.email
 	);
 	if (withEmail.length === 0) return;
-	if (!(await isEmailEnabled(context, params.organizationId, params.event))) return;
+	const settings = await loadNotificationSettings(context, params.organizationId);
+	if (!settings.email[params.event]) return;
+	const replyTo = replyToFor(settings, params.event);
 
 	const results = await Promise.allSettled(
 		withEmail.map((recipient) =>
@@ -101,7 +103,8 @@ export async function sendEmails(
 				to: recipient.email,
 				template: params.template,
 				data: params.buildData(recipient),
-				locale: recipient.locale
+				locale: recipient.locale,
+				replyTo
 			})
 		)
 	);

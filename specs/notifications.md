@@ -1,6 +1,6 @@
 # Email értesítések beállítása
 
-> Státusz: kész · Utolsó módosítás: 2026-09-11
+> Státusz: kész · Utolsó módosítás: 2026-10-06
 
 Ma az emailek fixen mennek: a szabadság-események egy része emailt is küld, a többi esemény (visszavonás, adatbejelentés, kiküldetési rendelvény) csak rendszeren belül értesít. A cél: a Beállítások → **Értesítések** oldalon a szervezet eldönthesse, mely eseményekről menjen email, és a küldés ehhez igazodjon.
 
@@ -28,6 +28,7 @@ Ma az emailek fixen mennek: a szabadság-események egy része emailt is küld, 
 | D3 | Ki állíthatja? | `org.manage`. Olvasni is ezzel a joggal lehet; a küldés jogosultság-ellenőrzés nélkül olvassa. | **eldöntve** |
 | D4 | Csoportosítás | Egy esemény = egy kapcsoló, a hasonló lépéseket összevonva (pl. jóváhagyás és elutasítás). A kötelező szabadság kiírása külön kapcsoló, mert évnyitáskor egyszerre sok dolgozónak megy. | **eldöntve** |
 | D5 | Sablonok | Eseményenként külön sablon, a meglévők mintájára (a core adminja sablononként szerkesztheti). | **eldöntve** |
+| D6 | Válaszcím (Reply-To) | Kategóriánként egy (dolgozók, szabadság, dokumentumok, kiküldetések; az esemény kulcsának előtagja dönti el), ugyanabban a kv_store értékben: `replyTo: { <kategória>: string \| null }`. Üresen a core rendszerszintű címe (`SMTP_REPLY_TO`) érvényes. Csak egyetlen, név nélküli cím, a core ellenőrzésével azonos formában (`server/reply-to.ts`); érvénytelen címnél a mentés hibát ad. A core-nak a `context.email.send({ replyTo })`-t támogató verziója kell; a régebbi figyelmen kívül hagyja. | **eldöntve** |
 
 ## 3. Események
 
@@ -55,8 +56,8 @@ A műveletet végző felhasználó a saját lépéséről továbbra sem kap ért
 
 | Függvény | Jog | Leírás |
 |---|---|---|
-| `getNotificationSettings({ organizationId })` | `org.manage` | `{ email: Record<esemény, boolean> }`, a hiányzók az alapértékkel. |
-| `saveNotificationSettings({ organizationId, email })` | `org.manage` | Csak az ismert eseményeket menti; a visszaadott érték a teljes, normalizált beállítás. |
+| `getNotificationSettings({ organizationId })` | `org.manage` | `{ email: Record<esemény, boolean>, replyTo: Record<kategória, string \| null> }`, a hiányzók az alapértékkel. |
+| `saveNotificationSettings({ organizationId, email?, replyTo? })` | `org.manage` | Csak az ismert eseményeket és kategóriákat menti, érvénytelen válaszcímnél hibát dob; a visszaadott érték a teljes, normalizált beállítás. |
 
 ## 5. Feladatok
 
@@ -66,3 +67,4 @@ A műveletet végző felhasználó a saját lépéséről továbbra sem kap ért
 - [x] Új sablonok: visszavonás, adatbejelentés (új, elbírálás), rendelvény (beküldés, állapot), elrendelő (D5)
 - [x] Beállítások → Értesítések oldal
 - [x] Tesztek a normalizálásra
+- [x] Kategóriánkénti válaszcím: beállítás, küldés, felület, tesztek (D6)

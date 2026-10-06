@@ -324,7 +324,7 @@ export type { DashboardStats } from './dashboard.js';
 
 export { getLeaveNotifiers, saveLeaveNotifiers } from './leave-notifications.js';
 export { getNotificationSettings, saveNotificationSettings } from './notification-settings.js';
-export type { NotificationEvent, NotificationSettings } from './notification-settings.js';
+export type { NotificationEvent, NotificationGroup, NotificationSettings } from './notification-settings.js';
 
 // --- Szervezetek ------------------------------------------------------------
 

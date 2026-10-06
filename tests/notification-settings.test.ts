@@ -11,8 +11,11 @@ import { join } from 'node:path';
 import {
 	NOTIFICATION_EVENTS,
 	NOTIFICATION_EVENT_DEFAULTS,
+	NOTIFICATION_GROUPS,
+	eventGroup,
 	normalizeNotificationSettings
 } from '../server/notification-settings.ts';
+import { isValidReplyTo } from '../server/reply-to.ts';
 import { emailLocale, sendEmails, toRecipient } from '../server/notification-email.ts';
 import type { RemoteContext } from '../server/context.ts';
 
@@ -41,9 +44,52 @@ describe('normalizeNotificationSettings', () => {
 	});
 });
 
+describe('válaszcím (D6)', () => {
+	test('minden esemény egy ismert kategóriába tartozik', () => {
+		for (const event of NOTIFICATION_EVENTS) {
+			expect(NOTIFICATION_GROUPS).toContain(eventGroup(event));
+		}
+		expect(eventGroup('leave.requestCreated')).toBe('leave');
+		expect(eventGroup('employee.welcome')).toBe('employees');
+		expect(eventGroup('document.expiring')).toBe('documents');
+		expect(eventGroup('trip.ordererChanged')).toBe('trips');
+	});
+
+	test('beállítás nélkül minden kategóriánál a rendszerszintű érvényes', () => {
+		expect(normalizeNotificationSettings(null).replyTo).toEqual({
+			employees: null,
+			leave: null,
+			documents: null,
+			trips: null
+		});
+	});
+
+	test('a tárolt címet levágja, az üreset, érvénytelent és ismeretlent eldobja', () => {
+		const { replyTo } = normalizeNotificationSettings({
+			replyTo: { leave: '  hr@ceg.hu ', trips: 'Könyvelés <konyv@ceg.hu>', documents: '', bogus: 'x@y.hu' }
+		});
+		expect(replyTo).toEqual({ employees: null, leave: 'hr@ceg.hu', documents: null, trips: null });
+	});
+
+	test('csak azt a címformát fogadja el, amit a core is', () => {
+		expect(isValidReplyTo('hr@ceg.hu')).toBe(true);
+		expect(isValidReplyTo('szabadsag+hr@ceg.co.hu')).toBe(true);
+		expect(isValidReplyTo('HR <hr@ceg.hu>')).toBe(false);
+		expect(isValidReplyTo('hr@ceg')).toBe(false);
+		expect(isValidReplyTo('a@b.hu, c@d.hu')).toBe(false);
+		expect(isValidReplyTo(`${'a'.repeat(250)}@b.hu`)).toBe(false);
+	});
+});
+
 /** Ál-kontextus: a kv_store lekérdezés a megadott beállítást adja, az emaileket gyűjti. */
 function fakeContext(stored: unknown) {
-	const sent: { to: string | string[]; template: string; locale?: string; data?: Record<string, unknown> }[] = [];
+	const sent: {
+		to: string | string[];
+		template: string;
+		locale?: string;
+		replyTo?: string;
+		data?: Record<string, unknown>;
+	}[] = [];
 	const context = {
 		pluginId: 'racona-work',
 		userId: 1,
@@ -80,6 +126,29 @@ describe('sendEmails', () => {
 			buildData: () => ({})
 		});
 		expect(sent).toEqual([expect.objectContaining({ to: 'anna@example.com', template: 'leave_request_new' })]);
+	});
+
+	test('a válaszcím az esemény kategóriájáé, beállítás nélkül nincs', async () => {
+		const stored = { replyTo: { leave: 'hr@ceg.hu', trips: 'konyv@ceg.hu' } };
+		const leave = fakeContext(stored);
+		await sendEmails(leave.context, {
+			organizationId: 1,
+			event: 'leave.requestCreated',
+			template: 'leave_request_new',
+			recipients,
+			buildData: () => ({})
+		});
+		expect(leave.sent[0]).toEqual(expect.objectContaining({ replyTo: 'hr@ceg.hu' }));
+
+		const documents = fakeContext({ ...stored, email: { 'document.submitted': true } });
+		await sendEmails(documents.context, {
+			organizationId: 1,
+			event: 'document.submitted',
+			template: 'document_submitted',
+			recipients,
+			buildData: () => ({})
+		});
+		expect(documents.sent[0].replyTo).toBeUndefined();
 	});
 
 	test('kikapcsolt eseménynél nem megy email', async () => {

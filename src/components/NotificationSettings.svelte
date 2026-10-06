@@ -12,13 +12,15 @@
 	/**
 	 * Beállítások → Értesítések (specs/notifications.md).
 	 *
-	 * Eseményenként egy kapcsoló: menjen-e róla email. Szervezet szintű
-	 * beállítás; a rendszeren belüli értesítéseket nem érinti.
+	 * Eseményenként egy kapcsoló: menjen-e róla email, és kategóriánként egy
+	 * válaszcím. Szervezet szintű beállítás; a rendszeren belüli értesítéseket
+	 * nem érinti.
 	 */
 	import { onMount, untrack } from 'svelte';
 	import type {} from '@racona/sdk/types';
 	import type {
 		NotificationEvent,
+		NotificationGroup,
 		NotificationSettings,
 		Organization
 	} from '../../server/functions.js';
@@ -28,6 +30,7 @@
 	import Checkbox from './ui/Checkbox.svelte';
 	import { errorMessage } from './trips/format.js';
 	import { resolveSdk, translate } from '../utils/sdk.js';
+	import { REPLY_TO_MAX_LENGTH, isValidReplyTo } from '../../server/reply-to.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
@@ -35,7 +38,7 @@
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
 
 	/** A felület csoportjai; a szabadság a bal oszlop, a többi a jobb. */
-	const COLUMNS: { group: string; events: NotificationEvent[] }[][] = [
+	const COLUMNS: { group: NotificationGroup; events: NotificationEvent[] }[][] = [
 		[
 			{
 				group: 'leave',
@@ -78,11 +81,36 @@
 	let email = $state<Record<NotificationEvent, boolean> | null>(null);
 	/** A legutóbb betöltött vagy mentett állapot, a változás jelzéséhez. */
 	let savedEmail = $state<Record<NotificationEvent, boolean> | null>(null);
+	/** Kategóriánkénti válaszcím; üres szöveg = a rendszerszintű érvényes. */
+	let replyTo = $state<Record<NotificationGroup, string> | null>(null);
+	let savedReplyTo = $state<Record<NotificationGroup, string> | null>(null);
 	const dirty = $derived(
-		!!email &&
+		(!!email &&
 			!!savedEmail &&
-			(Object.keys(email) as NotificationEvent[]).some((k) => email![k] !== savedEmail![k])
+			(Object.keys(email) as NotificationEvent[]).some((k) => email![k] !== savedEmail![k])) ||
+			(!!replyTo &&
+				!!savedReplyTo &&
+				(Object.keys(replyTo) as NotificationGroup[]).some((g) => replyTo![g].trim() !== savedReplyTo![g]))
 	);
+	const invalidReplyTo = $derived(
+		new Set(
+			replyTo
+				? (Object.keys(replyTo) as NotificationGroup[]).filter((g) => {
+						const value = replyTo![g].trim();
+						return value !== '' && !isValidReplyTo(value);
+					})
+				: []
+		)
+	);
+
+	function apply(settings: NotificationSettings) {
+		email = { ...settings.email };
+		savedEmail = { ...settings.email };
+		const reply = {} as Record<NotificationGroup, string>;
+		for (const g of Object.keys(settings.replyTo) as NotificationGroup[]) reply[g] = settings.replyTo[g] ?? '';
+		replyTo = { ...reply };
+		savedReplyTo = { ...reply };
+	}
 
 	async function load() {
 		if (!currentOrganization) return;
@@ -91,8 +119,7 @@
 			const settings: NotificationSettings = await sdk.remote.call('getNotificationSettings', {
 				organizationId: currentOrganization.id
 			});
-			email = { ...settings.email };
-			savedEmail = { ...settings.email };
+			apply(settings);
 		} catch (err) {
 			sdk?.ui?.toast(errorMessage(err, t('error.loadFailed')), 'error');
 		} finally {
@@ -101,15 +128,17 @@
 	}
 
 	async function save() {
-		if (!currentOrganization || !email) return;
+		if (!currentOrganization || !email || !replyTo || invalidReplyTo.size > 0) return;
 		saving = true;
 		try {
+			const reply = {} as Record<NotificationGroup, string | null>;
+			for (const g of Object.keys(replyTo) as NotificationGroup[]) reply[g] = replyTo[g].trim() || null;
 			const settings: NotificationSettings = await sdk.remote.call('saveNotificationSettings', {
 				organizationId: currentOrganization.id,
-				email
+				email,
+				replyTo: reply
 			});
-			email = { ...settings.email };
-			savedEmail = { ...settings.email };
+			apply(settings);
 			sdk?.ui?.toast(t('settings.saveSuccess'), 'success');
 		} catch (err) {
 			sdk?.ui?.toast(errorMessage(err, t('error.saveFailed')), 'error');
@@ -172,7 +201,7 @@
 			</div>
 		</div>
 
-		{#if loading || !email}
+		{#if loading || !email || !replyTo}
 			<div class="loading-state"><div class="spinner"></div><span>{t('loading')}</span></div>
 		{:else}
 			<div class="columns">
@@ -181,6 +210,22 @@
 						{#each column as section (section.group)}
 							<div class="settings-section">
 								<h3>{t(`notificationSettings.group.${section.group}`)}</h3>
+								<label class="reply-to">
+									<span>{t('notificationSettings.replyTo')}</span>
+									<input
+										class="input"
+										type="email"
+										maxlength={REPLY_TO_MAX_LENGTH}
+										placeholder={t('notificationSettings.replyTo.placeholder')}
+										aria-invalid={invalidReplyTo.has(section.group)}
+										bind:value={replyTo[section.group]}
+									/>
+									<small class="reply-to-hint" class:error={invalidReplyTo.has(section.group)}>
+										{invalidReplyTo.has(section.group)
+											? t('notificationSettings.replyTo.invalid')
+											: t('notificationSettings.replyTo.hint')}
+									</small>
+								</label>
 								<div class="event-list">
 									{#each section.events as event (event)}
 										<label class="event-row" class:enabled={email[event]}>
@@ -205,7 +250,7 @@
 
 			<div class="save-row">
 				<p class="hint">{t('notificationSettings.hint')}</p>
-				<button class="btn-primary" onclick={save} disabled={saving || !dirty}>
+				<button class="btn-primary" onclick={save} disabled={saving || !dirty || invalidReplyTo.size > 0}>
 					{saving ? t('loading') : t('settings.save')}
 				</button>
 			</div>
@@ -250,6 +295,32 @@
 		font-size: 1rem;
 		font-weight: 600;
 		margin: 0;
+	}
+
+	.reply-to {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid var(--color-border, #e2e8f0);
+	}
+
+	.reply-to > span {
+		font-size: 0.8rem;
+		font-weight: 500;
+	}
+
+	.reply-to .input[aria-invalid='true'] {
+		border-color: var(--color-destructive, #dc2626);
+	}
+
+	.reply-to-hint {
+		font-size: 0.75rem;
+		color: var(--color-muted-foreground, #64748b);
+	}
+
+	.reply-to-hint.error {
+		color: var(--color-destructive, #dc2626);
 	}
 
 	.event-list {
@@ -318,6 +389,10 @@
 
 	:global(.dark) .settings-section {
 		background: var(--color-card, oklch(0.205 0 0));
+		border-color: var(--color-border, oklch(1 0 0 / 10%));
+	}
+
+	:global(.dark) .reply-to {
 		border-color: var(--color-border, oklch(1 0 0 / 10%));
 	}
 

@@ -16,6 +16,8 @@ export interface PluginEmailService {
 		template: string;
 		data: Record<string, unknown>;
 		locale?: string;
+		/** Válaszcím; a core 0.5-nél újabb verziója veszi figyelembe, a régebbi figyelmen kívül hagyja. */
+		replyTo?: string;
 	}): Promise<{ success: boolean; messageId?: string; error?: string }>;
 }
 

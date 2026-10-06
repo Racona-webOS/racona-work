@@ -18,7 +18,7 @@ import { parseDay, todayInBudapest } from './dates.js';
 import { recalculateEmployeeBalances } from './leave-profile.js';
 import { geocodeAddress } from './geo.js';
 import { validateTaxId } from './trip-calc.js';
-import { isEmailEnabled } from './notification-settings.js';
+import { loadNotificationSettings, replyToFor } from './notification-settings.js';
 import { DEFAULT_EMAIL_LOCALE, escapeHtml } from './notification-email.js';
 import type { RecalculatedBalance } from './leave-profile.js';
 import type { PaginatedResult } from './types.js';
@@ -299,7 +299,8 @@ export async function createEmployeeWithUser(
 	// Email küldés a tranzakción kívül — hiba esetén NEM gördíti vissza.
 	// A szervezet kikapcsolhatja (specs/notifications.md).
 	try {
-		if (!(await isEmailEnabled(context, params.organizationId, 'employee.welcome'))) {
+		const notificationSettings = await loadNotificationSettings(context, params.organizationId);
+		if (!notificationSettings.email['employee.welcome']) {
 			return employee;
 		}
 		const schemaName = `app__${context.pluginId.replace(/-/g, '_')}`;
@@ -351,7 +352,8 @@ export async function createEmployeeWithUser(
 				positionText
 			},
 			// Az épp most létrehozott felhasználónak még nincs nyelvi beállítása
-			locale: DEFAULT_EMAIL_LOCALE
+			locale: DEFAULT_EMAIL_LOCALE,
+			replyTo: replyToFor(notificationSettings, 'employee.welcome')
 		});
 	} catch (emailErr) {
 		console.error('[Work] Üdvözlő email küldése sikertelen:', emailErr);

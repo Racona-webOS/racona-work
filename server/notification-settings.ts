@@ -4,13 +4,17 @@
  *
  * A rendszeren belüli értesítések mindig mennek; ez a beállítás csak azt
  * dönti el, hogy az eseményről email is menjen-e. Az olvasás a küldéshez
- * jogosultság-ellenőrzés nélkül történik (`isEmailEnabled`), a lekérés és a
+ * jogosultság-ellenőrzés nélkül történik (`loadNotificationSettings`), a lekérés és a
  * mentés a felületről `org.manage` joggal.
+ *
+ * Kategóriánként (dolgozók, szabadság, dokumentumok, kiküldetések) egy
+ * válaszcím (Reply-To) is megadható; üresen a rendszerszintű érvényes.
  */
 
 import type { RemoteContext } from './context.js';
 import { requireCapability } from './permissions.js';
 import { SCHEMA, requireOrganizationId } from './trip-access.js';
+import { isValidReplyTo } from './reply-to.js';
 
 /**
  * Az események és az alapértékük (D2): ami eddig emailt küldött, alapból be
@@ -47,8 +51,27 @@ export type NotificationEvent = keyof typeof NOTIFICATION_EVENT_DEFAULTS;
 
 export const NOTIFICATION_EVENTS = Object.keys(NOTIFICATION_EVENT_DEFAULTS) as NotificationEvent[];
 
+/** Az események kategóriái: a felület csoportjai és a válaszcím egysége. */
+export const NOTIFICATION_GROUPS = ['employees', 'leave', 'documents', 'trips'] as const;
+
+export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
+
+const EVENT_PREFIX_GROUP: Record<string, NotificationGroup> = {
+	employee: 'employees',
+	leave: 'leave',
+	document: 'documents',
+	trip: 'trips'
+};
+
+/** Az esemény kategóriája a kulcs előtagjából (`leave.requestCreated` → leave). */
+export function eventGroup(event: NotificationEvent): NotificationGroup {
+	return EVENT_PREFIX_GROUP[event.split('.')[0]];
+}
+
 export interface NotificationSettings {
 	email: Record<NotificationEvent, boolean>;
+	/** Kategóriánkénti válaszcím; null = a rendszerszintű érvényes. */
+	replyTo: Record<NotificationGroup, string | null>;
 }
 
 function settingsKey(organizationId: number): string {
@@ -57,17 +80,28 @@ function settingsKey(organizationId: number): string {
 
 /**
  * A tárolt értékből teljes beállítás: az ismeretlen kulcsok kimaradnak, a
- * hiányzó vagy nem logikai értékű események az alapértéküket kapják.
+ * hiányzó vagy nem logikai értékű események az alapértéküket kapják. A
+ * válaszcím üres vagy érvénytelen értéke null (a rendszerszintű érvényes).
  */
 export function normalizeNotificationSettings(raw: unknown): NotificationSettings {
-	const stored = (raw as { email?: unknown } | null)?.email;
-	const source = stored && typeof stored === 'object' ? (stored as Record<string, unknown>) : {};
+	const stored = raw as { email?: unknown; replyTo?: unknown } | null;
+	const source = asRecord(stored?.email);
 	const email = {} as Record<NotificationEvent, boolean>;
 	for (const event of NOTIFICATION_EVENTS) {
 		const value = source[event];
 		email[event] = typeof value === 'boolean' ? value : NOTIFICATION_EVENT_DEFAULTS[event];
 	}
-	return { email };
+	const replySource = asRecord(stored?.replyTo);
+	const replyTo = {} as Record<NotificationGroup, string | null>;
+	for (const group of NOTIFICATION_GROUPS) {
+		const value = typeof replySource[group] === 'string' ? (replySource[group] as string).trim() : '';
+		replyTo[group] = value && isValidReplyTo(value) ? value : null;
+	}
+	return { email, replyTo };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+	return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 }
 
 /** Belső segéd: a szervezet beállítása jogosultság-ellenőrzés nélkül. */
@@ -81,13 +115,9 @@ export async function loadNotificationSettings(
 	return normalizeNotificationSettings(r.rows[0]?.value);
 }
 
-/** Menjen-e email az eseményről a szervezetben. */
-export async function isEmailEnabled(
-	context: RemoteContext,
-	organizationId: number,
-	event: NotificationEvent
-): Promise<boolean> {
-	return (await loadNotificationSettings(context, organizationId)).email[event];
+/** Az esemény kategóriájának válaszcíme, vagy undefined (rendszerszintű). */
+export function replyToFor(settings: NotificationSettings, event: NotificationEvent): string | undefined {
+	return settings.replyTo[eventGroup(event)] ?? undefined;
 }
 
 export async function getNotificationSettings(
@@ -100,14 +130,29 @@ export async function getNotificationSettings(
 }
 
 export async function saveNotificationSettings(
-	params: { organizationId: number; email: Partial<Record<NotificationEvent, boolean>> },
+	params: {
+		organizationId: number;
+		email?: Partial<Record<NotificationEvent, boolean>>;
+		replyTo?: Partial<Record<NotificationGroup, string | null>>;
+	},
 	context: RemoteContext
 ): Promise<NotificationSettings> {
 	const organizationId = requireOrganizationId(params?.organizationId);
 	await requireCapability(context, organizationId, 'org.manage');
 
+	// Érvénytelen címet nem dobunk el csendben: a felhasználó javítsa ki
+	for (const group of NOTIFICATION_GROUPS) {
+		const value = params.replyTo?.[group];
+		if (typeof value === 'string' && value.trim() && !isValidReplyTo(value.trim())) {
+			throw new Error(`Érvénytelen válaszcím: ${value.trim()}`);
+		}
+	}
+
 	const current = await loadNotificationSettings(context, organizationId);
-	const settings = normalizeNotificationSettings({ email: { ...current.email, ...params.email } });
+	const settings = normalizeNotificationSettings({
+		email: { ...current.email, ...params.email },
+		replyTo: { ...current.replyTo, ...params.replyTo }
+	});
 	await context.db.query(
 		`INSERT INTO ${SCHEMA}.kv_store (key, value, updated_at)
 		 VALUES ($1, $2::jsonb, NOW())
