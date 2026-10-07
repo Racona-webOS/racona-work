@@ -610,6 +610,7 @@
 	"capabilities.group.org": "Szervezet",
 	"capabilities.group.members": "Tagok és szerepek",
 	"capabilities.group.projects": "Projektek",
+	"capabilities.group.worklog": "Munkanapló",
 	"capabilities.group.leave": "Szabadság",
 	"capabilities.group.employees": "Dolgozók",
 
@@ -622,6 +623,8 @@
 	"capability.project.close": "Projekt lezárása és visszanyitása",
 	"capability.project.view.all": "Összes projekt megtekintése",
 	"capability.project.view.own": "Saját projektek megtekintése",
+	"capability.work.log": "Munkanapló rögzítése",
+	"capability.work.view.all": "Összes munkanapló megtekintése",
 	"capability.leave.request": "Szabadságkérelem beadása",
 	"capability.leave.approve": "Szabadságkérelmek jóváhagyása",
 	"capability.leave.balance.manage": "Szabadságkeret kezelése",

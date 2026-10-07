@@ -21,42 +21,12 @@
 	import Checkbox from './ui/Checkbox.svelte';
 	import { resolveSdk, translate } from '../utils/sdk.js';
 	import { roleDescription, roleName, sortRoles } from '../utils/roles.js';
+	import { CAPABILITY_GROUPS } from '../lib/capability-groups.js';
 
 	let { pluginId = 'racona-work' }: { pluginId?: string } = $props();
 
 	const sdk = $derived(resolveSdk(pluginId));
 	const t = (key: string, vars?: Record<string, string | number>) => translate(sdk, key, vars);
-
-	// --- Képesség csoportok (UI kategorizáláshoz) -----------------------------
-	const CAPABILITY_GROUPS: Array<{ labelKey: string; items: string[] }> = [
-		{ labelKey: 'capabilities.group.org', items: ['org.manage'] },
-		{
-			labelKey: 'capabilities.group.members',
-			items: ['members.view', 'members.manage', 'roles.manage']
-		},
-		{
-			labelKey: 'capabilities.group.projects',
-			items: ['project.create', 'project.manage', 'project.close', 'project.view.all', 'project.view.own']
-		},
-		{
-			labelKey: 'capabilities.group.leave',
-			items: ['leave.request', 'leave.approve', 'leave.balance.manage', 'leave.calendar.manage']
-		},
-		{
-			labelKey: 'capabilities.group.employees',
-			items: [
-				'employee.view',
-				'employee.manage',
-				'employee.documents.view',
-				'employee.documents.manage',
-				'employee.documents.own'
-			]
-		},
-		{
-			labelKey: 'capabilities.group.trips',
-			items: ['trip.record', 'trip.approve', 'trip.manage']
-		}
-	];
 
 	// --- Típusok (szerver reexport) ------------------------------------------
 	interface RoleRow {

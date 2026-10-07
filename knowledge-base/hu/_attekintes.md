@@ -51,7 +51,7 @@ Egy felhasználónak több szerepe is lehet; ilyenkor az összes szerepének jog
 **Ki használhatja:** a „Szerepek és képességek kezelése” joggal rendelkezők (alapból a Szervezet adminisztrátor).
 
 1. A **Szerepek** listában válaszd ki a szerepet, vagy hozz létre újat az **Új szerep** gombbal (pl. Csoportvezető).
-2. A **Képességek** résznél pipáld ki, mit tehetnek a szerep tagjai. A képességek csoportokba vannak rendezve: Szervezet, Tagok és szerepek, Projektek, Szabadság, Dolgozók, Kiküldetések.
+2. A **Képességek** résznél pipáld ki, mit tehetnek a szerep tagjai. A képességek csoportokba vannak rendezve: Szervezet, Tagok és szerepek, Projektek, Munkanapló, Szabadság, Dolgozók, Kiküldetések.
 3. A **Tagok** résznél a **Tag hozzáadása** gombbal rendelhetsz dolgozót a szerephez.
 4. Mentsd a változtatást.
 
@@ -62,6 +62,7 @@ A négy alapszerep (rendszer szerep) neve és leírása nem módosítható, és 
 - Dolgozók megtekintése, Dolgozók kezelése
 - Dolgozói dokumentumok megtekintése, Dolgozói dokumentumok kezelése (és a típusok), Saját dokumentumok megtekintése
 - Projekt létrehozása, Projektek kezelése, Projekt lezárása és visszanyitása, Összes projekt megtekintése, Saját projektek megtekintése
+- Munkanapló rögzítése, Összes munkanapló megtekintése
 - Saját utak és rendelvények, Rendelvények jóváhagyása, Kiküldetések kezelése
 
 Új szervezetben a Munkanaptár kezelése egyik alapszerepben sincs benne. Mivel képességet csak az adhat meg, akinek magának is megvan, ezt a Racona rendszergazdája adhatja meg egy szerepnek a Jogosultságok oldalon.

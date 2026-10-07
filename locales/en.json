@@ -611,6 +611,7 @@
 	"capabilities.group.org": "Organization",
 	"capabilities.group.members": "Members & roles",
 	"capabilities.group.projects": "Projects",
+	"capabilities.group.worklog": "Work log",
 	"capabilities.group.leave": "Leave",
 	"capabilities.group.employees": "Employees",
 
@@ -623,6 +624,8 @@
 	"capability.project.close": "Close and reopen projects",
 	"capability.project.view.all": "View all projects",
 	"capability.project.view.own": "View own projects",
+	"capability.work.log": "Record work log entries",
+	"capability.work.view.all": "View all work log entries",
 	"capability.leave.request": "Submit leave requests",
 	"capability.leave.approve": "Approve leave requests",
 	"capability.leave.balance.manage": "Manage leave balance",

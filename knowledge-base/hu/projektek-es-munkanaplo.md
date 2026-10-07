@@ -18,7 +18,8 @@ A Projektek menüben hozhatók létre a szervezet projektjei, itt kezelhetők a 
 - Új projekt: „Projekt létrehozása” jog (alapból Szervezet adminisztrátor, Projektkezelő).
 - Projekt szerkesztése, tagok, törlés: „Projektek kezelése” jog vagy az adott projekt projektvezetője.
 - Lezárás és visszanyitás: „Projekt lezárása és visszanyitása” jog vagy az adott projekt projektvezetője.
-- Munka rögzítése: a Dolgozó, a Projektkezelő és a Szervezet adminisztrátor szerep alapból rögzíthet, a projekt tagjaként.
+- Munka rögzítése: „Munkanapló rögzítése” jog (alapból Dolgozó, Projektkezelő, Szervezet adminisztrátor), a projekt tagjaként.
+- Mások bejegyzéseinek megtekintése, módosítása és törlése, rögzítés más nevében, Riport: „Összes munkanapló megtekintése” jog (alapból Szervezet adminisztrátor, Projektkezelő, HR felelős), „Projektek kezelése” jog vagy az adott projekt projektvezetője.
 - Munkanapló-figyelés beállítása: „Projektek kezelése” jog szervezeti szinten.
 
 ## Projekt lista
@@ -86,7 +87,7 @@ Lezárt projektnél a munkanapló zárolt: új bejegyzés nem rögzíthető, a m
 Visszanyitás: ugyanitt **Projekt visszanyitása**; ezután a feladatok újra rögzíthetők és módosíthatók. A lezárt projekt nem törölhető, előbb vissza kell nyitni. A státusz (Aktív, Befejezett stb.) a lezárástól független.
 
 ## Projekt riport
-A **Riport** fül a projekt munkáját összesíti. Látja a Szervezet adminisztrátor, a Projektkezelő és a projekt projektvezetője.
+A **Riport** fül a projekt munkáját összesíti. Látja, akinek „Összes munkanapló megtekintése” vagy „Projektek kezelése” joga van (alapból Szervezet adminisztrátor, Projektkezelő, HR felelős), valamint a projekt projektvezetője.
 - **Áttekintés**: Összes logolt óra, Bejegyzések száma, Aktív tagok, Átlag óra / aktív nap, Első és Utolsó bejegyzés.
 - **Idővonal**: eltelt és hátralévő napok (lezárt projektnél rejtett).
 - **Dolgozónkénti bontás** és **Kategóriánkénti bontás**.
@@ -107,4 +108,4 @@ A dátumszűrővel (-tól, -ig) szűkíthető az időszak. A „Feladatok export
 
 **Miért kapok minden este emailt a munkanaplóról?** Mert valamelyik munkanapodra nincs bejegyzésed. Rögzíts munkát arra a napra, és az emlékeztető megszűnik.
 
-**Miért nem látom a Riport fület?** A riport a Projektkezelőnek, a Szervezet adminisztrátornak és a projektvezetőnek látszik.
+**Miért nem látom a Riport fület?** A riporthoz „Összes munkanapló megtekintése” vagy „Projektek kezelése” jog kell, vagy hogy a projekt projektvezetője legyél. A jogot a Beállítások → Jogosultságok oldalon lehet egy szerephez megadni.
