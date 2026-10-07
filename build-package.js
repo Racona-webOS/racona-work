@@ -43,6 +43,7 @@ if (existsSync(join(ROOT, 'menu.json'))) entries.push('menu.json');
 if (existsSync(join(ROOT, 'server'))) entries.push('server');
 if (existsSync(join(ROOT, 'migrations'))) entries.push('migrations');
 if (existsSync(join(ROOT, 'email-templates'))) entries.push('email-templates');
+if (existsSync(join(ROOT, 'knowledge-base'))) entries.push('knowledge-base');
 
 // Rekurzív fájl hozzáadás függvény
 function addDirectoryToZip(zip, dirPath, zipPath = '') {
