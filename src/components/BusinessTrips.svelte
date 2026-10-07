@@ -14,7 +14,8 @@
 	 *
 	 * Havi nézet: az utak dolgozónként és autónként csoportosítva, a havi
 	 * rendelvény összesítőjével, állapotával és a hiányzó adatokkal. A HR a
-	 * „Mindenki” nézetben a szervezet összes útját látja, és bárki nevében rögzíthet.
+	 * „Mindenki” nézetben a szervezet összes útját látja; más nevében rögzíteni,
+	 * módosítani, másolni és törölni csak „Kiküldetések kezelése” joggal lehet.
 	 */
 	import { onMount, untrack } from 'svelte';
 	import type {} from '@racona/sdk/types';
@@ -34,6 +35,8 @@
 	import TripForm from './trips/TripForm.svelte';
 	import SettlementDetail from './trips/SettlementDetail.svelte';
 	import WarningList from './trips/WarningList.svelte';
+	import { canWriteTripsOf } from './trips/access.js';
+	import type { TripPerms } from './trips/access.js';
 	import { errorMessage, formatHuf, formatTimeRange, localDateTime, monthLabel, statusLabel } from './trips/format.js';
 	import { routeLabel } from '../../server/trip-calc.js';
 	import { resolveSdk, translate } from '../utils/sdk.js';
@@ -55,7 +58,7 @@
 	let scope = $state<'mine' | 'all'>('mine');
 	let employeeFilter = $state<number | null>(null);
 
-	let perms = $state<{ canApprove: boolean; canManage: boolean; employeeId: number | null }>({
+	let perms = $state<TripPerms>({
 		canApprove: false,
 		canManage: false,
 		employeeId: null
@@ -138,7 +141,8 @@
 	}
 
 	async function openNew() {
-		const target = isManagerView && employeeFilter ? employeeFilter : null;
+		// Jóváhagyó joggal (kezelés nélkül) csak a saját út rögzíthető
+		const target = isManagerView && perms.canManage && employeeFilter ? employeeFilter : null;
 		formVehicles = await vehiclesFor(target);
 		if (formVehicles.filter((v) => !v.archived).length === 0) {
 			sdk?.ui?.toast(t('trips.noVehicleToast'), 'error');
@@ -342,12 +346,14 @@
 										</td>
 										<td>{row.orderedByName ?? '—'}{#if row.orderedByOverride}<span class="badge" title={t('trips.table.overriddenBy', { name: row.orderedByOverride.byName })}>{t('trips.table.overridden')}</span>{/if}</td>
 										<td class="actions">
-											{#if !row.locked}
-												<button class="icon-btn" title={t('trips.edit')} onclick={() => openEdit(row)}>✎</button>
-											{/if}
-											<button class="icon-btn" title={t('trips.copy')} onclick={() => openCopy(row)}>⧉</button>
-											{#if !row.locked}
-												<button class="remove-btn" title={t('trips.delete')} onclick={() => remove(row)}>×</button>
+											{#if canWriteTripsOf(perms, row.employeeId)}
+												{#if !row.locked}
+													<button class="icon-btn" title={t('trips.edit')} onclick={() => openEdit(row)}>✎</button>
+												{/if}
+												<button class="icon-btn" title={t('trips.copy')} onclick={() => openCopy(row)}>⧉</button>
+												{#if !row.locked}
+													<button class="remove-btn" title={t('trips.delete')} onclick={() => remove(row)}>×</button>
+												{/if}
 											{/if}
 										</td>
 									</tr>

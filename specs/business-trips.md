@@ -617,12 +617,12 @@ A „saját vagy HR” elérést a `work-entries.ts` mintája szerint oldjuk meg
 | `deleteTrip({ id })` | saját vagy `trip.manage` | Csak nem zárolt hónapban. |
 | `getSettlementPreview({ employeeId, vehicleId, year, month })` | saját vagy `trip.approve` | Élő számítás mentés nélkül, `warnings` listával. |
 | `submitSettlement({ employeeId, vehicleId, year, month })` | saját vagy `trip.manage` | Pillanatképet készít a figyelmeztetésekkel, `submitted` állapotba teszi. A figyelmeztetések nem akadályozzák. |
-| `withdrawSettlement({ id })` | saját | `submitted` → `draft`. |
+| `withdrawSettlement({ id })` | saját | `submitted` → `draft`. Más rendelvényét a HR nem vonja vissza, hanem indoklással visszaküldi (`decideSettlement`). |
 | `getSettlements({ organizationId, scope, year?, month?, status?, employeeId? })` | saját: `trip.record`; mind: `trip.approve` | Lapozott lista (`PaginatedResult`), a figyelmeztetések számával. |
 | `decideSettlement({ id, decision, note? })` | `trip.approve` | `approve`: bizonylatszám a számlálóból (ha még nincs), a pillanatkép frissítése, NAV-ár kötelező. Egy tranzakcióban. `return`: megjegyzés kötelező, `draft` lesz. Atomikus: `UPDATE … WHERE status='submitted' RETURNING`. |
 | `setTripOrderedBy({ tripIds, orderedByUserId })` | `trip.approve` | Az elrendelő felülbírálása egy vagy több úton (D14, D21). Csak `draft` vagy `submitted` rendelvény útjain. Kitölti az `ordered_by_overridden_*` mezőket. A `orderedByUserId` a szervezet tagja kell legyen, vagy `null`. |
 | `markSettlementPaid({ id, paidAt })` | `trip.manage` | `approved` → `paid`. |
-| `reopenSettlement({ id, note })` | `trip.manage` | `approved` → `draft`. |
+| `reopenSettlement({ id, note })` | `trip.manage` | `approved` → `draft`. A saját rendelvényét senki nem nyithatja vissza (mint a jóváhagyást és a kifizetést; a rendszergazda kivétel). |
 | `getSettlementDocument({ id } \| { employeeId, vehicleId, year, month })` | saját vagy `trip.approve` | A nyomtatvány és az xlsx adatai (`SettlementDocument`) a `warnings` listával. Jóváhagyott és kifizetett állapotban a pillanatképből, egyébként élő számítás. |
 | `getTripMonth({ organizationId, scope, year, month, employeeId? })` | saját: `trip.record`; mind: `trip.approve` | A havi nézet: az utak, és dolgozónként + autónként a rendelvény összesítője, állapota, figyelmeztetései. |
 | `getTrip({ id })` | saját vagy `trip.approve` | Egy út az útvonal-alakkal (a szerkesztő térképéhez). |
@@ -668,7 +668,7 @@ A „saját vagy HR” elérést a `work-entries.ts` mintája szerint oldjuk meg
 
 - `.page-header` „+ Új út” gombbal, hónapválasztóval és autószűrővel.
 - HR-nek „Saját / Mindenki” chip és dolgozóválasztó.
-- DataTable, oszlopok: dátum és idő, útvonal a kiindulóponttal együtt („Lakcím → Martonvásár, Brunszvik u. 2. ⇄”, „Munkahely → Martonvásár → Lakcím”), cél, km (eltérés esetén ikon, az indoklás tooltipben), összeg. Műveletek: szerkesztés, másolás, törlés.
+- DataTable, oszlopok: dátum és idő, útvonal a kiindulóponttal együtt („Lakcím → Martonvásár, Brunszvik u. 2. ⇄”, „Munkahely → Martonvásár → Lakcím”), cél, km (eltérés esetén ikon, az indoklás tooltipben), összeg. Műveletek: szerkesztés, másolás, törlés; más dolgozó útján csak `trip.manage` joggal (mint a `saveTrip` / `deleteTrip`), a csak `trip.approve` joggal rendelkező a Mindenki nézetben csak néz. Az „+ Új út” is csak `trip.manage` joggal rögzít a szűrőben kiválasztott dolgozónak.
 - Alul autónként havi összesítő kártya és „Rendelvény beküldése” gomb, illetve a rendelvény állapota chipként.
 - Hiányzó adatok esetén figyelmeztető sáv a kártya felett (K15).
 

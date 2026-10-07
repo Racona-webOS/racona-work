@@ -82,8 +82,8 @@ Szerkeszteni és törölni csak addig lehet, amíg a hónap rendelvényét nem k
 
 ## Ki mit láthat a kiküldetéseknél
 - **Saját utak és rendelvények:** a saját autóidat, útjaidat és rendelvényeidet látod és kezeled.
-- **Rendelvények jóváhagyása:** az Utaim és a Rendelvények oldalon megjelenik a **Saját / Mindenki** váltó, és a **Minden dolgozó** szűrő, így mindenki útját látod.
-- **Kiküldetések kezelése (mindenki útja, kifizetés, NAV-árak):** a Mindenki nézetben bárki nevében rögzíthetsz és javíthatsz utat (előbb válaszd ki a dolgozót a szűrőben), és az Autóim oldalon bármelyik dolgozó autóját kezelheted.
+- **Rendelvények jóváhagyása:** az Utaim és a Rendelvények oldalon megjelenik a **Saját / Mindenki** váltó, és a **Minden dolgozó** szűrő, így mindenki útját látod. Más útját csak megnézheted: a szerkesztés, másolás és törlés ikonja nála nem jelenik meg, és az **Új út** gomb ilyenkor is a saját utadat rögzíti.
+- **Kiküldetések kezelése (mindenki útja, kifizetés, NAV-árak):** a Mindenki nézetben bárki nevében rögzíthetsz, javíthatsz, másolhatsz és törölhetsz utat (újat úgy, hogy előbb kiválasztod a dolgozót a szűrőben), és az Autóim oldalon bármelyik dolgozó autóját kezelheted.
 
 ## Gyakori kérdések
 **Miért nem tudok utat rögzíteni?** Valószínűleg még nincs felvett autód. Vedd fel a Work → Kiküldetések → Autóim oldalon.
@@ -93,6 +93,8 @@ Szerkeszteni és törölni csak addig lehet, amíg a hónap rendelvényét nem k
 **Átírhatom a kiszámolt km-t?** Igen, de indoklást kell írnod Az eltérés oka mezőbe, és a HR ezt látni fogja.
 
 **Miért nem tudom szerkeszteni az utamat?** A hónap rendelvényét már beküldted vagy jóváhagyták. Beküldött rendelvénynél vond vissza a beküldést, jóváhagyottnál kérd a HR-t a visszanyitásra.
+
+**Miért nem látok szerkesztés ikont egy kolléga útjánál?** Más útját csak a „Kiküldetések kezelése” joggal lehet módosítani, másolni vagy törölni. A „Rendelvények jóváhagyása” jog csak a megtekintést, a jóváhagyást és az elrendelő javítását adja.
 
 **Két autóval utaztam egy hónapban, mi lesz?** Autónként külön rendelvény készül.
 

@@ -505,10 +505,14 @@ export async function submitSettlement(params: SettlementKey, context: RemoteCon
 	return documentFor(context, key, row);
 }
 
-/** A dolgozó visszavonja a beküldést, amíg nincs jóváhagyva. */
+/**
+ * A dolgozó visszavonja a beküldést, amíg nincs jóváhagyva (D10). Csak a saját
+ * rendelvényét: a HR indoklással, értesítéssel küldi vissza (`decideSettlement`).
+ */
 export async function withdrawSettlement(params: { id: number }, context: RemoteContext): Promise<SettlementDocument> {
 	const row = await loadSettlementRow(context, requireId(params?.id, 'rendelvény azonosító'));
-	await requireTripAccess(context, row.employee_id, 'trip.manage');
+	// Emelt jog nélkül: csak a saját rendelvény (`trip.record`)
+	await requireTripAccess(context, row.employee_id, []);
 	const r = await context.db.query(
 		`UPDATE ${SCHEMA}.trip_settlements SET status = 'draft', updated_at = NOW()
 		  WHERE id = $1 AND status = 'submitted' RETURNING id`,
@@ -633,13 +637,17 @@ export async function markSettlementPaid(
 	return doc;
 }
 
-/** Visszanyitás a kifizetés előtt: `approved` → `draft`; a bizonylatszám megmarad (D20). */
+/**
+ * Visszanyitás a kifizetés előtt: `approved` → `draft`; a bizonylatszám megmarad (D20).
+ * A saját rendelvényét senki nem nyithatja vissza, mint ahogy jóvá sem hagyhatja.
+ */
 export async function reopenSettlement(
 	params: { id: number; note: string },
 	context: RemoteContext
 ): Promise<SettlementDocument> {
 	const row = await loadSettlementRow(context, requireId(params?.id, 'rendelvény azonosító'));
 	await requireCapability(context, row.organization_id, 'trip.manage');
+	await ensureNotSelfDecision(context, row.employee_id);
 	const note = text(params.note, 1000);
 	if (!note) throw new Error('A visszanyitáshoz írd meg az okát.');
 	const r = await context.db.query(

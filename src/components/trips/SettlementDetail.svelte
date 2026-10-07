@@ -31,7 +31,7 @@
 		settlementKey?: SettlementKey | null;
 		canApprove?: boolean;
 		canManage?: boolean;
-		/** A hívó a rendelvény dolgozója (visszavonás, beküldés). */
+		/** A hívó a rendelvény dolgozója: csak ő vonhatja vissza a beküldést. */
 		isOwner?: boolean;
 		orderers?: { userId: number; name: string }[];
 		onChanged?: () => void;
@@ -50,7 +50,7 @@
 	const editableOrderer = $derived(canApprove && (status === null || status === 'draft' || status === 'submitted'));
 	const blocked = $derived((doc?.warnings ?? []).some(blocksApproval));
 	const canSubmit = $derived((isOwner || canManage) && (status === null || status === 'draft') && (doc?.rows.length ?? 0) > 0);
-	/** Saját rendelvényről csak a rendszergazda dönthet (a szerver is elutasítaná). */
+	/** Saját rendelvényt csak a rendszergazda hagyhat jóvá, jelölhet kifizetettnek és nyithat vissza (a szerver is elutasítaná). */
 	const ownBlocked = $derived(isOwner && !isCoreAdminViewer());
 
 	onMount(load);
@@ -290,12 +290,10 @@
 						{t('trips.settlement.approve')}
 					</button>
 				{/if}
-				{#if status === 'approved' && canManage}
+				{#if status === 'approved' && canManage && !ownBlocked}
 					<button class="btn-secondary" onclick={reopen} disabled={busy}>{t('trips.settlement.reopen')}</button>
-					{#if !ownBlocked}
-						<input class="input input-sm" type="date" bind:value={paidAt} aria-label={t('trips.settlement.paidAt')} />
-						<button class="btn-primary" onclick={markPaid} disabled={busy}>{t('trips.settlement.markPaid')}</button>
-					{/if}
+					<input class="input input-sm" type="date" bind:value={paidAt} aria-label={t('trips.settlement.paidAt')} />
+					<button class="btn-primary" onclick={markPaid} disabled={busy}>{t('trips.settlement.markPaid')}</button>
 				{/if}
 			</div>
 		</div>

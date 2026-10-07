@@ -39,7 +39,7 @@ Két hiány piros, mert nélkülük nincs összeg, és a rendelvény nem hagyhat
 2. Ellenőrizd az utakat és az összeget.
 3. Kattints a **Beküldés** gombra. Üzenet: „Rendelvény beküldve”.
 
-Beküldés után az állapot **Jóváhagyásra vár**, a hónap útjai ezzel az autóval zárolódnak. A jóváhagyók értesítést kapnak. Amíg nem bírálták el, a **Beküldés visszavonása** gombbal visszavonhatod, javíthatod az utakat, majd újra beküldheted. A „Kiküldetések kezelése” joggal rendelkező más nevében is beküldheti a rendelvényt.
+Beküldés után az állapot **Jóváhagyásra vár**, a hónap útjai ezzel az autóval zárolódnak. A jóváhagyók értesítést kapnak. Amíg nem bírálták el, a **Beküldés visszavonása** gombbal visszavonhatod, javíthatod az utakat, majd újra beküldheted. A „Kiküldetések kezelése” joggal rendelkező más nevében is beküldheti a rendelvényt, visszavonni viszont csak a dolgozó tudja. Ha a HR-nek kell javíttatnia, a **Visszaküldés** gombbal küldi vissza, indoklással.
 
 ## A rendelvény állapotai
 - **Nincs beküldve:** még nem küldték be, vagy visszavonták, visszaküldték, visszanyitották. Az utak szerkeszthetők.
@@ -71,6 +71,8 @@ A bizonylatszámot a rendelvény jóváhagyáskor kapja, szervezetenként és é
 3. Kattints a **Kifizetve** gombra. Ezután a rendelvény lezárul.
 
 Ha egy jóváhagyott rendelvényben hibát találsz, a kifizetés előtt a **Visszanyitás** gombbal visszaállíthatod „Nincs beküldve” állapotba. Ehhez meg kell adni az okát. A dolgozó értesítést kap, javíthatja az utakat, és újra beküldheti. Kifizetett rendelvény nem nyitható vissza.
+
+A saját rendelvényedet nem jelölheted kifizetettnek és nem nyithatod vissza: ehhez másik, „Kiküldetések kezelése” joggal rendelkező kolléga vagy a rendszergazda kell.
 
 ## Nyomtatás és xlsx letöltése
 A rendelvény ablakának alján a **Nyomtatás** gomb nyomtatható (PDF-be is menthető) nézetet nyit, az **xlsx letöltése** gomb Excel-fájlt készít. A rendelvényen a kelt a beküldés napja, alul az „Igazolta” (jóváhagyó) és az „Utalványozta” (kifizetést jelölő) neve és dátuma. A jóváhagyás előtti nyomtatványon „NEM JÓVÁHAGYOTT” vízjel látszik.
@@ -111,7 +113,9 @@ A NAV-tól lekért árak mellett „NAV” jelölés látszik. Ha átírod, kéz
 
 **Hogyan módosíthatok beküldött rendelvényt?** Jóváhagyás előtt nyomd meg a Beküldés visszavonása gombot, javítsd az utakat, majd küldd be újra. Jóváhagyás után a HR-nek kell visszanyitnia.
 
-**Miért nem tudom jóváhagyni a saját rendelvényemet?** Saját ügyet nem bírálhatsz el. Kérj meg egy másik jóváhagyót vagy a rendszergazdát.
+**Miért nem tudom jóváhagyni, kifizetettnek jelölni vagy visszanyitni a saját rendelvényemet?** Saját ügyet nem bírálhatsz el. Kérj meg egy másik jóváhagyót (kifizetésnél és visszanyitásnál egy másik HR-est) vagy a rendszergazdát.
+
+**Miért nem látom a Beküldés visszavonása gombot egy kolléga rendelvényénél?** A beküldést csak a dolgozó vonhatja vissza. Ha javítani kell, küldd vissza a rendelvényt a **Visszaküldés** gombbal, indoklással: a dolgozó értesítést kap róla.
 
 **Kapok értesítést?** Igen. A jóváhagyók a beküldésről, a dolgozó a jóváhagyásról, visszaküldésről, kifizetésről, visszanyitásról és az elrendelő módosításáról. Az e-mail-értesítéseket a Beállítások → Értesítések oldalon lehet bekapcsolni.
 
