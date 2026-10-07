@@ -41,7 +41,7 @@ Az adatlap „Adatlap” fülén az **Alapadatok** (Beosztás, Belépés dátuma
 Dolgozó csak akkor távolítható el a szervezetből (Tag eltávolítása), ha nincsenek megőrzendő adatai (szabadság, munkanapló, kiküldetés, dokumentum). Ha vannak, a kilépett dolgozót az adatlapon az Alapadatoknál állítsd **Inaktív** státuszra, és add meg a Kilépés dátumát.
 
 ## Külsős dolgozó jelölése
-Külsős dolgozó (pl. alvállalkozó) csak a projektekben vesz részt: projekttag lehet, munkát rögzíthet, és a saját dokumentumait látja. A szabadság, a kiküldetések és a többi funkció nem vonatkozik rá, és a szervezeti listákból kimarad.
+Külsős dolgozó (pl. alvállalkozó) csak a projektekben vesz részt: projekttag lehet, munkát rögzíthet (telefonon is), és a saját dokumentumait látja. A szabadság, a kiküldetések és a többi funkció nem vonatkozik rá, és a szervezeti listákból kimarad.
 
 1. Nyisd meg a dolgozó adatlapját.
 2. Alapadatok → **Szerkesztés**.

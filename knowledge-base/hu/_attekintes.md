@@ -68,7 +68,7 @@ A négy alapszerep (rendszer szerep) neve és leírása nem módosítható, és 
 Új szervezetben a Munkanaptár kezelése egyik alapszerepben sincs benne. Mivel képességet csak az adhat meg, akinek magának is megvan, ezt a Racona rendszergazdája adhatja meg egy szerepnek a Jogosultságok oldalon.
 
 ## Külsős dolgozók
-A külsős dolgozó (pl. alvállalkozó) a szervezetben csak a projektekben vesz részt: látja a projektjeit, rögzítheti a munkáját a munkanaplóban, és látja a saját dokumentumait. Szabadság- és kiküldetés-funkciókat nem kap, akkor sem, ha a szerepe alapján járna neki. Az Irányítópulton a „Külsős dolgozó vagy” üzenet és a „Projektjeim megnyitása” gomb jelenik meg.
+A külsős dolgozó (pl. alvállalkozó) a szervezetben csak a projektekben vesz részt: látja a projektjeit, rögzítheti a munkáját a munkanaplóban (telefonon is), és látja a saját dokumentumait. Szabadság- és kiküldetés-funkciókat nem kap, akkor sem, ha a szerepe alapján járna neki. Az Irányítópulton a „Külsős dolgozó vagy” üzenet és a „Projektjeim megnyitása” gomb jelenik meg.
 
 ## Gyakori kérdések
 **Miért nem látok egy menüpontot?** A menü csak azt mutatja, amihez a szerepeid jogot adnak. Kérd a szervezet adminisztrátorát, hogy adjon megfelelő szerepet.

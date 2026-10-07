@@ -1,7 +1,8 @@
 /**
  * A külsős dolgozók tesztjei (specs/external-employees.md): a képességeik a
  * projektekre és a munkanaplóra szűkülnek, és a rájuk vonatkozó szervezeti
- * műveletek (szabadság, kiküldetés) hibát adnak.
+ * műveletek (szabadság, kiküldetés) hibát adnak. A mobil munkanaplóhoz a saját
+ * dolgozói rekordjukat lekérhetik.
  *
  * Futtatás: bun test
  */
@@ -13,15 +14,18 @@ import {
 	hasCapability,
 	requireSelfOrCapability
 } from '../server/permissions.ts';
+import { getMyEmployee } from '../server/employees.ts';
 import type { RemoteContext } from '../server/context.ts';
 
 const ROLE_CAPS = ['leave.request', 'trip.record', 'employee.view', 'project.view.own', 'work.log'];
 
 /**
  * Ál-kontextus: a hívó (user 7) szerepei `ROLE_CAPS`-t adják a 3-as szervezetben,
- * és `external` szerint külsős. A 9-es dolgozó (user 9) külsős.
+ * (vagy `caps`-t, ha megadva), és `external` szerint külsős. A 9-es dolgozó
+ * (user 9) külsős.
  */
-function fakeContext(opts: { external: boolean }) {
+function fakeContext(opts: { external: boolean; caps?: string[] }) {
+	const roleCaps = opts.caps ?? ROLE_CAPS;
 	const writes: string[] = [];
 	const query = async (sql: string, params: unknown[] = []) => {
 		if (/^\s*(INSERT|UPDATE|DELETE)/i.test(sql)) {
@@ -29,10 +33,15 @@ function fakeContext(opts: { external: boolean }) {
 			return { rows: [{ id: 1 }] };
 		}
 		if (sql.includes('DISTINCT rc.capability')) {
-			return { rows: ROLE_CAPS.map((capability) => ({ capability })) };
+			return { rows: roleCaps.map((capability) => ({ capability })) };
 		}
 		if (sql.includes('wp_member_roles mr') && sql.includes('rc.capability = $3')) {
-			return { rows: ROLE_CAPS.includes(String(params[2])) || String(params[2]) === 'leave.balance.manage' ? [{ ok: 1 }] : [] };
+			return { rows: roleCaps.includes(String(params[2])) || String(params[2]) === 'leave.balance.manage' ? [{ ok: 1 }] : [] };
+		}
+		if (sql.includes('JOIN auth.users u')) {
+			return {
+				rows: [{ id: 5, user_id: 7, status: 'active', is_external: opts.external, user_name: 'Teszt Elek', user_email: 'elek@example.com' }]
+			};
 		}
 		if (sql.includes('FROM app__racona_work.employees') && sql.includes('user_id = $2')) {
 			return { rows: [{ is_external: opts.external }] };
@@ -79,5 +88,24 @@ describe('külsős dolgozóra vonatkozó műveletek', () => {
 	test('a saját adatokon keresztüli műveletek hibát adnak', async () => {
 		const { context } = fakeContext({ external: false });
 		await expect(requireSelfOrCapability(context, 9, 'employee.view')).rejects.toThrow(EXTERNAL_EMPLOYEE_ERROR);
+	});
+});
+
+describe('saját dolgozói rekord (mobil keret)', () => {
+	test('külsős dolgozó a munkanaplóhoz lekérheti a sajátját', async () => {
+		const { context } = fakeContext({ external: true });
+		const me = await getMyEmployee({ organizationId: 3 }, context);
+		expect(me?.id).toBe(5);
+		expect(me?.isExternal).toBe(true);
+	});
+
+	test('csak munkanapló-joggal is lekérhető', async () => {
+		const { context } = fakeContext({ external: false, caps: ['work.log'] });
+		expect((await getMyEmployee({ organizationId: 3 }, context))?.id).toBe(5);
+	});
+
+	test('szabadság- és munkanapló-jog nélkül hibát ad', async () => {
+		const { context } = fakeContext({ external: false, caps: ['project.view.own'] });
+		await expect(getMyEmployee({ organizationId: 3 }, context)).rejects.toThrow('Nincs jogosultságod');
 	});
 });

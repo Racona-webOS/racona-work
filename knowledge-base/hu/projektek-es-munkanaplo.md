@@ -61,7 +61,7 @@ Az óraszám 0,25 és 24 között lehet. A dátum nem lehet korábbi a projekt k
 A listában a Saját és az Összes nézet között válthatsz (ha mások bejegyzéseit is láthatod), szűrhetsz dátumra (-tól, -ig) és dolgozóra. Felül az „Összesen: … óra” összeg látszik. A saját bejegyzésedet szerkesztheted és törölheted; másokét a projektvezető és a Projektkezelő.
 
 ## Munka rögzítése telefonon
-Telefonon a Work **Munka rögzítése** gyorsművelete egy nap összes saját bejegyzését mutatja minden projektből. Az Előző nap és Következő nap gombokkal lapozhatsz, a **Munka rögzítése** gombbal új bejegyzést veszel fel, egy bejegyzésre koppintva szerkesztheted vagy törölheted. A Projekt listában csak a nyitott (nem lezárt) projektek szerepelnek, a legutóbb használt előre ki van választva. Részletek: az Értesítések és mobil használat leírásban.
+Telefonon a Work **Munka rögzítése** gyorsművelete egy nap összes saját bejegyzését mutatja minden projektből. Az Előző nap és Következő nap gombokkal lapozhatsz, a **Munka rögzítése** gombbal új bejegyzést veszel fel, egy bejegyzésre koppintva szerkesztheted vagy törölheted. A Projekt listában csak a nyitott (nem lezárt) projektek szerepelnek, a legutóbb használt előre ki van választva. Külsős dolgozó is használhatja. Részletek: az Értesítések és mobil használat leírásban.
 
 ## Hiányzó munkanapló-bejegyzések figyelése
 A munkanapló-figyelés este emlékezteti a dolgozót, ha egy munkanapjára egyik projektbe sem rögzített munkát. Beállítás: Work → Beállítások → **Munkanapló**.

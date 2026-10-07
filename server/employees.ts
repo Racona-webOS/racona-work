@@ -954,7 +954,8 @@ export async function updateEmployee(
 /**
  * Az aktuális hívó saját employee rekordja egy adott szervezetben, vagy null.
  * Nem dob hibát, ha nincs — a kliens ez alapján dönti el, hogy mit mutasson.
- * Alap jog: leave.request (tehát minden tag hívhatja).
+ * Jog: leave.request vagy work.log. A külsős dolgozónak nincs leave.request
+ * képessége, de a mobil munkanaplóhoz neki is kell a saját rekordja.
  */
 export async function getMyEmployee(
 	params: { organizationId: number },
@@ -964,7 +965,12 @@ export async function getMyEmployee(
 		throw new Error('Érvénytelen szervezet azonosító');
 	}
 
-	await requireCapability(context, params.organizationId, 'leave.request');
+	if (
+		!(await hasCapability(context, params.organizationId, 'leave.request')) &&
+		!(await hasCapability(context, params.organizationId, 'work.log'))
+	) {
+		throw new Error('Nincs jogosultságod ehhez a művelethez');
+	}
 
 	// User id feloldása (dev mód: az első user)
 	const userId = await resolveUserId(context);

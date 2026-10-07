@@ -48,7 +48,7 @@
 </script>
 
 <div class="rw">
-	<MobileScreen {pluginId} capability="work.log">
+	<MobileScreen {pluginId} capability="work.log" allowExternal>
 		{#snippet children(ctx)}
 			{#key ctx.organization.id}
 				{#if form}

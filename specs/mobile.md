@@ -1,6 +1,6 @@
 # Mobil képernyők
 
-> Státusz: kész (0.14.0) · Utolsó módosítás: 2026-10-06
+> Státusz: kész (0.14.0) · Utolsó módosítás: 2026-10-07
 
 A cél, hogy a dolgozó telefonon gyorsan elintézze a gyakori teendőit: szabadságot kérjen, a havi szabadság-összesítőjét elfogadja vagy kifogásolja, és rögzítse a napi munkáját. A Racona core mobil kerete (1.C–1.D, racona-core `feature/mobile-view`) a manifest `mobile.entries` bejegyzéseit gyors műveletként mutatja a kezdőképernyőn; mindegyik egy önálló, telefonra készült komponens.
 
@@ -27,7 +27,7 @@ A cél, hogy a dolgozó telefonon gyorsan elintézze a gyakori teendőit: szabad
 | D1 | Új szerverfüggvény kell? | Nem. A képernyők a meglévőket hívják: `getMyEmployee`, `getLeaveBalances`, `getLeaveRequests`, `withdrawLeaveRequest`, `getLeaveCalendar`, `getLeaveAllowances`, `previewLeaveRequestBatch`, `submitLeaveRequestBatch`, `getMyMonthConfirmations`, `respondMonthConfirmation`, `listWorkEntries` (projekt nélkül, `scope: 'mine'`), `listProjects`, `getWorkEntryCategories`, `createWorkEntry`, `updateWorkEntry`, `deleteWorkEntry`. |
 | D2 | Szabadságkérés | Ugyanaz a kérelem, mint az asztali naptár kérelmező módjában: kijelölt napok, szakaszonként egy függő kérelem. A naptár havi, a kijelölés hónapok között lapozva megmarad. A céges kötelező szabadság nem kérhető (`REQUEST_CALENDAR_LEAVE_TYPES`). |
 | D3 | Munkanapló projektlistája | A hívó által látható, nyitott projektek (`listProjects`, lezárt kiszűrve). A legutóbb használt projekt előre kiválasztva (a böngészőben megjegyezve); egyetlen projektnél az. |
-| D4 | Közös keret | `mobile/MobileScreen.svelte`: szervezet és saját dolgozói rekord betöltése, képesség-ellenőrzés (`leave.request`, `work.log`), külsős dolgozó és hiányzó dolgozói rekord kezelése. |
+| D4 | Közös keret | `mobile/MobileScreen.svelte`: szervezet és saját dolgozói rekord betöltése, képesség-ellenőrzés (`leave.request`, `work.log`), külsős dolgozó és hiányzó dolgozói rekord kezelése. A külsős dolgozót bejegyzésenként engedjük (`allowExternal`): a munkanapló neki is nyílik, a két szabadság-képernyő nem. |
 | D5 | Stílus | `styles/mobile.css`: nagy érintési felületek, 16 px-es beviteli mezők (iPhone-on kisebbnél fókuszáláskor ránagyít). |
 
 ## 3. Értesítések és e-mailek
@@ -41,3 +41,4 @@ A cél, hogy a dolgozó telefonon gyorsan elintézze a gyakori teendőit: szabad
 ## 4. Közben javítva
 
 - A munkabejegyzések listája és a projektriport a napot `YYYY-MM-DD` szövegként adja (`to_char`). Korábban időbélyeg ment ki (a budapesti éjfél UTC-ben, pl. `2026-10-05T22:00:00.000Z`), és az asztali szerkesztő űrlap meg a CSV-export az előző napot mutatta; szerkesztés után a bejegyzés egy nappal korábbra került.
+- Külsős dolgozónál a mobil keret minden bejegyzésre a „Külsős dolgozóként ez a funkció nem vonatkozik rád…” szöveget mutatta, a Munka rögzítésére is. Most csak a szabadság-képernyőknél. A `getMyEmployee` eddig `leave.request` képességet kért, ami külsősnek nincs: most `leave.request` vagy `work.log` kell.

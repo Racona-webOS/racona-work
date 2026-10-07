@@ -83,7 +83,7 @@ A **Munka rögzítése** képernyő egy nap összes saját munkabejegyzését mu
 2. **Munka rögzítése**: válaszd ki a Projektet (csak nyitott projektek; a legutóbb használt előre ki van választva), a Kategóriát, add meg a Feladat címét, a Leírást és az Órát (0,25 és 24 között).
 3. Mentés.
 
-Egy bejegyzésre koppintva szerkesztheted vagy törölheted. Munkát csak olyan projektre rögzíthetsz, amelynek tagja vagy.
+Egy bejegyzésre koppintva szerkesztheted vagy törölheted. Munkát csak olyan projektre rögzíthetsz, amelynek tagja vagy. Külsős dolgozóként is használhatod.
 
 ## Értesítésből egyenesen a mobil képernyőre
 Telefonon az értesítésre koppintva a megfelelő képernyő nyílik meg: szabadságkérelem elbírálása vagy törlése után a Szabadság igénylése, a havi összesítő kiküldése vagy emlékeztetője után a Havi szabadság-összesítő, a hiányzó munkanapló emlékeztetője után a Munka rögzítése (a legkorábbi hiányzó nappal). Az ilyen emailek gombja is közvetlenül ide visz; asztali gépen ugyanez a képernyő nyílik meg az alkalmazás ablakában.
@@ -97,4 +97,4 @@ Telefonon az értesítésre koppintva a megfelelő képernyő nyílik meg: szaba
 
 **Miért írja a telefon, hogy „Ehhez nincs jogosultságod”?** Ebben a szervezetben nincs jogod az adott funkcióhoz (pl. szabadságkérelem beadásához). Kérd a szervezet adminisztrátorát.
 
-**Külsős dolgozóként miért nem használhatom a mobil gyorsműveleteket?** Külsős dolgozónál a mobil képernyők jelenleg ezt írják ki: „Külsős dolgozóként ez a funkció nem vonatkozik rád ebben a szervezetben.” A munkádat asztali nézetben, a projekt Munkanapló fülén rögzítheted.
+**Külsős dolgozóként mit használhatok telefonon?** A **Munka rögzítése** gyorsműveletet, ugyanúgy, mint a belsős dolgozók. A szabadság nem vonatkozik rád, ezért a **Szabadság igénylése** és a **Havi szabadság-összesítő** ezt írja ki: „Külsős dolgozóként ez a funkció nem vonatkozik rád ebben a szervezetben.”

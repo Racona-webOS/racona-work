@@ -1,6 +1,7 @@
 <!--
 	A mobil bejegyzések közös kerete: betölti a szervezetet és a hívó saját dolgozói
 	rekordját, ellenőrzi a szükséges képességet, és csak ezután rendereli a tartalmat.
+	Külsős dolgozónál csak az `allowExternal` bejegyzések nyílnak meg (pl. a munkanapló).
 	Szervezetváltáskor (a core a szervezetváltót a képernyő tetején mutatja) újratölt.
 -->
 <script lang="ts">
@@ -18,11 +19,14 @@
 	let {
 		pluginId = 'racona-work',
 		capability,
+		allowExternal = false,
 		children
 	}: {
 		pluginId?: string;
 		/** A képernyőhöz szükséges képesség (pl. leave.request, work.log) */
 		capability: string;
+		/** A külsős dolgozó is használhatja (specs/external-employees.md: projektek és munkanapló) */
+		allowExternal?: boolean;
 		children: Snippet<[MobileContext]>;
 	} = $props();
 
@@ -48,7 +52,7 @@
 
 	/** A hívó dolgozói rekordja a jelenlegi szervezetben */
 	async function loadEmployee() {
-		if (!organization || isExternal) {
+		if (!organization || externalBlocked) {
 			employee = null;
 			loading = false;
 			return;
@@ -108,13 +112,14 @@
 	// A képességek a szervezetek után, külön kérésben érkeznek: amíg üres a halmaz, még töltünk
 	const capabilitiesLoaded = $derived(capabilities.size > 0);
 	const allowed = $derived(capabilities.has(capability));
+	const externalBlocked = $derived(isExternal && !allowExternal);
 </script>
 
 {#if error}
 	<p class="m-error">{error}</p>
 {:else if !hasAccess}
 	<AccessDenied {pluginId} />
-{:else if isExternal}
+{:else if externalBlocked}
 	<p class="m-empty">{t('mobile.external')}</p>
 {:else if loading || (organization && !capabilitiesLoaded)}
 	<div class="loading-state"><span class="spinner"></span>{t('loading')}</div>
