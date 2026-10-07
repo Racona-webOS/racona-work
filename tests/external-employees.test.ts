@@ -36,7 +36,9 @@ function fakeContext(opts: { external: boolean; caps?: string[] }) {
 			return { rows: roleCaps.map((capability) => ({ capability })) };
 		}
 		if (sql.includes('wp_member_roles mr') && sql.includes('rc.capability = $3')) {
-			return { rows: roleCaps.includes(String(params[2])) || String(params[2]) === 'leave.balance.manage' ? [{ ok: 1 }] : [] };
+			// Alapból a HR-jog is megvan (a más dolgozójára vonatkozó műveletekhez); megadott `caps`-nél csak az
+			const hr = opts.caps === undefined && String(params[2]) === 'leave.balance.manage';
+			return { rows: roleCaps.includes(String(params[2])) || hr ? [{ ok: 1 }] : [] };
 		}
 		if (sql.includes('JOIN auth.users u')) {
 			return {
@@ -105,6 +107,10 @@ describe('saját dolgozói rekord (mobil keret)', () => {
 	});
 
 	test('szabadság- és munkanapló-jog nélkül hibát ad', async () => {
+		// A jóváhagyó és a HR kérelem-jog nélkül is lekéri (szabadság-nyilvántartó)
+		const hr = fakeContext({ external: false, caps: ['leave.approve'] });
+		expect((await getMyEmployee({ organizationId: 3 }, hr.context))?.id).toBe(5);
+
 		const { context } = fakeContext({ external: false, caps: ['project.view.own'] });
 		await expect(getMyEmployee({ organizationId: 3 }, context)).rejects.toThrow('Nincs jogosultságod');
 	});

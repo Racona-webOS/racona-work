@@ -13,6 +13,8 @@ import {
 	ensureNotExternalEmployee,
 	ensureNotSelfDecision,
 	hasCapability,
+	LEAVE_VIEW_CAPABILITIES,
+	requireAnyCapability,
 	requireCapability,
 	requireSelfOrCapability
 } from './permissions.js';
@@ -184,7 +186,7 @@ export async function previewLeaveDays(
 		throw new Error('Érvénytelen szervezet azonosító');
 	}
 
-	await requireCapability(context, organizationId, 'leave.request');
+	await requireAnyCapability(context, organizationId, ['leave.request', 'leave.approve']);
 
 	const calendar = await getWorkCalendarOverrides(context, organizationId, startDate, endDate);
 	return { days: calculateWorkingDays(startDate, endDate, calendar) };
@@ -203,7 +205,8 @@ export async function getLeaveRequests(
 		throw new Error('Érvénytelen szervezet azonosító');
 	}
 
-	await requireCapability(context, params.organizationId, 'leave.request');
+	// A jóváhagyó és a HR saját kérelem-jog nélkül is betölti a nyilvántartót
+	await requireAnyCapability(context, params.organizationId, LEAVE_VIEW_CAPABILITIES);
 
 	// Más dolgozó kérelme (típusa, indoklása, pl. betegszabadság) csak a jóváhagyóknak
 	// és a HR-nek látható; mindenki más csak a sajátját kapja, akármit kér a kliens.
@@ -344,14 +347,10 @@ export async function createLeaveRequest(
 		throw new Error('Érvénytelen szervezet azonosító');
 	}
 
-	// Alap leave.request képesség szükséges. Aki "más nevében" is rögzít,
-	// annak leave.approve-ra is szüksége van — ezt alább, az employee id
-	// ismeretében ellenőrizzük.
-	await requireCapability(context, organizationId, 'leave.request');
+	// A saját kérelemhez leave.request, más nevében leave.approve kell — ezt alább,
+	// az employee id ismeretében ellenőrizzük. Core admin / dev mód automatikusan ok.
 	await ensureNotExternalEmployee(context, employeeId);
 
-	// Ha az employee nem a hívó saját rekordja → leave.approve szükséges.
-	// Core admin / dev mód automatikusan ok.
 	if (!isDevMode(context) && !isCoreAdmin(context)) {
 		const callerUserId = await resolveUserId(context);
 		const empRow = await context.db.query(
@@ -361,9 +360,8 @@ export async function createLeaveRequest(
 		if (empRow.rows.length === 0) {
 			throw new Error('A dolgozó nem található ebben a szervezetben');
 		}
-		if ((empRow.rows[0] as { user_id: number }).user_id !== callerUserId) {
-			await requireCapability(context, organizationId, 'leave.approve');
-		}
+		const own = Number((empRow.rows[0] as { user_id: number }).user_id) === Number(callerUserId);
+		await requireCapability(context, organizationId, own ? 'leave.request' : 'leave.approve');
 	}
 
 	const start = new Date(startDate);

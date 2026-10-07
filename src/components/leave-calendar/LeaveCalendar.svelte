@@ -53,6 +53,7 @@
 		pluginId = 'racona-work',
 		organizationId,
 		canManage = false,
+		canRequestLeave = true,
 		ownEmployeeId = null,
 		refreshKey = 0,
 		initialEmployeeId = null,
@@ -62,6 +63,8 @@
 		organizationId: number;
 		/** leave.approve: a típus látszik és szerkeszthet (a szerver dönt, ez csak a felület). */
 		canManage?: boolean;
+		/** leave.request: a hívó kérhet magának szabadságot (a jóváhagyónak nem feltétlenül van). */
+		canRequestLeave?: boolean;
 		/** A hívó saját dolgozói sora: ezzel kér szabadságot és vonja vissza a sajátját. */
 		ownEmployeeId?: number | null;
 		/** Növelve újratölt (kérelem jóváhagyása, törlése után). */
@@ -80,7 +83,7 @@
 	// szűrővel, éves nézetben, jelöléssel és beküldéssel. A jóváhagyó is így kér
 	// magának szabadságot, mert a sajátját nem rögzítheti közvetlenül.
 	let requestMode = $state(false);
-	const canEnterRequestMode = $derived(!!ownEmployeeId);
+	const canEnterRequestMode = $derived(canRequestLeave && !!ownEmployeeId);
 	const lockEmployee = $derived(requestMode);
 	const employeeId = $derived(requestMode ? ownEmployeeId : null);
 

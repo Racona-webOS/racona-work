@@ -44,6 +44,8 @@
 
 	// --- Képességek ---
 	let canApprove = $state(false);
+	/** Saját kérelem beadása; a jóváhagyó és a HR enélkül is betölti az oldalt. */
+	let canRequestLeave = $state(false);
 	/** Külsős dolgozó: rá a szabadság nem vonatkozik. */
 	let isExternal = $state(false);
 	let isManagerView = $derived(canApprove);
@@ -157,6 +159,7 @@
 				hasAccess = store.hasAccess;
 				isExternal = store.isExternal;
 				canApprove = store.can('leave.approve');
+				canRequestLeave = store.can('leave.request');
 				viewMode = canApprove ? 'all' : 'mine';
 				// Új szervezet → új saját employee
 				if (currentOrganization && sdk?.remote) {
@@ -502,6 +505,7 @@
 
 			isExternal = orgStore.isExternal;
 			canApprove = orgStore.can('leave.approve');
+			canRequestLeave = orgStore.can('leave.request');
 			// Alap nézet: manager esetén 'all', dolgozó esetén 'mine'.
 			viewMode = canApprove ? 'all' : 'mine';
 
@@ -609,6 +613,7 @@
 						{pluginId}
 						organizationId={currentOrganization.id}
 						canManage={canApprove}
+						{canRequestLeave}
 						ownEmployeeId={myEmployee?.id ?? null}
 						initialEmployeeId={employeeId}
 						refreshKey={calendarRefresh}

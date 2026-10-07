@@ -114,7 +114,12 @@ export async function ensureNotExternalEmployee(context: RemoteContext, employee
 	if (r.rows[0]?.is_external === true) throw new Error(EXTERNAL_EMPLOYEE_ERROR);
 }
 
-/** Rendszer szerep kulcsok — ezekhez a createOrganization automatikusan létrehoz szerepet. */
+/**
+ * Rendszer szerep kulcsok — ezekhez a createOrganization automatikusan létrehoz szerepet.
+ * Az org_admin minden képességet megkap: a felső korlát miatt csak azt adhatja
+ * tovább, ami neki is megvan. Új képességnél a meglévő szervezetek szerepeit
+ * migrációval kell pótolni (lásd 006, 028).
+ */
 export const SYSTEM_ROLE_DEFINITIONS: Array<{
 	key: string;
 	name: string;
@@ -134,11 +139,13 @@ export const SYSTEM_ROLE_DEFINITIONS: Array<{
 			'project.manage',
 			'project.close',
 			'project.view.all',
+			'project.view.own',
 			'work.log',
 			'work.view.all',
 			'leave.request',
 			'leave.approve',
 			'leave.balance.manage',
+			'leave.calendar.manage',
 			'employee.view',
 			'employee.manage',
 			'employee.documents.view',
@@ -299,6 +306,25 @@ export async function requireCapability(
 		throw new Error('Nincs jogosultságod ehhez a művelethez');
 	}
 }
+
+/** A felsorolt képességek közül legalább egy kell (pl. olvasás kérelmezőnek és jóváhagyónak). */
+export async function requireAnyCapability(
+	context: RemoteContext,
+	organizationId: number,
+	capabilities: Capability[]
+): Promise<void> {
+	for (const capability of capabilities) {
+		if (await hasCapability(context, organizationId, capability)) return;
+	}
+	throw new Error('Nincs jogosultságod ehhez a művelethez');
+}
+
+/**
+ * A szabadság-nyilvántartó olvasó hívásai: a kérelmező (a sajátjait), a jóváhagyó
+ * és a HR (mindenkiét) egyaránt betöltheti az oldalt. A saját kérelem beadása
+ * továbbra is leave.request jogot kér.
+ */
+export const LEAVE_VIEW_CAPABILITIES: Capability[] = ['leave.request', 'leave.approve', 'leave.balance.manage'];
 
 /**
  * Saját dolgozói rekord, vagy a megadott képességek valamelyike.

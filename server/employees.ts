@@ -7,7 +7,7 @@
 
 import type { RemoteContext } from './context.js';
 import { isDevMode, isCoreAdmin, resolveUserId } from './context.js';
-import { hasCapability, requireCapability } from './permissions.js';
+import { hasCapability, LEAVE_VIEW_CAPABILITIES, requireAnyCapability, requireCapability } from './permissions.js';
 import {
 	canViewOrganizationDocuments,
 	emptyCounts,
@@ -955,7 +955,9 @@ export async function updateEmployee(
  * Az aktuális hívó saját employee rekordja egy adott szervezetben, vagy null.
  * Nem dob hibát, ha nincs — a kliens ez alapján dönti el, hogy mit mutasson.
  * Jog: leave.request vagy work.log. A külsős dolgozónak nincs leave.request
- * képessége, de a mobil munkanaplóhoz neki is kell a saját rekordja.
+ * képessége, de a mobil munkanaplóhoz neki is kell a saját rekordja. A jóváhagyó
+ * és a HR (leave.approve, leave.balance.manage) kérelem-jog nélkül is lekéri,
+ * mert a szabadság-nyilvántartó és az irányítópult a sajátját ez alapján mutatja.
  */
 export async function getMyEmployee(
 	params: { organizationId: number },
@@ -965,12 +967,7 @@ export async function getMyEmployee(
 		throw new Error('Érvénytelen szervezet azonosító');
 	}
 
-	if (
-		!(await hasCapability(context, params.organizationId, 'leave.request')) &&
-		!(await hasCapability(context, params.organizationId, 'work.log'))
-	) {
-		throw new Error('Nincs jogosultságod ehhez a művelethez');
-	}
+	await requireAnyCapability(context, params.organizationId, [...LEAVE_VIEW_CAPABILITIES, 'work.log']);
 
 	// User id feloldása (dev mód: az első user)
 	const userId = await resolveUserId(context);

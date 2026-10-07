@@ -10,8 +10,9 @@ import { describe, expect, test } from 'bun:test';
 import { escapeHtml, safeImageUrl } from '../src/utils/html.ts';
 import { ensureNotSelfDecision, hasCapability, SELF_DECISION_ERROR } from '../server/permissions.ts';
 import { getLeaveRequests } from '../server/leave.ts';
+import { getLeaveCalendar } from '../server/leave-days.ts';
 import { addProjectMember, removeProjectMember } from '../server/projects.ts';
-import { getEmployeeDetails } from '../server/employees.ts';
+import { getEmployeeDetails, getMyEmployee } from '../server/employees.ts';
 import type { RemoteContext } from '../server/context.ts';
 
 describe('escapelés', () => {
@@ -136,6 +137,28 @@ describe('a szabadságkérelmek láthatósága', () => {
 		await getLeaveRequests({ organizationId: 3 }, context);
 		const list = queries.find((q) => q.sql.includes('COUNT(*) AS total'))!;
 		expect(list.params).toEqual([3]);
+	});
+
+	test('a HR felelős kérelem-jog nélkül is betölti a nyilvántartót, mindenkiét látja', async () => {
+		const { context, queries } = fakeContext({ caps: ['leave.approve', 'leave.balance.manage'] });
+		await getLeaveRequests({ organizationId: 3 }, context);
+		const list = queries.find((q) => q.sql.includes('COUNT(*) AS total'))!;
+		expect(list.params).toEqual([3]);
+	});
+
+	test('a jóváhagyó a naptárat és a saját dolgozói rekordját is lekérheti', async () => {
+		const { context } = fakeContext({ caps: ['leave.approve'] });
+		const calendar = await getLeaveCalendar({ organizationId: 3, from: '2026-10-01', to: '2026-10-31' }, context);
+		expect(calendar.canManage).toBe(true);
+		await expect(getMyEmployee({ organizationId: 3 }, context)).resolves.toBeDefined();
+	});
+
+	test('szabadság-jog nélkül a nyilvántartó nem tölt be', async () => {
+		const { context } = fakeContext({ caps: ['project.view.own'] });
+		await expect(getLeaveRequests({ organizationId: 3 }, context)).rejects.toThrow('Nincs jogosultságod');
+		await expect(
+			getLeaveCalendar({ organizationId: 3, from: '2026-10-01', to: '2026-10-31' }, context)
+		).rejects.toThrow('Nincs jogosultságod');
 	});
 });
 

@@ -13,7 +13,7 @@ A Szabadság nyilvántartó oldalon két rész van: a **Kérelmek** listája és
 
 ## Elérés
 **Elérési út:** Work → Idő és szabadság → Szabadság nyilvántartó
-**Ki használhatja:** a „Szabadságkérelem beadása” joggal rendelkezők. A HR-funkciókhoz (jóváhagyás, rögzítés a naptárban, összesítő) a „Szabadságkérelmek jóváhagyása” jog kell. Külsős dolgozóknak az oldal nem érhető el.
+**Ki használhatja:** a „Szabadságkérelem beadása”, a „Szabadságkérelmek jóváhagyása” vagy a „Szabadságkeret kezelése” joggal rendelkezők, tehát a Dolgozó, a HR felelős és a Szervezet adminisztrátor is. A HR-funkciókhoz (jóváhagyás, rögzítés a naptárban, összesítő) a „Szabadságkérelmek jóváhagyása” jog kell, az **Új szabadság** gombhoz (saját kérelem) a „Szabadságkérelem beadása”. Külsős dolgozóknak az oldal nem érhető el.
 
 A „Kérelmek” és a „Naptár” rész a címükre kattintva összecsukható, a böngésző megjegyzi a beállítást.
 
@@ -61,4 +61,4 @@ A jóváhagyó a naptár alatt „Összesítő – {időszak}” táblázatot l�
 
 **Miért kevesebb az „Ebből érvényes”, mint a „Napok”?** A HR a naptárban törölt napokat a kérelemből. Ha több, akkor a munkanaptár változott a beadás óta.
 
-**HR felelős vagyok, mégis hibát kapok az oldalon.** Az oldal a „Szabadságkérelem beadása” jogot is igényli, ami a HR felelős szerepben alapból nincs benne. Kérd, hogy a Dolgozó szerepet is megkapd.
+**HR felelős vagyok, miért nem látom az „Új szabadság” gombot?** A HR felelős szerep a kérelmek elbírálására és a naptár kezelésére való, magadnak szabadságot kérni a „Szabadságkérelem beadása” joggal lehet. Ha magadnak is kérnél, kérd, hogy a Dolgozó szerepet is megkapd.

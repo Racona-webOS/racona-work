@@ -536,7 +536,7 @@ Ezeket bérszámfejtővel vagy munkajogásszal kell átnézetni, mielőtt élesb
 - Az évhatáron átnyúló kérelem teljes egészében a kezdő évet terheli (`leave.ts`: `createLeaveRequest`, `approveLeaveRequest`, `deleteLeaveRequest`).
 - A `LeaveRequests.svelte` keret-ablaka halott kód: az `openBalanceModal`-t sehol nem hívjuk, és az `organizationId` is hiányzik belőle.
 - A `leave_requests.approved_by` mezőt semmi nem tölti ki.
-- Az újonnan létrehozott cégek `org_admin` szerepköréből hiányzik a `leave.calendar.manage` (`SYSTEM_ROLE_DEFINITIONS`).
+- ~~Az újonnan létrehozott cégek `org_admin` szerepköréből hiányzik a `leave.calendar.manage` (`SYSTEM_ROLE_DEFINITIONS`).~~ Javítva: a definícióban benne van, a meglévő szervezeteket a `028_default_role_capabilities.sql` pótolja.
 
 ## Források
 

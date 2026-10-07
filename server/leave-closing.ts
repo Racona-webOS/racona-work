@@ -14,7 +14,7 @@
  */
 
 import type { RemoteContext } from './context.js';
-import { requireCapability } from './permissions.js';
+import { LEAVE_VIEW_CAPABILITIES, requireAnyCapability, requireCapability } from './permissions.js';
 import { currentYear } from './dates.js';
 
 const SCHEMA = 'app__racona_work';
@@ -139,7 +139,8 @@ export async function getLeaveClosedYear(
 	if (!params.organizationId || params.organizationId <= 0) {
 		throw new Error('Érvénytelen szervezet azonosító');
 	}
-	await requireCapability(context, params.organizationId, 'leave.request');
+	// A nyilvántartó és a Munkanaptár oldal is kéri
+	await requireAnyCapability(context, params.organizationId, [...LEAVE_VIEW_CAPABILITIES, 'leave.calendar.manage']);
 	return loadLeaveYearState(context.db, params.organizationId);
 }
 

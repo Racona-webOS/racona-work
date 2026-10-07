@@ -13,7 +13,7 @@ A munkanaptárban a szervezet rögzíti, mely napok térnek el a szokásos munka
 
 ## Elérés
 **Elérési út:** Work → Idő és szabadság → Munkanaptár
-**Ki használhatja:** a „Munkanaptár kezelése” joggal rendelkezők. Ha a menüpont nem látszik, a Beállítások → Jogosultságok oldalon kell a jogot egy szerephez (pl. Szervezet adminisztrátor vagy HR felelős) hozzáadni. Az oldalon az évnyitás, a kötelező szabadságok ellenőrzése és az évzárás gombjai csak a „Szabadságkeret kezelése” joggal látszanak. A Racona rendszergazdája mindent elér.
+**Ki használhatja:** a „Munkanaptár kezelése” joggal rendelkezők, alapból a Szervezet adminisztrátor. Ha másnak is kell (pl. a HR felelősnek), a Szervezet adminisztrátor a Beállítások → Jogosultságok oldalon hozzáadhatja a jogot a szerephez. Az oldalon az évnyitás, a kötelező szabadságok ellenőrzése és az évzárás gombjai csak a „Szabadságkeret kezelése” joggal látszanak. A Racona rendszergazdája mindent elér.
 
 ## A munkanaptár felépítése
 Az oldalon egy teljes év látszik, hónaponként egy naptárral. Az évek között a ‹ és › gombokkal lehet lapozni. A napok színe a típusukat mutatja, a jelmagyarázat a naptár fölött van:

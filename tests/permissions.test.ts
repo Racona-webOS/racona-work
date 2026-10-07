@@ -9,10 +9,13 @@
 import { describe, expect, test } from 'bun:test';
 import {
 	addRoleMember,
+	CAPABILITIES,
 	capabilitiesBeyond,
 	createRole,
 	deleteRole,
 	removeRoleMember,
+	requireAnyCapability,
+	SYSTEM_ROLE_DEFINITIONS,
 	updateRole
 } from '../server/permissions.ts';
 import type { RemoteContext } from '../server/context.ts';
@@ -121,5 +124,43 @@ describe('szerepkezelés felső korlátja', () => {
 		const { context, writes } = fakeContext([], ADMIN_ROLE, { coreAdmin: true });
 		await addRoleMember({ roleId: 1, userId: 7 }, context);
 		expect(writes).toEqual(['INSERT']);
+	});
+});
+
+describe('alapszerepek', () => {
+	const role = (key: string) => SYSTEM_ROLE_DEFINITIONS.find((r) => r.key === key)!;
+
+	test('a szervezet adminisztrátor minden képességet megkap, így mindet tovább is adhatja', () => {
+		const admin = new Set<string>(role('org_admin').capabilities);
+		expect(CAPABILITIES.filter((c) => !admin.has(c))).toEqual([]);
+		const others = SYSTEM_ROLE_DEFINITIONS.flatMap((r) => r.capabilities);
+		expect(capabilitiesBeyond(admin, [], others)).toEqual([]);
+	});
+
+	test('új szervezetben a munkanaptárat a szervezet adminisztrátor kezeli', () => {
+		expect(role('org_admin').capabilities).toContain('leave.calendar.manage');
+	});
+
+	test('csak ismert képességeket tartalmaznak', () => {
+		const known = new Set<string>(CAPABILITIES);
+		for (const r of SYSTEM_ROLE_DEFINITIONS) {
+			expect(r.capabilities.filter((c) => !known.has(c))).toEqual([]);
+		}
+	});
+});
+
+describe('requireAnyCapability', () => {
+	test('elég az egyik képesség', async () => {
+		const { context } = fakeContext(['leave.approve'], []);
+		await expect(
+			requireAnyCapability(context, 3, ['leave.request', 'leave.approve'])
+		).resolves.toBeUndefined();
+	});
+
+	test('egyik nélkül sem engedi', async () => {
+		const { context } = fakeContext(['work.log'], []);
+		await expect(requireAnyCapability(context, 3, ['leave.request', 'leave.approve'])).rejects.toThrow(
+			'Nincs jogosultságod'
+		);
 	});
 });

@@ -1,6 +1,6 @@
 # Szabadságnapok és szabadságnaptár
 
-> Státusz: 1–4. fázis kész · Utolsó módosítás: 2026-09-14
+> Státusz: 1–4. fázis kész · Utolsó módosítás: 2026-10-07
 
 Ma a szabadság egyetlen igazságforrása a szabadságkérelem (`leave_requests`): egy intervallum és egy `days` szám. Ebből nem lehet utólag egy napot kivenni, és a HR nem látja napokra bontva, ki mikor van szabadságon. A cél, hogy a kérelem **beadott, utólag nem módosuló meta sor** maradjon, a tényleges szabadság viszont **napszinten** legyen tárolva. A napok táblája lesz az igazságforrás a szabadságok mutatásához, a keretek terheléséhez és a naptárhoz. A nyilvántartó oldalon a kérelmek listája alá naptárnézet kerül, amiben a HR napokat vehet fel és törölhet.
 
@@ -51,7 +51,7 @@ Ma a szabadság egyetlen igazságforrása a szabadságkérelem (`leave_requests`
 | D10 | Mentés | A törlések és a felvételek **egy tranzakcióban** futnak. Ha bármelyik ellenőrzés elbukik (keret, átfedés, ismeretlen nap), semmi nem mentődik, a hiba megnevezi az okot. | javasolt |
 | D11 | Keret a mentésnél | Az éves szabadságnapok együttes száma nem lépheti túl a maradék keretet, a törölt napokkal együtt számolva (aki 3 napot töröl és 3-at felvesz, annak nem kell plusz keret). Évenként külön. | javasolt |
 | D12 | Éves keret terhelése | `leave_balances.used_days` = az adott év jóváhagyott éves szabadságnapjainak száma a `leave_days` táblából, **minden változás után újraszámolva**, nem növelve és csökkentve. A nap éve számít, nem a kérelem kezdőnapjáé: az évet átlépő kérelem két keretet terhel. | javasolt |
-| D13 | Ki látja a naptárat? | Aki `leave.request` joggal belép az oldalra, látja, ki mikor van távol (név, típus nélkül). A típust a `leave.approve` jog adja, meg a dolgozó a saját napjainál; a szerkesztést csak a `leave.approve`. A betegszabadság egészségügyi adat, ezért a kollégák nem látják a típust. | javasolt |
+| D13 | Ki látja a naptárat? | Aki `leave.request`, `leave.approve` vagy `leave.balance.manage` joggal belép az oldalra, látja, ki mikor van távol (név, típus nélkül). A jóváhagyónak és a HR-nek nem kell kérelem-jog az oldalhoz (a HR felelős alapszerepben nincs); a kérelmező mód („Új szabadság”) viszont `leave.request` jogot kér. A típust a `leave.approve` jog adja, meg a dolgozó a saját napjainál; a szerkesztést csak a `leave.approve`. A betegszabadság egészségügyi adat, ezért a kollégák nem látják a típust. | javasolt |
 | D14 | Kérelem törlése | A HR mostani „Törlés” művelete marad: a kérelem és a napjai (CASCADE) törlődnek, a dolgozó értesítést kap. Ez az egyetlen eset, amikor egy beadott kérelem eltűnik. | javasolt |
 | D15 | Migráció | A meglévő `approved` kérelmek napjait SQL generálja a munkanaptár figyelembevételével. Ha két kérelem átfed, a korábban beadott nyer, a másik napjai kimaradnak (naplózva). A `used_days` a migráció végén újraszámolódik. | javasolt |
 | D17 | Céges kötelező szabadság | Új típus (`company_mandatory`), pl. a két ünnep közötti napok vagy a nyári leállás. A munkáltató által kiadott éves szabadság (Mt. 122. §), ezért **az éves keretet terheli**, mint az éves szabadság. Csak a jóváhagyó rögzítheti (kérelemként és a naptárból is), a dolgozó nem adhatja be. | javasolt |
@@ -179,7 +179,7 @@ CREATE INDEX IF NOT EXISTS idx_leave_days_employee_type_day
 
 | Függvény | Jogosultság | Leírás |
 |---|---|---|
-| `getLeaveCalendar({ organizationId, from, to, employeeId? })` | `leave.request` | A `[from, to]` időszak napjai: `{ day, employeeId, employeeName, leaveType, leaveRequestId }[]`; a `leaveType` csak `leave.approve` joggal van kitöltve (D13). Külön `pending` lista a függő kérelmek munkanapjaival (jóváhagyó jog nélkül csak a hívó sajátjai). Legfeljebb egy év (366 nap) egy hívásban, az éves nézethez. |
+| `getLeaveCalendar({ organizationId, from, to, employeeId? })` | `leave.request`, `leave.approve` vagy `leave.balance.manage` | A `[from, to]` időszak napjai: `{ day, employeeId, employeeName, leaveType, leaveRequestId }[]`; a `leaveType` csak `leave.approve` joggal van kitöltve (D13). Külön `pending` lista a függő kérelmek munkanapjaival (jóváhagyó jog nélkül csak a hívó sajátjai). Legfeljebb egy év (366 nap) egy hívásban, az éves nézethez. |
 | `saveLeaveCalendar({ organizationId, employeeId, leaveType, addDays, removeDays })` | `leave.approve` | A 4. fejezet folyamata. Visszaad: `{ createdRequests: { id, startDate, endDate, days }[], removedDays: string[] }`. A `leaveType` csak a D9 szerinti típus lehet. |
 | `previewLeaveCalendarSave({ organizationId, employeeId, leaveType, addDays, removeDays })` | `leave.approve` | Mentés nélkül: a szakaszok, a törlendő napok, évenként a keret a módosítás után, és a hibák listája (K8 összegzősáv). |
 

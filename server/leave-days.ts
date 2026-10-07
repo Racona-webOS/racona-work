@@ -12,7 +12,14 @@
 
 import type { RemoteContext } from './context.js';
 import { isCoreAdmin, isDevMode, resolveUserId } from './context.js';
-import { ensureNotSelfDecision, hasCapability, requireCapability, EXTERNAL_EMPLOYEE_ERROR } from './permissions.js';
+import {
+	ensureNotSelfDecision,
+	hasCapability,
+	LEAVE_VIEW_CAPABILITIES,
+	requireAnyCapability,
+	requireCapability,
+	EXTERNAL_EMPLOYEE_ERROR
+} from './permissions.js';
 import { getWorkCalendarOverrides } from './work-calendar.js';
 import {
 	notifyLeaveDaysAdded,
@@ -278,7 +285,8 @@ function daySpan(from: string, to: string): number {
 /**
  * A szabadságnaptár egy időszakra (specs/leave-days.md, K5).
  *
- * Aki `leave.request` joggal belép, látja, ki mikor van távol; a típust a
+ * Aki `leave.request`, `leave.approve` vagy `leave.balance.manage` joggal
+ * belép, látja, ki mikor van távol; a típust a
  * `leave.approve` jog mutatja, meg a dolgozó a saját napjainál (a
  * betegszabadság egészségügyi adat, a kollégák nem látják). A függő kérelmek
  * napjait a kérelem időszakából számoljuk a munkanaptárral; jóváhagyó jog
@@ -304,7 +312,7 @@ export async function getLeaveCalendar(
 		throw new Error(`Egyszerre legfeljebb ${MAX_CALENDAR_DAYS} nap kérhető le.`);
 	}
 
-	await requireCapability(context, organizationId, 'leave.request');
+	await requireAnyCapability(context, organizationId, LEAVE_VIEW_CAPABILITIES);
 	const canManage = await hasCapability(context, organizationId, 'leave.approve');
 	// A saját napjainak típusát a dolgozó is látja
 	const ownEmployeeId = await findEmployeeIdOfUser(context.db, await resolveUserId(context), organizationId);
@@ -785,9 +793,8 @@ function parseBatchParams(params: LeaveRequestBatchParams): RequestBatchInput {
 	};
 }
 
-/** A dolgozó a sajátját kérheti; más nevében a jóváhagyó (mint az űrlapon). */
+/** A dolgozó a sajátját kérheti (leave.request); más nevében a jóváhagyó (mint az űrlapon). */
 async function requireOwnOrApprover(context: RemoteContext, input: RequestBatchInput): Promise<void> {
-	await requireCapability(context, input.organizationId, 'leave.request');
 	if (isDevMode(context) || isCoreAdmin(context)) return;
 	const callerUserId = await resolveUserId(context);
 	const r = await context.db.query(
@@ -796,9 +803,8 @@ async function requireOwnOrApprover(context: RemoteContext, input: RequestBatchI
 	);
 	if (r.rows.length === 0) throw new Error('A dolgozó nem található ebben a szervezetben');
 	if (r.rows[0].is_external === true) throw new Error(EXTERNAL_EMPLOYEE_ERROR);
-	if (Number(r.rows[0].user_id) !== Number(callerUserId)) {
-		await requireCapability(context, input.organizationId, 'leave.approve');
-	}
+	const own = Number(r.rows[0].user_id) === Number(callerUserId);
+	await requireCapability(context, input.organizationId, own ? 'leave.request' : 'leave.approve');
 }
 
 /**
