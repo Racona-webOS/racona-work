@@ -1,0 +1,31 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev-server",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["dev-server.ts"],
+      "port": 5175
+    },
+    {
+      "name": "vite",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5174
+    },
+    {
+      "name": "dev-server-alt",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["PORT=5185", "bun", "dev-server.ts"],
+      "port": 5185,
+      "autoPort": false
+    },
+    {
+      "name": "vite-alt",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["VITE_DEV_SERVER_URL=http://localhost:5185", "bunx", "vite", "--port", "5184", "--strictPort"],
+      "port": 5184,
+      "autoPort": false
+    }
+  ]
+}
