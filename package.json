@@ -17,7 +17,7 @@
 	},
 	"dependencies": {
 		"@lucide/svelte": "^1.14.0",
-		"@racona/sdk": "^0.6.0",
+		"@racona/sdk": "^0.8.1",
 		"fflate": "0.8.3",
 		"svelte": "^5.0.0"
 	},
